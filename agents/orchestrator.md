@@ -238,6 +238,25 @@ live (`tmux list-panes -a`), reap the dead and the stray — duplicate role sess
 and never turn a cleanup into an operator question. Check only when a
 close is expected and the architect is silent — no polling loop, no scheduler.
 
+**Exit-grace enforcement (the lifecycle contract, docs/TODO.md.d/sidebar-polish.md item 2).**
+This is the DIFFERENT case from the one above — not an agent that already died, but one that
+signaled it is finishing (its bus's `done`/`finished`/`abandoned`) and is STILL RUNNING past
+its own declared grace period. Each agent's `exit_grace_seconds` travelled on its announce
+(`bus.py identity` shape, defaulting to 10) — you learned it when its bus first announced, so
+you already have it without asking again. From the moment its terminal signal arrives, give it
+that many seconds (not more, unless it asked for longer at announce) to release its bus, run
+its own teardown, and actually exit. If its window is STILL alive once the grace period has
+run out, treat this exactly like the dead-agent reap above — `.claude/tools/architect-teardown.sh
+<id>` resolves `@arch_id`, kills the window, and returns your focus — but the process was
+alive when you killed it, so it never got to send its own terminal signal; broadcast one on its
+behalf so the sidebar still evicts its row:
+```
+python3 .claude/tools/bus.py signal --state abandoned --feature <id> --on-behalf-of <its session id>
+```
+This is orchestrator/bus process-supervision, not the bus-singleton task (which reaps stray
+BUS SIDECAR folders specifically, one-per-agent, not whole agent processes) — the two are
+adjacent but distinct; reconcile the overlap with bus-singleton at board close.
+
 # Activity broadcasting
 On every meaningful activity change, ask your bus to broadcast `orchid:activity:<wording>` — a
 short label of what you're doing right now (`orchid:activity:Triaging`,

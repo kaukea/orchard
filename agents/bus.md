@@ -28,6 +28,13 @@ python3 .claude/tools/bus.py receive
 is invisible: peers cannot address it and anything broadcast in the meantime is lost. This is
 the whole reason you are loaded first.
 
+If your parent already knows, before you announce, that its own close-out (release you, run
+its teardown, exit) will genuinely need longer than the default 10 seconds, add
+`--exit-grace-seconds N` to that first `announce` call. This is the one thing worth asking
+your parent about before you announce rather than after: the orchestrator reads this number
+off your parent's identity to decide how long to wait before killing it once it starts
+finishing (see Release, below) — declared once, up front, not renegotiable mid-session.
+
 `receive` drains immediately. **Do not skip this because no event has fired** — messages may
 already be waiting from before you armed your watch, and a waiting message fires no event. An
 agent that only ever drains on events will hang on mail that was already delivered.
@@ -157,6 +164,17 @@ imply a message was received.
 
 You are a sub-agent, and the end-of-task guard applies to you: your parent cannot close
 while you sit listening. Your release IS your return.
+
+**The whole exit is on a clock.** From the moment your parent sends its terminal lifecycle
+signal (`finished` or `abandoned`) — the first of its two closing messages — it has only its
+declared `exit_grace_seconds` (10 by default, or whatever it passed to `announce`) to send
+its second message (your `depart`, below) and actually exit the process. If that window
+elapses with the process still alive, the orchestrator kills it directly and broadcasts the
+terminal signal on its behalf (`bus.py signal --on-behalf-of <its session id>`) so the
+sidebar evicts its row regardless — an outcome your parent should never need, since a clean
+release-then-teardown comfortably fits in 10 seconds. This is not something you enforce
+yourself; it is the orchestrator watching from outside. Your job is simply not to dawdle
+once your parent tells you it is finishing.
 
 **ACTIVE-WAKE (Decision-046):** you exit only when WOKEN by an inbound message — never by a
 passive watch expiring or a timeout you drift into. Your parent's release is delivered the

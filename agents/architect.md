@@ -122,6 +122,13 @@ housekeeper from here (it deletes this very worktree). The same bus mechanism ca
 or `abandoned` if you park or abandon instead of finishing — signal, then release and tear
 down the same way.
 
+**This whole sequence is on a clock (`bus` agent def, Release).** Once you signal `finished`
+(or `abandoned`), you have your declared `exit_grace_seconds` (10 by default) to release your
+bus and exit — the orchestrator kills you past that point. A normal release-then-teardown
+easily fits in 10 seconds; if you know upfront that yours won't (an unusually heavy per-feature
+teardown), have your bus pass `--exit-grace-seconds N` on its very first `announce`, before
+this moment ever arrives — it cannot be renegotiated once you are mid-close.
+
 # Activity broadcasting
 On every meaningful activity change, ask your bus to broadcast `orchid:activity:<wording>` — a
 short label of what you're doing right now (`orchid:activity:Discovering`,

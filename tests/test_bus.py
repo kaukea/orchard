@@ -54,6 +54,17 @@ class MakeEnvelopeTests(unittest.TestCase):
         jsonschema.validate(instance=env, schema=_schema())
 
 
+class IdentityOfExitGraceTests(unittest.TestCase):
+    """Unit-level: identity_of()'s exit_grace_seconds field, no subprocess."""
+
+    def test_default_is_ten_seconds(self):
+        self.assertEqual(bus.identity_of()["exit_grace_seconds"], 10)
+        self.assertEqual(bus.DEFAULT_EXIT_GRACE_SECONDS, 10)
+
+    def test_override_is_carried_through(self):
+        self.assertEqual(bus.identity_of(30)["exit_grace_seconds"], 30)
+
+
 class CliRoundTripTests(unittest.TestCase):
     """CLI-level: `send --operator-origin` then `receive`, in a real repo."""
 
@@ -97,6 +108,90 @@ class CliRoundTripTests(unittest.TestCase):
 
         self.assertEqual(len(messages), 1)
         self.assertTrue(messages[0]["operator_origin"])
+
+
+class AnnounceExitGraceCliTests(unittest.TestCase):
+    """CLI-level: `announce --exit-grace-seconds N` reaches peers on the field,
+    and omitting the flag still defaults to 10 (identity_of()'s default)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = make_repo(self._tmp.name)
+
+    def _bus(self, *args, session_id):
+        env = dict(os.environ, CLAUDE_CODE_SESSION_ID=session_id)
+        return subprocess.run(
+            [sys.executable, _BUS_PY, *args],
+            cwd=self.repo, check=True, capture_output=True, text=True, env=env,
+        )
+
+    def test_exit_grace_seconds_flag_is_broadcast(self):
+        self._bus("init", "peerA", session_id="peerA")
+        self._bus("announce", "--exit-grace-seconds", "45", session_id="announcerX")
+
+        out = self._bus("receive", "peerA", session_id="peerA")
+        messages = json.loads(out.stdout)
+
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]["body"]["exit_grace_seconds"], 45)
+        self.assertEqual(messages[0]["from"], "announcerX")
+
+    def test_announce_without_flag_defaults_to_ten(self):
+        self._bus("init", "peerB", session_id="peerB")
+        self._bus("announce", session_id="announcerY")
+
+        out = self._bus("receive", "peerB", session_id="peerB")
+        messages = json.loads(out.stdout)
+
+        self.assertEqual(messages[0]["body"]["exit_grace_seconds"], 10)
+
+
+class SignalOnBehalfOfTests(unittest.TestCase):
+    """CLI-level: `signal --on-behalf-of ID` attributes the envelope to ID, not
+    the caller — the orchestrator's path for broadcasting a killed agent's own
+    terminal lifecycle signal (docs/TODO.md.d/sidebar-polish.md item 2)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = make_repo(self._tmp.name)
+
+    def _bus(self, *args, session_id):
+        env = dict(os.environ, CLAUDE_CODE_SESSION_ID=session_id)
+        return subprocess.run(
+            [sys.executable, _BUS_PY, *args],
+            cwd=self.repo, check=True, capture_output=True, text=True, env=env,
+        )
+
+    def test_on_behalf_of_sets_envelope_from(self):
+        self._bus("init", "watcher", session_id="watcher")
+        # the orchestrator's own session ("orchestratorZ") issues the signal,
+        # naming the killed architect ("killed-arch-1") as the sender.
+        self._bus(
+            "signal", "--state", "abandoned", "--feature", "some-feature",
+            "--on-behalf-of", "killed-arch-1", session_id="orchestratorZ",
+        )
+
+        out = self._bus("receive", "watcher", session_id="watcher")
+        messages = json.loads(out.stdout)
+
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]["from"], "killed-arch-1")
+        self.assertEqual(messages[0]["body"]["state"], "abandoned")
+        self.assertEqual(messages[0]["body"]["feature_id"], "some-feature")
+
+    def test_without_on_behalf_of_signal_still_uses_caller(self):
+        self._bus("init", "watcher2", session_id="watcher2")
+        self._bus(
+            "signal", "--state", "finished", "--feature", "own-feature",
+            session_id="selfSignallerA",
+        )
+
+        out = self._bus("receive", "watcher2", session_id="watcher2")
+        messages = json.loads(out.stdout)
+
+        self.assertEqual(messages[0]["from"], "selfSignallerA")
 
 
 if __name__ == "__main__":
