@@ -112,6 +112,12 @@ def estimates_for(model: str | None, spend: dict, occupancy: int) -> dict:
 
 LIFECYCLE_STATES = ("started", "building", "testing", "done", "finished", "blocked", "abandoned")
 
+# What a "blocked" signal is blocked ON — the sidebar (sidebar_model.py) needs
+# this to tell "waiting on an external component" (⌚) apart from "waiting on
+# a peer agent" (🪷); absent (older callers, or any state other than
+# "blocked") the sidebar defaults to "component".
+BLOCKED_ON_STATES = ("component", "agent")
+
 
 def git(*args: str) -> str:
     """Run a git command, returning '' rather than raising outside a repo."""
@@ -383,6 +389,8 @@ def cmd_signal(args) -> None:
     sender = whoami()
     feature = args.feature or identity_of()["feature_id"]
     body = {"kind": "lifecycle", "state": args.state, "feature_id": feature}
+    if args.state == "blocked" and args.blocked_on:
+        body["blocked_on"] = args.blocked_on
     to = args.to or os.environ.get("ORCHID_PARENT_SESSION") or None
     if to and inbox(to).is_dir():
         deliver(inbox(to), make_envelope(sender, to, body=body, notify_user=args.notify_user))
@@ -434,6 +442,10 @@ def main() -> None:
     s.add_argument("--state", required=True, choices=LIFECYCLE_STATES)
     s.add_argument("--feature")
     s.add_argument("--to")
+    s.add_argument("--blocked-on", dest="blocked_on", choices=BLOCKED_ON_STATES,
+                   help="only meaningful with --state blocked: what the block is "
+                        "on (component, the default sidebar assumption, or agent, "
+                        "a peer awaited)")
     s.add_argument("--notify-user", dest="notify_user", action="store_true",
                    help="the sending agent intends this for the user to see")
     s.set_defaults(func=cmd_signal)

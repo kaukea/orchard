@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -45,19 +46,48 @@ from pathlib import Path
 DEFAULT_REPOLIST = Path.home() / ".config" / "orchids" / "sidebar-repos"
 
 # Sidecar sessions surface as agent_type "bus"; their subagent label is
-# conventionally "messaging" — never shown as a fleet subagent row.
+# conventionally "messaging" — never shown as a fleet subagent row (they get
+# their own single collapsed "bus row" instead — see _pick_bus()).
 BUS_AGENT_TYPE = "bus"
 BUS_LABEL = "messaging"
 
+# Six-state status vocabulary (final, settled — sidebar-polish item 9,
+# revised). Every status below is STATIC: no glyph may ever change
+# frame-to-frame. "working"/"done"/"failed" fall straight out of the
+# lifecycle table; "waiting" (component vs operator variant) and
+# "awaiting_agent" (blocked on a peer) need the extra blocked_on/notify_user
+# logic in _status_for() below, so they are deliberately NOT in this table.
 LIFECYCLE_TO_STATUS = {
-    "started": "running",
-    "building": "running",
-    "testing": "running",
-    "done": "standby",
-    "finished": "completed",
+    "started": "working",
+    "building": "working",
+    "testing": "working",
+    "finished": "done",
     "abandoned": "failed",
-    # "blocked" is handled via the waiting precedence rule, not this table.
+    # "done" (the pre-terminal "built, awaiting THAT IS ALL" lifecycle state)
+    # and "blocked" are handled by _status_for()'s precedence rules, not this
+    # table — both need more than a 1:1 lifecycle->status mapping.
 }
+
+# A `blocked` lifecycle signal's body may carry a `blocked_on` tag
+# distinguishing what it's blocked ON — bus.py's signal command didn't carry
+# this distinction before this change (checked: LIFECYCLE_STATES only ever
+# had a bare "blocked", no qualifier), so this is the minimal tag added to
+# make the waiting/awaiting_agent split possible. Absent (older senders,
+# senders that didn't pass --blocked-on) defaults to BLOCKED_ON_COMPONENT —
+# the safer assumption, since a peer-agent block should be opted into
+# explicitly.
+BLOCKED_ON_COMPONENT = "component"
+BLOCKED_ON_AGENT = "agent"
+
+# A "bare session-UUID row" — no announced name, only the raw session id —
+# is never operator-facing (sidebar-polish item 2 / this round's item 3b).
+_SESSION_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
+
+def _is_bare_uuid(text: str | None) -> bool:
+    return bool(text) and bool(_SESSION_UUID_RE.match(text))
 
 
 # --------------------------------------------------------------------------
@@ -70,13 +100,22 @@ class Subagent:
 
 
 @dataclass
+class Bus:
+    """One collapsed bus-sidecar row for a live parent agent (repo's
+    orchestrator or a feature's architect) — sidebar-polish item 5. At most
+    one per parent, rendered at the top of that parent's row group."""
+    label: str = BUS_LABEL
+
+
+@dataclass
 class Feature:
     feature_id: str
     name: str
     activity: str
     status: str
-    waiting: bool
+    waiting_on_operator: bool
     subagents: list[Subagent] = field(default_factory=list)
+    bus: Bus | None = None
 
 
 @dataclass
@@ -85,8 +124,10 @@ class Repo:
     name: str
     activity: str
     status: str
-    waiting: bool
+    waiting_on_operator: bool
+    paused: bool = False
     features: list[Feature] = field(default_factory=list)
+    bus: Bus | None = None
 
 
 @dataclass
@@ -184,6 +225,7 @@ class _SessionState:
     parent_session: str | None = None
     activity: str = ""
     lifecycle_state: str | None = None
+    blocked_on: str | None = None  # BLOCKED_ON_COMPONENT / BLOCKED_ON_AGENT
     active_subagents: set = field(default_factory=set)
     last_notify_user: bool = False  # notify_user flag of the latest message seen
 
@@ -203,6 +245,7 @@ def _apply_message(state: _SessionState, msg: dict) -> None:
 
     elif isinstance(body, dict) and body.get("kind") == "lifecycle":
         state.lifecycle_state = body.get("state")
+        state.blocked_on = body.get("blocked_on")
 
     elif isinstance(body, str):
         if body.startswith("orchid:activity:"):
@@ -229,19 +272,33 @@ def _apply_message(state: _SessionState, msg: dict) -> None:
 # which a closing session does not always emit before it signals terminal.
 _TERMINAL_LIFECYCLE = {"finished", "abandoned"}
 
+# the pre-terminal lifecycle "done" (built/tested, awaiting the operator's
+# THAT IS ALL — see agents/architect.md) is, by definition, an operator-wait:
+# treated as the waiting status with the operator (❓) variant forced on.
+_AWAITING_OPERATOR_LIFECYCLE = "done"
 
-def _waiting_of(state: _SessionState) -> bool:
+
+def _waiting_on_operator_of(state: _SessionState) -> bool:
+    """Within the "waiting" status, is this specifically a wait on the
+    OPERATOR (❓ variant) rather than an external component (⌚)? Only
+    meaningful when _status_for() returns "waiting"."""
     if state.lifecycle_state in _TERMINAL_LIFECYCLE:
         return False
-    return state.last_notify_user or state.lifecycle_state == "blocked"
+    return state.last_notify_user or state.lifecycle_state == _AWAITING_OPERATOR_LIFECYCLE
 
 
 def _status_for(state: _SessionState) -> str:
-    if _waiting_of(state):
+    if state.lifecycle_state in _TERMINAL_LIFECYCLE:
+        return LIFECYCLE_TO_STATUS.get(state.lifecycle_state, "idle")
+    if state.lifecycle_state == "blocked":
+        return "awaiting_agent" if state.blocked_on == BLOCKED_ON_AGENT else "waiting"
+    if state.last_notify_user or state.lifecycle_state == _AWAITING_OPERATOR_LIFECYCLE:
         return "waiting"
-    if state.lifecycle_state is None:
-        return "running"
-    return LIFECYCLE_TO_STATUS.get(state.lifecycle_state, "running")
+    if state.active_subagents or state.lifecycle_state in (
+        "started", "building", "testing",
+    ):
+        return "working"
+    return "idle"
 
 
 class _BusAggregator:
@@ -260,13 +317,31 @@ class _BusAggregator:
     has agent_type=None and is not placed into any Repo/Feature row until an
     identity message for it does arrive in a later scan; it never crashes,
     it is just not renderable yet.
+
+    ROOT-CAUSE STALE-ROW EVICTION (sidebar-polish item 2/3): a sender's state
+    used to survive forever, even past its own terminal lifecycle signal
+    (only the waiting flag got cleared, per _TERMINAL_LIFECYCLE) — this is
+    why a long-closed feature ("app-identifying") kept rendering as a
+    permanent stale row. Once a sender's lifecycle reaches a terminal signal
+    (finished/abandoned), its state is shown for exactly one more scan (so a
+    "done"/"failed" row is still visible right after the signal — no
+    documented grace window exists beyond that, so one scan is the deliberate
+    minimum), then evicted in full on the NEXT scan, before that scan's own
+    row assembly — never lingering indefinitely.
     """
 
     def __init__(self) -> None:
         self.states: dict[str, _SessionState] = {}
         self._seen_ids: set[str] = set()
+        self._pending_eviction: set[str] = set()
 
     def scan(self, bus_root: Path) -> None:
+        # evict senders whose terminal signal was already observed on a
+        # PREVIOUS scan — one full scan's grace to show "done"/"failed"
+        for sender in self._pending_eviction:
+            self.states.pop(sender, None)
+        self._pending_eviction.clear()
+
         if not bus_root.is_dir():
             return
 
@@ -304,6 +379,12 @@ class _BusAggregator:
         # not seen this scan can never recur and its id is safe to drop
         self._seen_ids = current_ids
 
+        # anyone now resolved gets exactly one more scan's visibility, then
+        # eviction at the top of the NEXT scan (see class docstring)
+        for sender, state in self.states.items():
+            if state.lifecycle_state in _TERMINAL_LIFECYCLE:
+                self._pending_eviction.add(sender)
+
     def repo(self, repo_path: str) -> Repo:
         return _assemble_repo(repo_path, self.states)
 
@@ -312,9 +393,26 @@ class _BusAggregator:
 # Assembly: per-sender states -> Fleet
 # --------------------------------------------------------------------------
 
+def _pick_bus(sessions: dict[str, _SessionState], parent_session_id: str) -> Bus | None:
+    """The single collapsed bus row for a live parent (sidebar-polish item 5).
+
+    Per-agent bus is a singleton BY DESIGN (Decision-051); multiplicity
+    beyond one is a known, separately-root-caused defect (bus-singleton
+    task). This function only owns the DISPLAY-side guarantee: never render
+    more than one row, picked deterministically (lowest session_id) so
+    repeated scans don't flicker between duplicates.
+    """
+    candidates = sorted(
+        s.session_id for s in sessions.values()
+        if s.agent_type == BUS_AGENT_TYPE and s.parent_session == parent_session_id
+    )
+    return Bus() if candidates else None
+
+
 def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
     name = Path(repo_path).name
-    repo = Repo(path=repo_path, name=name, activity="", status="idle", waiting=False)
+    repo = Repo(path=repo_path, name=name, activity="", status="idle",
+                waiting_on_operator=False)
 
     orchestrator = next(
         (s for s in sessions.values() if s.agent_type == "orchestrator"), None,
@@ -322,10 +420,17 @@ def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
     if orchestrator is not None:
         repo.activity = orchestrator.activity
         repo.status = _status_for(orchestrator)
-        repo.waiting = _waiting_of(orchestrator)
+        repo.waiting_on_operator = _waiting_on_operator_of(orchestrator)
+        repo.bus = _pick_bus(sessions, orchestrator.session_id)
 
     architects = [s for s in sessions.values() if s.agent_type == "architect"]
     for arch in architects:
+        # bare session-UUID row: an architect that never announced a name OR
+        # a feature_id has nothing operator-facing to show — never render it
+        # (sidebar-polish item 2 / this round's item 3b).
+        if not arch.name and not arch.feature_id and _is_bare_uuid(arch.session_id):
+            continue
+
         feature_id = arch.feature_id or arch.session_id
         feature_name = arch.name or (feature_id.replace("-", " ") if feature_id else feature_id)
         feature = Feature(
@@ -333,18 +438,22 @@ def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
             name=feature_name,
             activity=arch.activity,
             status=_status_for(arch),
-            waiting=_waiting_of(arch),
+            waiting_on_operator=_waiting_on_operator_of(arch),
+            bus=_pick_bus(sessions, arch.session_id),
         )
         # subagents surfaced directly by the architect's own orchid:subagent traffic
         for label in sorted(arch.active_subagents):
             feature.subagents.append(Subagent(label=label))
         # plus any other (non-bus-sidecar) session whose parent_session points
-        # at this architect, surfaced by name
+        # at this architect (EVERY architect, not just the first — sidebar-
+        # polish item 3), surfaced by name
         for s in sessions.values():
             if s is arch or s.parent_session != arch.session_id:
                 continue
             if s.agent_type == BUS_AGENT_TYPE:
                 continue
+            if not s.name and _is_bare_uuid(s.session_id):
+                continue  # bare session-UUID row: never operator-facing
             feature.subagents.append(Subagent(label=s.name or s.session_id))
         repo.features.append(feature)
 

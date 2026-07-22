@@ -57,8 +57,11 @@ def identity_body(session_id, agent_type=None, worktree=None, feature_id=None,
     }
 
 
-def lifecycle_body(state, feature_id=None) -> dict:
-    return {"kind": "lifecycle", "state": state, "feature_id": feature_id}
+def lifecycle_body(state, feature_id=None, blocked_on=None) -> dict:
+    body = {"kind": "lifecycle", "state": state, "feature_id": feature_id}
+    if blocked_on is not None:
+        body["blocked_on"] = blocked_on
+    return body
 
 
 def envelope(msg_id, sender, to="*", body=None, notify_user=None, ts=None) -> dict:

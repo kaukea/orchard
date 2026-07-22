@@ -53,13 +53,16 @@ class _BusFixtureTestCase(unittest.TestCase):
 
 
 class StatusMappingTests(_BusFixtureTestCase):
+    """The six-state status vocabulary (sidebar-polish item 9, revised —
+    working/waiting/idle/awaiting_agent/done/failed), all distinct and
+    non-overlapping."""
+
     def test_lifecycle_states_map_to_expected_status(self):
         expected = {
-            "started": "running",
-            "building": "running",
-            "testing": "running",
-            "done": "standby",
-            "finished": "completed",
+            "started": "working",
+            "building": "working",
+            "testing": "working",
+            "finished": "done",
             "abandoned": "failed",
         }
         for state, _status in expected.items():
@@ -82,9 +85,103 @@ class StatusMappingTests(_BusFixtureTestCase):
                 self.assertIn(feature_id, features)
                 self.assertEqual(features[feature_id].status, status)
 
+    def test_done_and_failed_never_share_encoding(self):
+        # explicit operator correction: done and failed must never share a
+        # glyph/status value, however they're derived
+        self._architect("arch-done", "feat-done")
+        self._put("arch-done", "arch-done-lc", "arch-done",
+                  lifecycle_body("finished", feature_id="feat-done"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        self._architect("arch-failed", "feat-failed")
+        self._put("arch-failed", "arch-failed-lc", "arch-failed",
+                  lifecycle_body("abandoned", feature_id="feat-failed"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
 
-class WaitingTests(_BusFixtureTestCase):
-    def test_notify_user_flag_marks_waiting(self):
+        fleet = sidebar_model.build_model([self.repo])
+        features = {f.feature_id: f for f in fleet.repos[0].features}
+        self.assertEqual(features["feat-done"].status, "done")
+        self.assertEqual(features["feat-failed"].status, "failed")
+        self.assertNotEqual(features["feat-done"].status, features["feat-failed"].status)
+
+    def test_no_lifecycle_and_no_subagents_is_idle(self):
+        self._architect("arch-fresh", "feat-fresh")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status, "idle")
+
+    def test_active_subagent_marks_working_even_without_lifecycle_push(self):
+        self._architect("arch-working", "feat-working")
+        self._put("arch-working", "arch-working-s1", "arch-working",
+                  "orchid:subagent:start:builder-1",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status, "working")
+
+    def test_pre_terminal_done_lifecycle_is_waiting_on_operator(self):
+        # lifecycle "done" (built/tested, awaiting THAT IS ALL) is, by
+        # definition, an operator-wait -- not a separate terminal status.
+        self._architect("arch-predone", "feat-predone")
+        self._put("arch-predone", "arch-predone-lc", "arch-predone",
+                  lifecycle_body("done", feature_id="feat-predone"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status, "waiting")
+        self.assertTrue(feature.waiting_on_operator)
+
+    def test_all_six_statuses_are_distinct(self):
+        statuses = {"working", "waiting", "idle", "awaiting_agent", "done", "failed"}
+        self.assertEqual(len(statuses), 6)
+
+
+class BlockedOnTests(_BusFixtureTestCase):
+    """blocked_on distinguishes "waiting on a component" from "awaiting
+    another agent" — the minimal tag added to the blocked lifecycle signal
+    since the prior signal shape carried no such distinction."""
+
+    def test_blocked_defaults_to_waiting_on_component(self):
+        self._architect("arch-blocked-comp", "feat-blocked-comp")
+        self._put("arch-blocked-comp", "arch-blocked-comp-lc", "arch-blocked-comp",
+                  lifecycle_body("blocked", feature_id="feat-blocked-comp"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status, "waiting")
+        self.assertFalse(feature.waiting_on_operator)
+
+    def test_blocked_on_agent_is_awaiting_agent(self):
+        self._architect("arch-blocked-peer", "feat-blocked-peer")
+        self._put("arch-blocked-peer", "arch-blocked-peer-lc", "arch-blocked-peer",
+                  lifecycle_body("blocked", feature_id="feat-blocked-peer",
+                                blocked_on="agent"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status, "awaiting_agent")
+
+    def test_blocked_on_component_explicit_is_waiting(self):
+        self._architect("arch-blocked-explicit", "feat-blocked-explicit")
+        self._put("arch-blocked-explicit", "arch-blocked-explicit-lc", "arch-blocked-explicit",
+                  lifecycle_body("blocked", feature_id="feat-blocked-explicit",
+                                blocked_on="component"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status, "waiting")
+
+
+class WaitingOperatorVariantTests(_BusFixtureTestCase):
+    """The ❓ waiting-on-operator variant — driven by last_notify_user (or
+    the equivalent lifecycle "done" signal), never by blocked_on=agent."""
+
+    def test_notify_user_flag_marks_waiting_on_operator(self):
         self._architect("arch-notify", "feat-notify")
         self._put("arch-notify", "arch-notify-act", "arch-notify",
                   "orchid:activity:need input",
@@ -92,18 +189,7 @@ class WaitingTests(_BusFixtureTestCase):
 
         fleet = sidebar_model.build_model([self.repo])
         feature = fleet.repos[0].features[0]
-        self.assertTrue(feature.waiting)
-        self.assertEqual(feature.status, "waiting")
-
-    def test_blocked_lifecycle_marks_waiting(self):
-        self._architect("arch-blocked", "feat-blocked")
-        self._put("arch-blocked", "arch-blocked-lc", "arch-blocked",
-                  lifecycle_body("blocked", feature_id="feat-blocked"),
-                  ts="2026-01-01T00:00:01.000000+00:00")
-
-        fleet = sidebar_model.build_model([self.repo])
-        feature = fleet.repos[0].features[0]
-        self.assertTrue(feature.waiting)
+        self.assertTrue(feature.waiting_on_operator)
         self.assertEqual(feature.status, "waiting")
 
     def test_reannounce_after_notify_does_not_clear_waiting(self):
@@ -120,7 +206,7 @@ class WaitingTests(_BusFixtureTestCase):
 
         fleet = sidebar_model.build_model([self.repo])
         feature = fleet.repos[0].features[0]
-        self.assertTrue(feature.waiting)
+        self.assertTrue(feature.waiting_on_operator)
         self.assertEqual(feature.status, "waiting")
 
     def test_plain_lifecycle_after_notify_does_not_clear_waiting(self):
@@ -136,7 +222,7 @@ class WaitingTests(_BusFixtureTestCase):
 
         fleet = sidebar_model.build_model([self.repo])
         feature = fleet.repos[0].features[0]
-        self.assertTrue(feature.waiting)
+        self.assertTrue(feature.waiting_on_operator)
         self.assertEqual(feature.status, "waiting")
 
     def test_terminal_lifecycle_clears_waiting(self):
@@ -145,15 +231,15 @@ class WaitingTests(_BusFixtureTestCase):
                   "orchid:activity:need input",
                   ts="2026-01-01T00:00:01.000000+00:00", notify_user=True)
         # a finished session is resolved: the stale waiting flash must clear
-        # and the row must show its completed status, not the hourglass
+        # and the row must show its done status, not the operator glyph
         self._put("arch-sticky3", "arch-sticky3-lc", "arch-sticky3",
                   lifecycle_body("finished", feature_id="feat-sticky3"),
                   ts="2026-01-01T00:00:02.000000+00:00")
 
         fleet = sidebar_model.build_model([self.repo])
         feature = fleet.repos[0].features[0]
-        self.assertFalse(feature.waiting)
-        self.assertEqual(feature.status, "completed")
+        self.assertFalse(feature.waiting_on_operator)
+        self.assertEqual(feature.status, "done")
 
 
 class AttributionTests(_BusFixtureTestCase):
@@ -219,6 +305,166 @@ class SubagentTests(_BusFixtureTestCase):
 
         fleet = sidebar_model.build_model([self.repo])
         self.assertEqual(fleet.repos[0].features[0].subagents, [])
+
+    def test_two_parents_each_show_their_own_subagents(self):
+        # sidebar-polish item 3: EVERY agent's subagents render under their
+        # own parent, not just the first feature's.
+        self._architect("arch-parentA", "feat-parentA")
+        self._put("arch-parentA", "arch-parentA-s1", "arch-parentA",
+                  "orchid:subagent:start:builder-A1",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        self._put("arch-parentA", "arch-parentA-s2", "arch-parentA",
+                  "orchid:subagent:start:builder-A2",
+                  ts="2026-01-01T00:00:02.000000+00:00")
+
+        self._architect("arch-parentB", "feat-parentB")
+        self._put("arch-parentB", "arch-parentB-s1", "arch-parentB",
+                  "orchid:subagent:start:builder-B1",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        # arch-parentB also has a peer session (non-bus) parented to it
+        self._put("peer-B", "peer-B-id", "peer-B",
+                  identity_body("peer-B", agent_type="builder", name="peer-builder-B",
+                                parent_session="arch-parentB"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        features = {f.feature_id: f for f in fleet.repos[0].features}
+        self.assertEqual(len(features), 2)
+
+        labels_a = sorted(s.label for s in features["feat-parentA"].subagents)
+        labels_b = sorted(s.label for s in features["feat-parentB"].subagents)
+        self.assertEqual(labels_a, ["builder-A1", "builder-A2"])
+        self.assertEqual(labels_b, ["builder-B1", "peer-builder-B"])
+
+
+class InternalRowFilteringTests(_BusFixtureTestCase):
+    """Rows never operator-facing: a bare session-UUID row (no announced
+    name) — sidebar-polish item 2."""
+
+    _UUID = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+    def test_architect_with_no_name_and_no_feature_id_is_hidden(self):
+        self._put(self._UUID, f"{self._UUID}-id", self._UUID,
+                  identity_body(self._UUID, agent_type="architect"),
+                  ts="2026-01-01T00:00:00.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features, [])
+
+    def test_subagent_with_no_name_and_uuid_session_id_is_hidden(self):
+        self._architect("arch-uuidsub", "feat-uuidsub")
+        self._put(self._UUID, f"{self._UUID}-id", self._UUID,
+                  identity_body(self._UUID, agent_type="builder",
+                                parent_session="arch-uuidsub"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].subagents, [])
+
+    def test_subagent_with_uuid_session_id_but_announced_name_is_shown(self):
+        # a raw-uuid session_id is fine as long as a NAME was announced —
+        # only a bare, unnamed uuid row is hidden.
+        self._architect("arch-nameduuidsub", "feat-nameduuidsub")
+        self._put(self._UUID, f"{self._UUID}-id", self._UUID,
+                  identity_body(self._UUID, agent_type="builder", name="named-builder",
+                                parent_session="arch-nameduuidsub"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        labels = [s.label for s in fleet.repos[0].features[0].subagents]
+        self.assertEqual(labels, ["named-builder"])
+
+
+class StaleRowEvictionTests(unittest.TestCase):
+    """Root-cause fix: a sender's ENTIRE state is evicted (not just its
+    waiting flag) a scan after its terminal lifecycle signal — exercised
+    directly against a long-lived _BusAggregator, the only way to observe
+    multi-scan behaviour (build_model() always starts a fresh one)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = make_repo(self._tmp.name)
+        self.bus_root = bus_root_of(self.repo)
+
+    def _put(self, folder, msg_id, sender, body, ts):
+        write_message(self.bus_root, folder, envelope(msg_id, sender, body=body, ts=ts))
+
+    def test_terminal_state_evicted_one_scan_after_signal(self):
+        self._put("arch-stale", "arch-stale-id", "arch-stale",
+                  identity_body("arch-stale", agent_type="architect",
+                                feature_id="feat-stale"),
+                  ts="2026-01-01T00:00:00.000000+00:00")
+
+        agg = sidebar_model._BusAggregator()
+        agg.scan(self.bus_root)
+        self.assertEqual(agg.repo(self.repo).features[0].status, "idle")
+
+        self._put("arch-stale", "arch-stale-lc", "arch-stale",
+                  lifecycle_body("finished", feature_id="feat-stale"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        agg.scan(self.bus_root)
+        # same scan the terminal signal arrived on: still visible as "done"
+        self.assertEqual(agg.repo(self.repo).features[0].status, "done")
+
+        # neither message file needs to be removed for this: eviction is
+        # driven by the terminal signal already observed, not by disk
+        # presence (both message ids are already in _seen_ids, so even the
+        # still-on-disk identity announce is not re-applied) -- the NEXT
+        # scan must evict the sender's state IN FULL, not just its waiting
+        # flag, so the row disappears entirely
+        agg.scan(self.bus_root)
+        self.assertEqual(agg.repo(self.repo).features, [])
+
+
+class BusRowTests(_BusFixtureTestCase):
+    """Bus rows: exactly one collapsed row per live parent agent, never for
+    a parent with no bus, never duplicated (sidebar-polish item 5)."""
+
+    def test_no_bus_row_when_no_bus_session(self):
+        self._architect("arch-nobus", "feat-nobus")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertIsNone(fleet.repos[0].features[0].bus)
+
+    def test_bus_row_present_for_live_architect(self):
+        self._architect("arch-hasbus", "feat-hasbus")
+        self._put("bus-1", "bus-1-id", "bus-1",
+                  identity_body("bus-1", agent_type="bus", name="messaging",
+                                parent_session="arch-hasbus"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertIsNotNone(feature.bus)
+        self.assertEqual(feature.bus.label, sidebar_model.BUS_LABEL)
+
+    def test_duplicate_bus_sessions_collapse_to_one_row(self):
+        # a known, separately-root-caused defect (bus-singleton task) can
+        # spawn more than one bus session for the same parent -- display
+        # must still show exactly one row, never more.
+        self._architect("arch-dupbus", "feat-dupbus")
+        for i in range(3):
+            self._put(f"bus-dup-{i}", f"bus-dup-{i}-id", f"bus-dup-{i}",
+                      identity_body(f"bus-dup-{i}", agent_type="bus", name="messaging",
+                                    parent_session="arch-dupbus"),
+                      ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertIsNotNone(feature.bus)  # exactly one Bus object, not a list
+
+    def test_orchestrator_bus_row(self):
+        self._put("orch-1", "orch-1-id", "orch-1",
+                  identity_body("orch-1", agent_type="orchestrator"),
+                  ts="2026-01-01T00:00:00.000000+00:00")
+        self._put("orch-bus", "orch-bus-id", "orch-bus",
+                  identity_body("orch-bus", agent_type="bus", name="messaging",
+                                parent_session="orch-1"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertIsNotNone(fleet.repos[0].bus)
 
 
 class CrossRepoTests(unittest.TestCase):
