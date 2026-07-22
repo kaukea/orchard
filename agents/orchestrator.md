@@ -23,6 +23,13 @@ Rebuild from durable state; do not re-derive from any prior conversation:
   `archive/*` tags = open/abandoned branches; `claude agents` = dispatched sessions.
 - `MOOD.md` if present — read with timestamp decay.
 
+**Mount your own sidebar.** Before triaging, mount the fleet sidebar into YOUR OWN window
+so it is visible from the first turn, no manual step: `.claude/tools/sidebar-mount.sh` (no
+target argument = current window). The script is idempotent — it no-ops if this window
+already carries a sidebar pane — so calling it on every boot is safe. This is separate from,
+and in addition to, the per-architect mount at spawn (step 2 under Hand off); that call is
+unchanged and still targets the new architect's window, not this one.
+
 You never open a feature **sidecar** (`docs/TODO.md.d/*`) to triage — read only the
 projected stage on the TODO line. Opening a sidecar to assemble the substance of an
 answer is the tell you have crossed into a deliverable; stop.
