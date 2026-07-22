@@ -165,12 +165,41 @@ def _truncate(text: str, width: int) -> str:
     return text[:width - 1] + ELLIPSIS
 
 
+def clamp_scroll_offset(offset: int, selected: int, count: int, height: int) -> int:
+    """Keep-cursor-visible viewport clamp (sidebar-polish item 3 resolution).
+
+    Given the CURRENT scroll `offset` (top row index shown), the `selected`
+    row, the total `count` of rows, and the viewport `height`, returns the
+    offset shifted the minimum amount needed so `selected` stays within
+    `[offset, offset + height)` — it does not recentre. Never negative,
+    never scrolls past what's needed to show the last row, and is a no-op
+    (0) whenever every row already fits in the viewport."""
+    if height <= 0 or count <= height:
+        return 0
+    if selected < 0:
+        selected = 0
+    if selected >= offset + height:
+        offset = selected - height + 1
+    if selected < offset:
+        offset = selected
+    max_offset = count - height
+    return max(0, min(offset, max_offset))
+
+
 def render_lines(
     fleet: sidebar_model.Fleet,
     selected: int = -1,
     width: int = 32,
+    offset: int = 0,
+    height: int | None = None,
 ) -> list[str]:
     """Pure text rendering of one frame — exactly what gets drawn, no curses.
+
+    `offset`/`height` are an optional viewport window mirroring the curses
+    draw loop's scroll-follows-selection behaviour (sidebar-polish item 3),
+    so tests can assert on scrolled output without a curses TTY. Omitting
+    `height` (the default) renders every row, unwindowed — the original
+    behaviour.
 
     No animation-related parameters (spinner_frame/flash_on) — every status
     glyph is static, so a frame depends only on the fleet's current state."""
@@ -178,8 +207,14 @@ def render_lines(
     if not rows:
         return [_truncate(NO_ACTIVITY_TEXT, width)]
 
+    if height is None:
+        window, start = rows, 0
+    else:
+        offset = clamp_scroll_offset(offset, selected, len(rows), height)
+        window, start = rows[offset:offset + height], offset
+
     lines = []
-    for i, row in enumerate(rows):
+    for i, row in enumerate(window, start=start):
         marker = ">" if i == selected else " "
         lines.append(_truncate(marker + _row_text(row), width))
     return lines
@@ -379,7 +414,7 @@ def _draw_header(stdscr, y: int, width: int, title: str, paused: bool, selected:
     _safe_addstr(stdscr, y, 0, text, text_attr)
 
 
-def _draw(stdscr, rows: list[Row], selected: int,
+def _draw(stdscr, rows: list[Row], selected: int, offset: int,
           colour_pairs: dict[str, int], agent_colours: list[int] | None,
           header_pairs: list[int] | None, paused_pair: int | None) -> None:
     stdscr.erase()
@@ -391,7 +426,7 @@ def _draw(stdscr, rows: list[Row], selected: int,
         return
 
     y = 0
-    for i, row in enumerate(rows):
+    for i, row in enumerate(rows[offset:offset + max_y], start=offset):
         if y >= max_y:
             break
         if row.kind == "repo":
@@ -442,11 +477,15 @@ def main(stdscr) -> None:
     thread.start()
 
     selected = 0
+    scroll_offset = 0
 
     while True:
         rows = flatten(shared.get())
         selected = _clamp_selected(selected, len(rows))
-        _draw(stdscr, rows, selected, colour_pairs, agent_colours, header_pairs, paused_pair)
+        max_y, _max_x = stdscr.getmaxyx()
+        scroll_offset = clamp_scroll_offset(scroll_offset, selected, len(rows), max_y)
+        _draw(stdscr, rows, selected, scroll_offset, colour_pairs, agent_colours,
+              header_pairs, paused_pair)
 
         key = stdscr.getch()
 

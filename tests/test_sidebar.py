@@ -169,6 +169,82 @@ class RenderLinesTests(unittest.TestCase):
         self.assertIn(sm.BUS_LABEL, lines[1])
 
 
+def _many_repos_fleet(n):
+    """A fleet with exactly `n` rows — one repo row each, no features/bus —
+    so row count is trivial to reason about in scroll-offset tests."""
+    return sm.Fleet(repos=[
+        sm.Repo(
+            path=f"/tmp/repo{i}", name=f"repo{i}", activity="", status="idle",
+            waiting_on_operator=False,
+        )
+        for i in range(n)
+    ])
+
+
+class ScrollOffsetTests(unittest.TestCase):
+    """sidebar-polish item 3 resolution: scroll-follows-selection viewport
+    clamping, the pure logic behind the curses draw loop's persisted
+    scroll offset."""
+
+    def test_no_scroll_when_all_rows_fit_the_viewport(self):
+        # count (5) <= height (5): offset always 0, regardless of selected
+        # or a stale prior offset.
+        self.assertEqual(sidebar.clamp_scroll_offset(0, 0, 5, 5), 0)
+        self.assertEqual(sidebar.clamp_scroll_offset(3, 4, 5, 8), 0)
+
+    def test_selection_below_viewport_shifts_offset_down(self):
+        # 10 rows, viewport of 3, currently showing [0, 3); selecting row 5
+        # must shift the window down just enough to keep it visible.
+        offset = sidebar.clamp_scroll_offset(0, 5, 10, 3)
+        self.assertEqual(offset, 3)  # window becomes [3, 6) -> 5 is last visible
+
+    def test_selection_above_viewport_shifts_offset_up(self):
+        # window currently [4, 7); selecting row 2 (above it) must pull the
+        # offset up to exactly the selected row.
+        offset = sidebar.clamp_scroll_offset(4, 2, 10, 3)
+        self.assertEqual(offset, 2)
+
+    def test_selection_inside_viewport_leaves_offset_untouched(self):
+        offset = sidebar.clamp_scroll_offset(4, 5, 10, 3)
+        self.assertEqual(offset, 4)
+
+    def test_offset_never_negative(self):
+        offset = sidebar.clamp_scroll_offset(-7, 0, 10, 3)
+        self.assertGreaterEqual(offset, 0)
+        self.assertEqual(offset, 0)
+
+    def test_offset_never_scrolls_past_showing_the_last_row(self):
+        # selecting the very last row must clamp the offset to count-height,
+        # never further -- there is nothing more to scroll to.
+        offset = sidebar.clamp_scroll_offset(0, 9, 10, 3)
+        self.assertEqual(offset, 7)  # window [7, 10) shows the last row
+        # a stale offset already past that must also be pulled back.
+        offset = sidebar.clamp_scroll_offset(50, 9, 10, 3)
+        self.assertEqual(offset, 7)
+
+    def test_render_lines_windows_to_offset_and_height(self):
+        fleet = _many_repos_fleet(10)
+        lines = sidebar.render_lines(fleet, selected=5, width=32, offset=0, height=3)
+        self.assertEqual(len(lines), 3)
+        # selection at 5 forces the window to [3, 6): repo3, repo4, repo5
+        self.assertIn("repo3", lines[0])
+        self.assertIn("repo4", lines[1])
+        self.assertIn("repo5", lines[2])
+        self.assertTrue(lines[2].startswith(">"))  # repo5 is selected
+
+    def test_render_lines_small_fleet_is_not_windowed(self):
+        fleet = _many_repos_fleet(2)
+        lines = sidebar.render_lines(fleet, selected=1, width=32, offset=0, height=5)
+        self.assertEqual(len(lines), 2)  # fewer rows than height -- no scroll
+
+    def test_render_lines_without_height_is_unwindowed(self):
+        # default behaviour (no height given) renders every row -- unchanged
+        # from before scroll support was added.
+        fleet = _many_repos_fleet(10)
+        lines = sidebar.render_lines(fleet, selected=9, width=32)
+        self.assertEqual(len(lines), 10)
+
+
 class TruncateEllipsisTests(unittest.TestCase):
     def test_short_text_is_unaffected(self):
         self.assertEqual(sidebar._truncate("short", 10), "short")
