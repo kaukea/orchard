@@ -105,6 +105,19 @@ titles in one look.
   DONE rule applies to FEATURE rows ONLY. SUBAGENT rows disappear when done —
   nothing to say, nothing to display. Folded into the build (subagents already
   drop from the model on `orchid:subagent:done`; retention is feature-only).
+- [implemented] (relayed via orchestrator, 2026-07-24/25 — design-contract update,
+  approved in the live mock rounds; full contract in
+  docs/TODO.md.d/bus-message-specifying.md on main) Overrides TWO details of the
+  seven items; everything else stands:
+  (1) PROJECT HEADERS are no longer gradients — a fixed SOLID dark block in a
+  per-repo hue (orchids violet, signmc teal), repo name CENTERED, thin/dim.
+  (2) Icon truth = one circle family: hollow circle ○ = not-started, braille
+  spinner = active, filled ● = done; done FEATURE rows green + sort to top;
+  watch/hourglass/timer glyphs BANNED; question indicator dim amber, never red;
+  separators = vertical ellipsis U+22EE (⋮), not middle dots. Scoped narrowly:
+  the checklist / progress-bar / footer / phase-spine / emoji-rename machinery in
+  that contract file is the SEPARATE [[bus-message-specifying]] feature (still in
+  design) and is explicitly NOT built here.
 
 ## Decision entries
 
@@ -139,11 +152,14 @@ state the observer cannot verify.
 - A subagent row renders a filled circle (●) while it is active — presence in the
   model's `active_subagents` set is the only verifiable subagent state — and
   disappears entirely on `orchid:subagent:done`.
-- The unfilled circle (○, "inactive") is deliberately NOT used: there is no
-  observable idle-subagent signal, and no icon may stand for an unverifiable state.
-- The settled six-state FEATURE/repo vocabulary is retained: working 🚧 (spinner
-  when animated), component-wait ⌚, operator-wait ❓ (blinks), awaiting-agent 🪷,
-  idle ⚪, done ✅, failed ❌; bus row 📬.
+- A subagent disappears entirely on `orchid:subagent:done`.
+- FEATURE/repo status uses ONE CIRCLE FAMILY (visual-contract override, mock
+  rounds R3/R4, 2026-07-24/25): hollow ○ = not-started AND the subdued waits
+  (idle, component-wait, awaiting-agent all collapse to ○); braille spinner =
+  active/working; filled ● = done (green, sorts to top); failed ❌; the
+  operator-question indicator is a DIM AMBER `?` (never red — red is reserved for
+  danger), which also blinks; bus row 📬. Banned: all watch/hourglass/timer
+  glyphs (⌚/🪷). Middle-dot decoration becomes the vertical ellipsis ⋮ (U+22EE).
 
 ## [2026-07-24] Decision-NNN: A done feature's row persists green at the top of its group for the sidebar's lifetime
 #sidebar #done #retention #sort #lifecycle #eviction
@@ -189,20 +205,41 @@ pane title, which `claude`/`bash` clobber live.
 - The orchestrator session in every repo is named 1:1 after its repository
   (reaffirms Decision-032); this repo's live session is renamed as part of the pass.
 
+## [2026-07-24] Decision-NNN: Project headers are a solid per-repo hue block, not a gradient
+#sidebar #header #hue #per-repo #visual-contract #mock-round
+
+**Context:** The one-go pass originally restored the orchid gradient header. The
+operator's live mock rounds (R4, 2026-07-24/25) superseded that: headers "drop the
+gradient — solid hue block, name CENTERED".
+
+**Decision:**
+- A project header is a fixed SOLID dark block in that project's own hue (orchids
+  violet, signmc teal; a deterministic per-repo-name fallback for others), with the
+  repo name CENTERED and rendered thin/dim (never bold). A paused project stays flat
+  light-gray. On a 256-colour terminal without custom-RGB the hue maps to its nearest
+  xterm-256 index; below 256 colours it degrades to a centred dim plain line.
+- This is a narrow visual override of item 1. The broader cockpit grammar (phase
+  spine, embedded progress bar, footers, per-role emoji revival, KITT sweep) in the
+  same contract file is the separate [[bus-message-specifying]] feature, not built
+  here.
+
 ## Result
 
 Result: done (built + tested, awaiting operator THAT IS ALL). Branch
-`f/sidebar-titling`, HEAD 868063c. All seven items built by three parallel
-builders partitioned by file (model / renderer / launch-sites), plus a
-verification-surfaced item-2 fix and the ARCHITECTURE update.
+`f/sidebar-titling`, HEAD c2fd953. All seven items plus the operator's later
+visual-contract override (solid per-repo hue headers + one circle-family icon
+set) built by four builders partitioned by file (model / renderer / launch-sites
+/ visual-contract), plus a verification-surfaced item-2 fix and the ARCHITECTURE
+updates.
 
-Tested: `python3 -m pytest tests/ -q` → 204 passed, 8 subtests (baseline was
+Tested: `python3 -m pytest tests/ -q` → 206 passed, 8 subtests (baseline was
 184); `python3 -m py_compile` clean on all touched Python; `python3
 tools/sidebar.py --dump` runs clean against live bus data and confirms — repo
-headers with no status glyph, sub-agent rows showing ●, done features sorted
-green to the top of their group, feature rows composing `<repo>/<name>` with the
-name kept under truncation. Curses-only behaviour (the gradient colours, the
-dim-repo/bold-name segments, the working spinner, the operator-wait blink) and
+headers with no status glyph, hollow ○ / filled ● / amber `?` circle-family
+glyphs, sub-agent rows showing ●, done features sorted to the top of their group,
+feature rows composing `<repo>/<name>` with the name kept under truncation.
+Curses-only behaviour (the solid per-repo hue header block, the dim-repo/
+bold-name segments, the working spinner, the dim-amber operator `?` + blink) and
 the tmux window/pane naming cannot be exercised headless — they are the
 operator's agreed live one-look eyeball gate.
 
@@ -223,28 +260,34 @@ implemented and unit-tested. The operator-requests ledger is fully implemented.
 
 ## Changelog entry
 
-Fleet sidebar one-go pass. Project headers render their orchid gradient on any
-256-colour terminal (nearest-xterm-256 fallback when the terminal cannot
-redefine colours), styled identically across projects. Session rows now compose
-`<dim repo>/<bright name>` so the name dominates and the repo recedes;
-truncation keeps the name and elides the repo from the left, and the activity is
-secondary (leftover width only). A project with no live session no longer renders
-as an empty header group. Sub-agent rows show a truthful presence dot (●) instead
-of a hardcoded "working" icon and disappear when done. Two states now animate
-(curses only, state-driven): an actively-working feature glyph spins and a
-waiting-on-operator row blinks — a message merely arriving changes nothing. A
-done feature stays green and sorts to the top of its project group for the life
-of the sidebar. tmux workstream window and session names use a `/` separator
-(`<repo>/<name>`), matching the sidebar's navigation target; every launch site
-pins its pane title with `allow-rename off` + `automatic-rename off` so panes no
-longer flicker between the title, nothing, and `bash`; the orchestrator session
-is named 1:1 after its repository.
+Fleet sidebar one-go pass. Project headers render as a solid dark block in each
+project's own hue (orchids violet, signmc teal, with a stable hash-derived hue
+for other repos) on any 256-colour terminal, the repo name centered and dim.
+Session rows now compose `<dim repo>/<bright name>` so the name dominates and the
+repo recedes; truncation keeps the name and elides the repo from the left, and
+the activity is secondary (leftover width only). A project with no live session no
+longer renders as an empty header group. Status glyphs are one circle family:
+hollow ○ for idle/waiting/awaiting-agent, filled ● for done (green) and for a
+present sub-agent, a braille spinner for an actively-working feature, and a
+dim-amber `?` (never red) for a wait on the operator; watch/hourglass glyphs are
+gone. Sub-agent rows disappear when done. Two states animate (curses only,
+state-driven): the working feature glyph spins and a waiting-on-operator row
+blinks — a message merely arriving changes nothing. A done feature stays green
+and sorts to the top of its project group for the life of the sidebar. tmux
+workstream window and session names use a `/` separator (`<repo>/<name>`),
+matching the sidebar's navigation target; every launch site pins its pane title
+with `allow-rename off` + `automatic-rename off` so panes no longer flicker
+between the title, nothing, and `bash`; the orchestrator session is named 1:1
+after its repository.
 
 ## Readme delta
 
 If README documents the fleet sidebar's appearance: the sidebar now hides
-projects with no live session, shows each session as `<repo>/<name>` (repo faint,
-name bright), marks sub-agents with a filled dot, spins an actively-working row
-and blinks a row waiting on you, and keeps finished features green at the top of
-their group. tmux windows/sessions read `<repo>/<name>` and their pane titles no
-longer flicker. No new commands or flags — behaviour/appearance only.
+projects with no live session; gives each project a solid header block in its own
+hue with the name centered; shows each session as `<repo>/<name>` (repo faint,
+name bright); uses one circle-family of glyphs — hollow ○ waiting, filled ● done
+and for sub-agents, a spinner for active work, and a dim-amber `?` when a row is
+waiting on you; blinks that operator-wait row; and keeps finished features green
+at the top of their group. tmux windows/sessions read `<repo>/<name>` and their
+pane titles no longer flicker. No new commands or flags — behaviour/appearance
+only.
