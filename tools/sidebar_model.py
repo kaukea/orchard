@@ -56,6 +56,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from feature_name import feature_name as _feature_name  # noqa: E402
+import bus  # noqa: E402
 import orchard_registry  # noqa: E402
 
 # Sidecar sessions surface as agent_type "bus"; their subagent label is
@@ -149,6 +150,17 @@ class Feature:
     question_count: int = 0
     first_question_subject: str | None = None
     interrupt: str = "none"
+    # Display-grammar stats (bus-message-specifying B5b) — role/model come
+    # straight off the announce identity envelope; tokens/dollars off a
+    # cached local status_of()-equivalent read; age/worked off a cached
+    # local git read of the feature's branch. Every one of these stays None
+    # until its source can actually supply it — never guessed.
+    role: str | None = None
+    model: str | None = None
+    tokens: str | None = None
+    dollars: str | None = None
+    age: str | None = None
+    worked: str | None = None
 
 
 @dataclass
@@ -177,6 +189,13 @@ class Repo:
     question_count: int = 0
     first_question_subject: str | None = None
     interrupt: str = "none"
+    # See Feature's matching fields — a repo has no branch of its own, so it
+    # never gets age/worked, only role/model/tokens/dollars off its
+    # orchestrator session.
+    role: str | None = None
+    model: str | None = None
+    tokens: str | None = None
+    dollars: str | None = None
 
 
 @dataclass
@@ -295,6 +314,16 @@ class _SessionState:
     feature_id: str | None = None
     name: str | None = None
     parent_session: str | None = None
+    # Carried on the identity envelope only if the sender's identity_of()
+    # ever grows a model field — as of this step it does not (model is
+    # deliberately excluded from bus.py's identity_of() because it can
+    # change mid-session), so this stays None in practice; see role/model on
+    # Feature/Repo (bus-message-specifying B5b).
+    model: str | None = None
+    # Wall-clock instant this session's first message was processed by this
+    # process (aggregator-assigned, see _BusAggregator.scan) — the fallback
+    # age baseline when the feature's branch doesn't exist yet.
+    first_seen: float = 0.0
     status_word: str = ""
     update_text: str = ""
     phase: str | None = None
@@ -432,6 +461,7 @@ def _apply_message(state: _SessionState, msg: dict) -> None:
         state.feature_id = body.get("feature_id")
         state.name = body.get("name")
         state.parent_session = body.get("parent_session")
+        state.model = body.get("model")
 
     elif isinstance(body, dict) and body.get("kind") == "lifecycle":
         state.lifecycle_state = body.get("state")
@@ -535,7 +565,149 @@ def _interrupt_for(state: _SessionState) -> str:
     return "none"
 
 
-def _apply_row_extension(row, state: _SessionState) -> None:
+# --------------------------------------------------------------------------
+# Display-grammar stats (bus-message-specifying B5b) — role/model straight
+# off the identity envelope; tokens/dollars and age/worked need a local
+# subprocess/filesystem read apiece, so both are gated behind a small
+# refresh-throttling cache (ZERO bus traffic and ZERO extra agent turns —
+# operator constraint: this data is deterministic and locally-emitted only).
+# --------------------------------------------------------------------------
+
+_STATUS_CACHE_TTL_SECONDS = 30
+_GIT_STATS_CACHE_TTL_SECONDS = 30
+_WORKED_GAP_CAP_SECONDS = 30 * 60
+_WORKED_FLOOR_SECONDS = 10 * 60
+
+
+class _TTLCache:
+    """Generic per-key memo, refreshed at most once every `ttl_seconds` — one
+    mechanism shared by the status (tokens/dollars) and git-stats (age/
+    worked) caches below rather than two near-identical classes. `clock` is
+    injectable (defaults to `time.time`) so tests can control refresh timing
+    without sleeping."""
+
+    def __init__(self, ttl_seconds: float, clock=time.time) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._clock = clock
+        self._entries: dict[object, tuple[float, object]] = {}
+
+    def get(self, key, compute):
+        now = self._clock()
+        cached = self._entries.get(key)
+        if cached is not None and now - cached[0] < self._ttl_seconds:
+            return cached[1]
+        value = compute()
+        self._entries[key] = (now, value)
+        return value
+
+
+def _format_duration(seconds: float) -> str:
+    total_minutes = int(seconds // 60)
+    hours, minutes = divmod(total_minutes, 60)
+    return f"{hours}h{minutes:02d}" if hours > 0 else f"{minutes}m"
+
+
+def _format_tokens(count: int) -> str:
+    if count >= 1_000_000:
+        return f"{count / 1_000_000:.1f}M"
+    if count >= 1_000:
+        return f"{round(count / 1_000)}k"
+    return str(count)
+
+
+def _format_dollars(amount: float) -> str:
+    return f"{amount:.2f}"
+
+
+def _transcript_for_session(session_id: str) -> Path | None:
+    """Mirrors bus.py's own `transcript()`, parameterised by session id
+    instead of always resolving the CALLING process's own session — bus.py
+    has no such lookup (its status_of() only ever answers for `whoami()`),
+    so this reads the same on-disk convention directly rather than adding
+    one to bus.py outside this step's edit scope. Zero bus traffic: a plain
+    filesystem glob, exactly like bus.py's own version."""
+    projects = Path.home() / ".claude" / "projects"
+    matches = sorted(projects.glob(f"*/{session_id}.jsonl"))
+    return matches[-1] if matches else None
+
+
+def _read_status(session_id: str) -> tuple[str | None, str | None]:
+    """(tokens, dollars) for `session_id`, reusing bus.py's own token-class
+    and cost-estimate machinery (bus.TOKEN_CLASSES, bus.usage_entries,
+    bus.estimates_for) over that session's transcript. Any failure — no
+    transcript, malformed lines, unknown model — yields (None, None), never
+    a raised exception."""
+    try:
+        path = _transcript_for_session(session_id)
+        if path is None:
+            return None, None
+        spend = dict.fromkeys(bus.TOKEN_CLASSES, 0)
+        model = None
+        for usage, entry_model in bus.usage_entries(path):
+            if entry_model:
+                model = entry_model
+            for token_class in bus.TOKEN_CLASSES:
+                spend[token_class] += usage.get(token_class, 0) or 0
+        total_tokens = sum(spend.values())
+        if total_tokens == 0:
+            return None, None
+        cost = bus.estimates_for(model, spend, 0).get("cost_usd")
+        dollars = _format_dollars(cost) if cost is not None else None
+        return _format_tokens(total_tokens), dollars
+    except Exception:
+        return None, None
+
+
+def _branch_commit_epochs(repo_path: str, feature_id: str) -> list[int] | None:
+    """Ascending commit epochs unique to `f/<feature_id>` (merge-base with
+    main .. tip), or None if that branch doesn't exist in `repo_path`. `_git`
+    never raises (see its own try/except), so a missing branch and a git
+    failure both read as "" here and are treated alike — the fleet
+    convention (branch = f/<feature-id>) is the only lookup, never a guess."""
+    branch = f"f/{feature_id}"
+    if not _git("rev-parse", "--verify", branch, cwd=repo_path):
+        return None
+    out = _git("log", "--format=%at", f"main..{branch}", cwd=repo_path)
+    if not out:
+        return []
+    return sorted(int(line) for line in out.splitlines() if line.strip())
+
+
+def _worked_seconds(commit_epochs: list[int]) -> float:
+    """Sum of consecutive commit gaps at face value up to
+    `_WORKED_GAP_CAP_SECONDS` (a longer gap counts as zero — the agent was
+    presumably not actively working across it), floored at
+    `_WORKED_FLOOR_SECONDS` once the branch has at least one commit."""
+    if not commit_epochs:
+        return 0.0
+    ordered = sorted(commit_epochs)
+    gaps = (b - a for a, b in zip(ordered, ordered[1:]))
+    total = sum(gap for gap in gaps if gap <= _WORKED_GAP_CAP_SECONDS)
+    return float(max(total, _WORKED_FLOOR_SECONDS))
+
+
+def _read_git_stats(
+    repo_path: str, feature_id: str, first_seen: float, now: float,
+) -> tuple[str | None, str | None]:
+    """(age, worked) for one feature. No branch yet -> age falls back to
+    `first_seen` (this process's own first observation of the sender) and
+    worked stays None (no commits to derive a work span from); a branch with
+    zero commits unique to it also yields (None, None) — nothing to report
+    yet, not a failure."""
+    try:
+        epochs = _branch_commit_epochs(repo_path, feature_id)
+        if epochs is None:
+            return _format_duration(max(now - first_seen, 0.0)), None
+        if not epochs:
+            return None, None
+        age = _format_duration(max(now - min(epochs), 0.0))
+        worked = _format_duration(_worked_seconds(epochs))
+        return age, worked
+    except Exception:
+        return None, None
+
+
+def _apply_row_extension(row, state: _SessionState, status_cache: _TTLCache) -> None:
     """Copy the WIRE GRAMMAR v1 fields from an aggregated sender state onto a
     public Feature or Repo row — both dataclasses share this exact field set,
     so one function serves either (duck-typed on purpose, see _assemble_repo)."""
@@ -553,6 +725,11 @@ def _apply_row_extension(row, state: _SessionState) -> None:
     row.question_count = len(state.open_questions)
     row.first_question_subject = next(iter(state.open_questions.values()), None)
     row.interrupt = _interrupt_for(state)
+    row.role = state.agent_type
+    row.model = state.model
+    row.tokens, row.dollars = status_cache.get(
+        state.session_id, lambda: _read_status(state.session_id),
+    )
 
 
 class _BusAggregator:
@@ -588,10 +765,13 @@ class _BusAggregator:
     indefinitely.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, clock=time.time) -> None:
         self.states: dict[str, _SessionState] = {}
         self._seen_ids: set[str] = set()
         self._pending_eviction: set[str] = set()
+        self._clock = clock
+        self._status_cache = _TTLCache(_STATUS_CACHE_TTL_SECONDS, clock)
+        self._git_stats_cache = _TTLCache(_GIT_STATS_CACHE_TTL_SECONDS, clock)
 
     def scan(self, bus_root: Path) -> None:
         # evict senders whose terminal signal was already observed on a
@@ -629,7 +809,10 @@ class _BusAggregator:
         new_messages.sort(key=lambda m: m.get("ts") or "")
         for msg in new_messages:
             sender = msg["from"]
-            state = self.states.setdefault(sender, _SessionState(session_id=sender))
+            state = self.states.get(sender)
+            if state is None:
+                state = _SessionState(session_id=sender, first_seen=self._clock())
+                self.states[sender] = state
             if _is_repeat_of_previous(state, msg):
                 continue
             _clear_replied_question(self.states, msg)
@@ -649,7 +832,9 @@ class _BusAggregator:
                 self._pending_eviction.add(sender)
 
     def repo(self, repo_path: str) -> Repo:
-        return _assemble_repo(repo_path, self.states)
+        return _assemble_repo(
+            repo_path, self.states, self._status_cache, self._git_stats_cache, self._clock,
+        )
 
 
 # --------------------------------------------------------------------------
@@ -672,7 +857,13 @@ def _pick_bus(sessions: dict[str, _SessionState], parent_session_id: str) -> Bus
     return Bus() if candidates else None
 
 
-def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
+def _assemble_repo(
+    repo_path: str,
+    sessions: dict[str, _SessionState],
+    status_cache: _TTLCache,
+    git_stats_cache: _TTLCache,
+    clock=time.time,
+) -> Repo:
     name = Path(repo_path).name
     repo = Repo(path=repo_path, name=name, activity="", status="idle",
                 waiting_on_operator=False)
@@ -685,7 +876,7 @@ def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
         repo.status = _status_for(orchestrator)
         repo.waiting_on_operator = _waiting_on_operator_of(orchestrator)
         repo.bus = _pick_bus(sessions, orchestrator.session_id)
-        _apply_row_extension(repo, orchestrator)
+        _apply_row_extension(repo, orchestrator, status_cache)
 
     architects = [s for s in sessions.values() if s.agent_type == "architect"]
     for arch in architects:
@@ -712,7 +903,13 @@ def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
             waiting_on_operator=_waiting_on_operator_of(arch),
             bus=_pick_bus(sessions, arch.session_id),
         )
-        _apply_row_extension(feature, arch)
+        _apply_row_extension(feature, arch, status_cache)
+        feature.age, feature.worked = git_stats_cache.get(
+            (repo_path, feature_id),
+            lambda arch=arch, feature_id=feature_id: _read_git_stats(
+                repo_path, feature_id, arch.first_seen, clock(),
+            ),
+        )
         # subagents surfaced directly by the architect's own orchid:subagent traffic
         for label in sorted(arch.active_subagents):
             feature.subagents.append(Subagent(label=label))

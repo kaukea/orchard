@@ -5,9 +5,12 @@ Fixtures are real git-init'd temp repos with bus message files written by
 hand (see tests/support.py) — build_model() is exercised end to end, never
 mocked.
 """
+import json
 import os
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -1060,6 +1063,223 @@ class DuplicateMessageDedupTests(_BusFixtureTestCase):
         feature = fleet.repos[0].features[0]
         self.assertEqual(feature.question_count, 0)
         self.assertEqual(feature.interrupt, "none")
+
+
+class FormattingHelperTests(unittest.TestCase):
+    """bus-message-specifying B5b: the compact human-string formatters shared
+    by age/worked (duration) and tokens/dollars."""
+
+    def test_format_duration_hours_and_zero_padded_minutes(self):
+        self.assertEqual(sidebar_model._format_duration(3 * 3600 + 12 * 60), "3h12")
+        self.assertEqual(sidebar_model._format_duration(6 * 3600 + 2 * 60), "6h02")
+        self.assertEqual(sidebar_model._format_duration(1 * 3600 + 47 * 60), "1h47")
+
+    def test_format_duration_minutes_only_under_an_hour(self):
+        self.assertEqual(sidebar_model._format_duration(18 * 60), "18m")
+        self.assertEqual(sidebar_model._format_duration(0), "0m")
+
+    def test_format_tokens_compacts_thousands_and_millions(self):
+        self.assertEqual(sidebar_model._format_tokens(212_000), "212k")
+        self.assertEqual(sidebar_model._format_tokens(384_000), "384k")
+        self.assertEqual(sidebar_model._format_tokens(1_200_000), "1.2M")
+        self.assertEqual(sidebar_model._format_tokens(500), "500")
+
+    def test_format_dollars_always_two_decimals(self):
+        self.assertEqual(sidebar_model._format_dollars(7.9), "7.90")
+        self.assertEqual(sidebar_model._format_dollars(4.123), "4.12")
+
+
+class WorkedSecondsTests(unittest.TestCase):
+    """The worked-time gap math on synthetic commit-epoch lists, factored out
+    of any git subprocess so it is testable without git (bus-message-
+    specifying B5b): gaps <= 30 minutes count at face value, longer gaps
+    count as zero, floored at 10 minutes once the branch has any commit."""
+
+    def test_no_commits_is_zero(self):
+        self.assertEqual(sidebar_model._worked_seconds([]), 0.0)
+
+    def test_single_commit_is_floored_at_ten_minutes(self):
+        self.assertEqual(sidebar_model._worked_seconds([1_000]), 600.0)
+
+    def test_gaps_at_or_under_thirty_minutes_count_at_face_value(self):
+        epochs = [0, 900, 1800]  # two 900s (15m) gaps
+        self.assertEqual(sidebar_model._worked_seconds(epochs), 1800.0)
+
+    def test_gaps_over_thirty_minutes_count_as_zero(self):
+        epochs = [0, 3600]  # one 60m gap, over the cap -> floored
+        self.assertEqual(sidebar_model._worked_seconds(epochs), 600.0)
+
+    def test_mixed_gaps_only_sum_the_short_ones(self):
+        epochs = [0, 600, 600 + 3600]  # 10m gap counted, 60m gap dropped
+        self.assertEqual(sidebar_model._worked_seconds(epochs), 600.0)
+
+    def test_unsorted_input_is_sorted_before_gap_math(self):
+        self.assertEqual(
+            sidebar_model._worked_seconds([1800, 0, 900]),
+            sidebar_model._worked_seconds([0, 900, 1800]),
+        )
+
+
+class TTLCacheTests(unittest.TestCase):
+    """The refresh-throttling cache shared by tokens/dollars and age/worked —
+    exercised with an injected fake clock, never a real sleep."""
+
+    def _cache(self, ttl=30):
+        clock_state = {"now": 0.0}
+        cache = sidebar_model._TTLCache(ttl, clock=lambda: clock_state["now"])
+        return cache, clock_state
+
+    def test_second_get_within_ttl_does_not_recompute(self):
+        cache, clock_state = self._cache()
+        calls = []
+
+        def compute():
+            calls.append(1)
+            return "value"
+
+        self.assertEqual(cache.get("k", compute), "value")
+        clock_state["now"] = 10.0
+        self.assertEqual(cache.get("k", compute), "value")
+        self.assertEqual(len(calls), 1)
+
+    def test_get_recomputes_once_ttl_has_elapsed(self):
+        cache, clock_state = self._cache()
+        calls = []
+
+        def compute():
+            calls.append(1)
+            return "value"
+
+        cache.get("k", compute)
+        clock_state["now"] = 31.0
+        cache.get("k", compute)
+        self.assertEqual(len(calls), 2)
+
+    def test_different_keys_cache_independently(self):
+        cache, _clock_state = self._cache()
+        self.assertEqual(cache.get("a", lambda: "A"), "A")
+        self.assertEqual(cache.get("b", lambda: "B"), "B")
+
+
+class ReadStatusTests(unittest.TestCase):
+    """tokens/dollars via a direct, zero-bus-traffic read of the session's
+    own transcript, reusing bus.py's TOKEN_CLASSES/usage_entries/
+    estimates_for over that transcript rather than any bus message."""
+
+    def _write_transcript(self, tmp, model, usage):
+        path = Path(tmp) / "session.jsonl"
+        path.write_text(
+            json.dumps({"message": {"model": model, "usage": usage}}) + "\n",
+            encoding="utf-8",
+        )
+        return path
+
+    def test_reads_tokens_and_dollars_from_a_synthetic_transcript(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_transcript(
+                tmp, "claude-sonnet-5-20260101",
+                {"input_tokens": 100_000, "output_tokens": 50_000,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+            )
+            with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=path):
+                tokens, dollars = sidebar_model._read_status("some-session")
+        self.assertEqual(tokens, "150k")
+        expected_cost = (100_000 * 3.0 + 50_000 * 15.0) / 1_000_000
+        self.assertEqual(dollars, sidebar_model._format_dollars(expected_cost))
+
+    def test_no_transcript_yields_none_none(self):
+        with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=None):
+            self.assertEqual(sidebar_model._read_status("missing"), (None, None))
+
+    def test_unknown_model_yields_tokens_but_no_dollars(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_transcript(
+                tmp, "some-unknown-model",
+                {"input_tokens": 1_000, "output_tokens": 0,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+            )
+            with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=path):
+                tokens, dollars = sidebar_model._read_status("s")
+        self.assertEqual(tokens, "1k")
+        self.assertIsNone(dollars)
+
+
+class ReadGitStatsTests(unittest.TestCase):
+    """age/worked's git-facing half — a real (throwaway) git repo, since
+    _read_git_stats' own branch-lookup/subprocess plumbing needs exercising
+    once; the gap MATH itself is covered git-free by WorkedSecondsTests."""
+
+    def _repo_with_main(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        repo_dir = tmp.name
+        subprocess.run(["git", "init", "--quiet", "-b", "main"], cwd=repo_dir,
+                       check=True, capture_output=True)
+        (Path(repo_dir) / "README.md").write_text("x", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init"],
+            cwd=repo_dir, check=True, capture_output=True,
+        )
+        return repo_dir
+
+    def test_missing_branch_falls_back_to_first_seen(self):
+        repo_dir = self._repo_with_main()
+        age, worked = sidebar_model._read_git_stats(
+            repo_dir, "no-such-feature", first_seen=100.0, now=700.0,
+        )
+        self.assertEqual(age, "10m")
+        self.assertIsNone(worked)
+
+    def test_existing_branch_derives_age_and_worked_from_its_commits(self):
+        repo_dir = self._repo_with_main()
+        subprocess.run(["git", "checkout", "--quiet", "-b", "f/my-feature"],
+                       cwd=repo_dir, check=True, capture_output=True)
+        (Path(repo_dir) / "a.txt").write_text("a", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "work"],
+            cwd=repo_dir, check=True, capture_output=True,
+        )
+        age, worked = sidebar_model._read_git_stats(
+            repo_dir, "my-feature", first_seen=0.0, now=time.time(),
+        )
+        self.assertIsNotNone(age)
+        self.assertEqual(worked, "10m")  # one commit -> floor
+
+
+class RoleModelExposureTests(_BusFixtureTestCase):
+    """bus-message-specifying B5b: role comes straight off the announced
+    agent_type; model only ever appears if the identity body happens to
+    carry one — bus.py's identity_of() does not today (see deviations), so
+    this exercises the mechanism defensively rather than assuming a value
+    that doesn't currently exist."""
+
+    def test_feature_role_is_the_announced_agent_type(self):
+        self._architect("arch-role1", "feat-role1")
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].role, "architect")
+
+    def test_feature_model_is_none_when_identity_body_omits_it(self):
+        self._architect("arch-role2", "feat-role2")
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertIsNone(fleet.repos[0].features[0].model)
+
+    def test_feature_model_is_exposed_when_identity_body_carries_one(self):
+        body = identity_body("arch-role3", agent_type="architect",
+                             feature_id="feat-role3", name="feat role3")
+        body["model"] = "claude-sonnet-5-20260101"
+        self._put("arch-role3", "arch-role3-id", "arch-role3", body,
+                  ts="2026-01-01T00:00:00.000000+00:00")
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].model, "claude-sonnet-5-20260101")
+
+    def test_repo_role_is_the_announced_orchestrator_agent_type(self):
+        self._put("orch-role1", "orch-role1-id", "orch-role1",
+                  identity_body("orch-role1", agent_type="orchestrator"),
+                  ts="2026-01-01T00:00:00.000000+00:00")
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].role, "orchestrator")
 
 
 if __name__ == "__main__":

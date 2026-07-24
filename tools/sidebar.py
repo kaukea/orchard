@@ -341,6 +341,10 @@ def question_count_text(count: int) -> str:
 # a later integration step wires the source, this step invents none of it.
 # --------------------------------------------------------------------------
 
+def _tokens_dollars_text(tokens: str | None, dollars: str | None) -> str | None:
+    return f"⚡ {tokens} ⋮ ${dollars}" if tokens is not None and dollars is not None else None
+
+
 def footer_lines(source: object) -> list[str]:
     age = getattr(source, "age", None)
     worked = getattr(source, "worked", None)
@@ -349,9 +353,24 @@ def footer_lines(source: object) -> list[str]:
     lines = []
     if age is not None and worked is not None:
         lines.append(f"⏱ {age} ⋮ worked {worked}")
-    if tokens is not None and dollars is not None:
-        lines.append(f"⚡ {tokens} ⋮ ${dollars}")
+    stats = _tokens_dollars_text(tokens, dollars)
+    if stats is not None:
+        lines.append(stats)
     return lines
+
+
+def done_footer_line(source: object) -> str | None:
+    """The collapsed one-line footer under a DONE feature row ("⚡ 384k ⋮
+    $7.90 ⋮ 6h02", mock frame) — tokens/dollars pair like footer_lines'
+    second line; age (no "worked" companion — the collapsed form drops it)
+    stands alone. None when neither has anything to show."""
+    if source is None:
+        return None
+    tokens = getattr(source, "tokens", None)
+    dollars = getattr(source, "dollars", None)
+    age = getattr(source, "age", None)
+    parts = [p for p in (_tokens_dollars_text(tokens, dollars), age) if p is not None]
+    return " ⋮ ".join(parts) if parts else None
 
 
 def role_emoji(role: str | None) -> str | None:
@@ -986,6 +1005,19 @@ def _draw_footer(stdscr, y: int, width: int, source: object, colours: _ColourCac
     return y
 
 
+def _draw_done_footer(stdscr, y: int, width: int, row: Row, colours: _ColourCache) -> int:
+    """Collapsed one-line footer under a DONE feature row — no guide char
+    (the mock indents it with two plain spaces, unlike the live footer's
+    "│ " lines), single dim/muted style throughout."""
+    text = done_footer_line(row.source)
+    if text is None:
+        return y
+    prefix = "  "
+    body = _truncate(text, max(width - len(prefix), 0))
+    _safe_addstr(stdscr, y, 0, prefix + body, colours.pair(MUTED, dim=True))
+    return y + 1
+
+
 def _draw_working_decorations(stdscr, y: int, width: int, row: Row, colours: _ColourCache) -> int:
     _draw_guide_line(stdscr, y, width, small_caps(row.phase) if row.phase else "", colours)
     y += 1
@@ -1047,6 +1079,8 @@ def _draw(
             y += 1
             if row.status == "working" and y < max_y:
                 y = _draw_working_decorations(stdscr, y, max_x, row, colours)
+            elif row.status == "done" and y < max_y:
+                y = _draw_done_footer(stdscr, y, max_x, row, colours)
             if row.question_count > 0 and y < max_y:
                 y = _draw_question_detail(stdscr, y, max_x, row, colours)
             continue

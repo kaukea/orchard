@@ -604,6 +604,54 @@ class FooterLinesTests(unittest.TestCase):
         self.assertEqual(lines, ["⚡ 212k ⋮ $4.12"])
 
 
+class DoneFooterLineTests(unittest.TestCase):
+    """bus-message-specifying B5b: the collapsed one-line footer under a DONE
+    feature row ("⚡ 384k ⋮ $7.90 ⋮ 6h02", mock frame line under the 100%
+    feature) — omitted entirely when nothing is available."""
+
+    def test_composes_tokens_dollars_and_age_in_mock_order(self):
+        class _Stats:
+            tokens = "384k"
+            dollars = "7.90"
+            age = "6h02"
+
+        self.assertEqual(sidebar.done_footer_line(_Stats()), "⚡ 384k ⋮ $7.90 ⋮ 6h02")
+
+    def test_omitted_when_source_is_none(self):
+        self.assertIsNone(sidebar.done_footer_line(None))
+
+    def test_omitted_when_no_value_is_available(self):
+        feature = sm.Feature(
+            feature_id="f", name="f", activity="", status="done",
+            waiting_on_operator=False,
+        )
+        self.assertIsNone(sidebar.done_footer_line(feature))
+
+    def test_renders_with_only_age_when_tokens_and_dollars_are_absent(self):
+        class _AgeOnly:
+            tokens = None
+            dollars = None
+            age = "6h02"
+
+        self.assertEqual(sidebar.done_footer_line(_AgeOnly()), "6h02")
+
+    def test_renders_with_only_tokens_and_dollars_when_age_is_absent(self):
+        class _StatsOnly:
+            tokens = "384k"
+            dollars = "7.90"
+            age = None
+
+        self.assertEqual(sidebar.done_footer_line(_StatsOnly()), "⚡ 384k ⋮ $7.90")
+
+    def test_dollars_alone_without_tokens_never_renders(self):
+        class _DollarsOnly:
+            tokens = None
+            dollars = "7.90"
+            age = None
+
+        self.assertIsNone(sidebar.done_footer_line(_DollarsOnly()))
+
+
 class RepoHueTests(unittest.TestCase):
     """sidebar-titling OVERRIDE 1, hue values updated by bus-message-
     specifying B5 to the mock's exact triples: each repo gets a fixed SOLID
