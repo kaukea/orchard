@@ -83,7 +83,10 @@ ALL at close.
    animation is state-driven only.
 7. Done state (operator, amendment round): a done feature's row NEVER
    leaves the current session's view — it renders green, sorts to the top
-   of its project group, and the list keeps accruing below.
+   of its project group, and the list keeps accruing below. Clarified
+   mid-build (operator, relayed over the bus to the working architect):
+   this rule is for FEATURE rows only — SUBAGENT rows (white/black-circle)
+   DISAPPEAR when done; they have nothing to say and nothing to display.
 
 OUT of this pass — recorded wants, deliberately unshaped (the operator will
 talk them through; no option-grid shaping, per his order): agent-sent

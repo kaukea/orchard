@@ -45,6 +45,38 @@
   (possibly his rainbow/fabulous plugin) as if everything were interesting —
   it is not: "I like seeing how the soup is made, but I am here to eat the
   soup."
+- Operator dictation, message 3 (the cockpit model): statuses stay as they
+  are but gain SUMMARIZED versions on top — "here's what I did", "here's
+  what happened". A QUESTION, when triggered, arrives right after a summary
+  of WHY it is being asked. Feature progress is legible from the sidebar.
+  ULTIMATE GOAL: each agent stays in its own window where the operator
+  never goes; the ORCHESTRATOR window synthesizes all statuses in a
+  structured way — feature positions at a glance, and incoming questions
+  carry an immediate summary sufficient to DECIDE WITHOUT LEAVING THE
+  WINDOW. Target capacity: driving five or six connected architects without
+  ever visiting them. (Ties directly into [[operator-interacting]] —
+  questions/gates/summaries as one typed exchange.) His closing sentence —
+  "this is one of the reasons I wanted questioning to go through a
+  specific…" — was cut off mid-dictation; completion pending.
+- Operator dictation, message 4 (sentence completed): questioning must go
+  through a specific path that does NOT use the normal UI tool, precisely
+  so the interrupt can be QUEUED — waited until the right moment — instead
+  of popping in his face. Live pain during dictation: with everything
+  active, flashing windows also DING — four sound notifications in five
+  seconds — "by this point I will take any decision just for all this to
+  go away" (noted: no design decisions are to be extracted from that state
+  beyond killing the noise). Immediate mitigation applied by the
+  orchestrator, runtime-only and reversible (lost on tmux server restart):
+  monitor-activity/visual-activity off, activity-action none, bell-action
+  none, visual-bell off — ALL tmux flash/ding suppressed until the designed
+  three-interrupt channel (succeeded/failed/question) exists to replace it.
+- Operator dictation, message 5: SUBAGENT rows (the white/black-circle rows
+  he requested) DISAPPEAR when done — they have nothing to say and nothing
+  to display; only FEATURE rows keep the stays-green-at-top rule. The
+  centralized cockpit should eventually convey a sense of PERCENTAGE of
+  work done — optional, later, blocked conceptually on EPICS (a grouping of
+  smaller features toward a big feature, which the current sidebar/fleet
+  cluster de facto is) — boarded as [[epic-grouping]].
 
 ## Proposal
 
