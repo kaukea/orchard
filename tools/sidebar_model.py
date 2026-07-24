@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Cross-repo bus reader/aggregator for the fleet sidebar.
 
-READ-ONLY observer over the on-disk bus (see tools/bus.py, message.schema.json):
+READ-ONLY observer over the on-disk bus (see tools/bus.py, message.schema.json).
+Parses WIRE GRAMMAR v1: orchid:status (+ deprecated orchid:activity fallback),
+orchid:update, orchid:phase, orchid:subagent:queue/start/done,
+orchid:interrupt:question, lifecycle JSON, notify_user.
 
     <git-common-dir>/the-works/bus/<session-id>/<datetime>.json
 
@@ -118,6 +121,15 @@ class Bus:
 
 
 @dataclass
+class Question:
+    """One still-open ask, surfaced on a row's `open_questions` (WIRE GRAMMAR
+    v1, bus-message-specifying B3). Cleared by a matching reply or by the
+    asker's next status-clearing signal — see _clear_open_questions()."""
+    question_id: str
+    subject: str
+
+
+@dataclass
 class Feature:
     feature_id: str
     name: str
@@ -126,6 +138,17 @@ class Feature:
     waiting_on_operator: bool
     subagents: list[Subagent] = field(default_factory=list)
     bus: Bus | None = None
+    status_word: str = ""
+    update_text: str = ""
+    phase: str | None = None
+    phase_tick: tuple[int, int] | None = None
+    progress_pct: int | None = None
+    subagents_running: int = 0
+    subagents_queued: int = 0
+    open_questions: list[Question] = field(default_factory=list)
+    question_count: int = 0
+    first_question_subject: str | None = None
+    interrupt: str = "none"
 
 
 @dataclass
@@ -143,6 +166,17 @@ class Repo:
     has_session: bool = True
     features: list[Feature] = field(default_factory=list)
     bus: Bus | None = None
+    status_word: str = ""
+    update_text: str = ""
+    phase: str | None = None
+    phase_tick: tuple[int, int] | None = None
+    progress_pct: int | None = None
+    subagents_running: int = 0
+    subagents_queued: int = 0
+    open_questions: list[Question] = field(default_factory=list)
+    question_count: int = 0
+    first_question_subject: str | None = None
+    interrupt: str = "none"
 
 
 @dataclass
@@ -261,11 +295,129 @@ class _SessionState:
     feature_id: str | None = None
     name: str | None = None
     parent_session: str | None = None
-    activity: str = ""
+    status_word: str = ""
+    update_text: str = ""
+    phase: str | None = None
+    phase_tick: tuple[int, int] | None = None
     lifecycle_state: str | None = None
     blocked_on: str | None = None  # BLOCKED_ON_COMPONENT / BLOCKED_ON_AGENT
-    active_subagents: set = field(default_factory=set)
+    # notify_user carried on the CURRENT lifecycle signal itself — kept apart
+    # from last_notify_user (which only an activity/status broadcast may set
+    # or clear, see _apply_status_word) so a blocked+notify interrupt read
+    # doesn't depend on the sticky flash flag.
+    blocked_notify: bool = False
+    active_subagents: set = field(default_factory=set)  # running
+    subagents_queued: set = field(default_factory=set)
+    open_questions: dict = field(default_factory=dict)  # question_id -> subject
     last_notify_user: bool = False  # notify_user flag of the latest message seen
+    last_signature: tuple | None = None  # (body, notify_user) of the previous message
+
+
+# WIRE GRAMMAR v1 body prefixes (bus-message-specifying B3).
+_STATUS_PREFIX = "orchid:status:"
+_ACTIVITY_PREFIX = "orchid:activity:"  # deprecated fallback, one transition release
+_UPDATE_PREFIX = "orchid:update:"
+_PHASE_PREFIX = "orchid:phase:"
+_QUESTION_PREFIX = "orchid:interrupt:question:"
+_SUBAGENT_QUEUE_PREFIX = "orchid:subagent:queue:"
+_SUBAGENT_START_PREFIX = "orchid:subagent:start:"
+_SUBAGENT_DONE_PREFIX = "orchid:subagent:done:"
+
+# progress_pct phase table (bus-message-specifying B3 task item 3): base %
+# a phase starts at, and the % span it covers before the next phase begins.
+_PHASE_BASES = {
+    "ideation": 0, "scoping": 10, "designing": 25, "building": 40, "releasing": 85,
+}
+_PHASE_SPANS = {
+    "ideation": 10, "scoping": 15, "designing": 15, "building": 45, "releasing": 15,
+}
+
+
+def _clear_open_questions(state: _SessionState) -> None:
+    state.open_questions.clear()
+
+
+def _apply_status_word(state: _SessionState, msg: dict, text: str) -> None:
+    state.status_word = text
+    # only a status/activity broadcast may set or clear the waiting flash —
+    # identity/announce/lifecycle messages must leave it untouched, or a
+    # later re-announce/lifecycle signal would silently clear a still-open
+    # "waiting on operator" flash (last-write-wins per field, ts order).
+    state.last_notify_user = msg.get("notify_user") is True
+    _clear_open_questions(state)
+
+
+def _apply_update_text(state: _SessionState, msg: dict, text: str) -> None:
+    # update never derives status and never notifies — no other field touched
+    state.update_text = text
+
+
+def _parse_phase(remainder: str) -> tuple[str | None, tuple[int, int] | None]:
+    phase, _, tick_text = remainder.partition(":")
+    if phase not in _PHASE_BASES:
+        return None, None
+    if not tick_text:
+        return phase, None
+    k_text, sep, n_text = tick_text.partition("/")
+    if not sep:
+        return None, None
+    try:
+        k, n = int(k_text), int(n_text)
+    except ValueError:
+        return None, None
+    if k < 0 or n <= 0:
+        return None, None
+    return phase, (k, n)
+
+
+def _apply_phase(state: _SessionState, msg: dict, remainder: str) -> None:
+    phase, tick = _parse_phase(remainder)
+    if phase is None:
+        return  # invalid phase string — defensive, bus.py validates at send
+    state.phase = phase
+    state.phase_tick = tick
+
+
+def _apply_question(state: _SessionState, msg: dict, subject: str) -> None:
+    question_id = msg.get("question_id")
+    if question_id:
+        state.open_questions[question_id] = subject
+    state.last_notify_user = msg.get("notify_user") is True
+
+
+def _is_bus_subagent(state: _SessionState, label: str) -> bool:
+    return state.agent_type == BUS_AGENT_TYPE or label == BUS_LABEL
+
+
+def _apply_subagent_queue(state: _SessionState, msg: dict, label: str) -> None:
+    if not _is_bus_subagent(state, label):
+        state.subagents_queued.add(label)
+
+
+def _apply_subagent_start(state: _SessionState, msg: dict, label: str) -> None:
+    state.subagents_queued.discard(label)
+    if not _is_bus_subagent(state, label):
+        state.active_subagents.add(label)
+
+
+def _apply_subagent_done(state: _SessionState, msg: dict, label: str) -> None:
+    state.subagents_queued.discard(label)
+    state.active_subagents.discard(label)
+
+
+# Tried in order against a string body; the first matching prefix's handler
+# runs with the text after that prefix. Composition over an elif chain, so a
+# new WIRE GRAMMAR verb is one more row, not a deeper branch.
+_STRING_BODY_HANDLERS = [
+    (_STATUS_PREFIX, _apply_status_word),
+    (_ACTIVITY_PREFIX, _apply_status_word),  # deprecated fallback — same field
+    (_UPDATE_PREFIX, _apply_update_text),
+    (_PHASE_PREFIX, _apply_phase),
+    (_QUESTION_PREFIX, _apply_question),
+    (_SUBAGENT_QUEUE_PREFIX, _apply_subagent_queue),
+    (_SUBAGENT_START_PREFIX, _apply_subagent_start),
+    (_SUBAGENT_DONE_PREFIX, _apply_subagent_done),
+]
 
 
 def _apply_message(state: _SessionState, msg: dict) -> None:
@@ -284,24 +436,40 @@ def _apply_message(state: _SessionState, msg: dict) -> None:
     elif isinstance(body, dict) and body.get("kind") == "lifecycle":
         state.lifecycle_state = body.get("state")
         state.blocked_on = body.get("blocked_on")
+        state.blocked_notify = msg.get("notify_user") is True
+        if state.lifecycle_state in _TERMINAL_LIFECYCLE:
+            _clear_open_questions(state)
 
     elif isinstance(body, str):
-        if body.startswith("orchid:activity:"):
-            # text after the 2nd colon; may itself contain colons/spaces
-            state.activity = body.split(":", 2)[2]
-            # only an activity broadcast may set or clear the waiting flash —
-            # identity/announce/lifecycle messages must leave it untouched, or
-            # a later re-announce/lifecycle signal would silently clear a
-            # still-open "waiting on operator" flash (last-write-wins per
-            # field, applied in ts order).
-            state.last_notify_user = msg.get("notify_user") is True
-        elif body.startswith("orchid:subagent:start:"):
-            label = body[len("orchid:subagent:start:"):]
-            if not (state.agent_type == BUS_AGENT_TYPE or label == BUS_LABEL):
-                state.active_subagents.add(label)
-        elif body.startswith("orchid:subagent:done:"):
-            label = body[len("orchid:subagent:done:"):]
-            state.active_subagents.discard(label)
+        for prefix, handler in _STRING_BODY_HANDLERS:
+            if body.startswith(prefix):
+                handler(state, msg, body[len(prefix):])
+                break
+
+
+def _is_repeat_of_previous(state: _SessionState, msg: dict) -> bool:
+    """Dedup rule (bus-message-specifying B3 item 7): a message identical in
+    body+notify_user to the SENDER's previous one changes nothing and
+    re-raises no notify — kills the duplicate-summons defect where a resent
+    ask could reopen a question already answered."""
+    signature = (msg.get("body"), msg.get("notify_user") is True)
+    is_repeat = signature == state.last_signature
+    state.last_signature = signature
+    return is_repeat
+
+
+def _clear_replied_question(states: dict, msg: dict) -> None:
+    """A reply's `from` is the ANSWERER, not the asker — the open question it
+    resolves lives on whichever sender's state still holds that question_id,
+    found by matching envelope in_reply_to, independent of the normal
+    per-sender attribution the rest of _apply_message uses."""
+    in_reply_to = msg.get("in_reply_to")
+    if not in_reply_to:
+        return
+    for state in states.values():
+        if in_reply_to in state.open_questions:
+            del state.open_questions[in_reply_to]
+            return
 
 
 # a finished/abandoned session is resolved — it must never keep flashing a
@@ -337,6 +505,54 @@ def _status_for(state: _SessionState) -> str:
     ):
         return "working"
     return "idle"
+
+
+def _progress_pct_for(state: _SessionState) -> int | None:
+    if state.lifecycle_state == "finished":
+        return 100
+    if state.phase is None:
+        return None
+    base = _PHASE_BASES[state.phase]
+    if state.phase_tick is None:
+        return base
+    span = _PHASE_SPANS[state.phase]
+    k, n = state.phase_tick
+    return base + (span * k) // n
+
+
+def _interrupt_for(state: _SessionState) -> str:
+    """The renderer's badge signal, derived from state already tracked for
+    other purposes (bus-message-specifying B3 item 6) — additional to, never
+    a replacement for, the working/waiting/idle status derivation above."""
+    if state.open_questions:
+        return "question"
+    if state.lifecycle_state in ("done", "finished"):
+        return "succeeded"
+    if state.lifecycle_state == "abandoned":
+        return "failed"
+    if state.lifecycle_state == "blocked" and state.blocked_notify:
+        return "failed"
+    return "none"
+
+
+def _apply_row_extension(row, state: _SessionState) -> None:
+    """Copy the WIRE GRAMMAR v1 fields from an aggregated sender state onto a
+    public Feature or Repo row — both dataclasses share this exact field set,
+    so one function serves either (duck-typed on purpose, see _assemble_repo)."""
+    row.status_word = state.status_word
+    row.update_text = state.update_text
+    row.phase = state.phase
+    row.phase_tick = state.phase_tick
+    row.progress_pct = _progress_pct_for(state)
+    row.subagents_running = len(state.active_subagents)
+    row.subagents_queued = len(state.subagents_queued)
+    row.open_questions = [
+        Question(question_id=qid, subject=subject)
+        for qid, subject in state.open_questions.items()
+    ]
+    row.question_count = len(state.open_questions)
+    row.first_question_subject = next(iter(state.open_questions.values()), None)
+    row.interrupt = _interrupt_for(state)
 
 
 class _BusAggregator:
@@ -414,6 +630,9 @@ class _BusAggregator:
         for msg in new_messages:
             sender = msg["from"]
             state = self.states.setdefault(sender, _SessionState(session_id=sender))
+            if _is_repeat_of_previous(state, msg):
+                continue
+            _clear_replied_question(self.states, msg)
             _apply_message(state, msg)
 
         # bound to messages still on disk this scan — the underlying files
@@ -462,10 +681,11 @@ def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
         (s for s in sessions.values() if s.agent_type == "orchestrator"), None,
     )
     if orchestrator is not None:
-        repo.activity = orchestrator.activity
+        repo.activity = orchestrator.status_word
         repo.status = _status_for(orchestrator)
         repo.waiting_on_operator = _waiting_on_operator_of(orchestrator)
         repo.bus = _pick_bus(sessions, orchestrator.session_id)
+        _apply_row_extension(repo, orchestrator)
 
     architects = [s for s in sessions.values() if s.agent_type == "architect"]
     for arch in architects:
@@ -487,11 +707,12 @@ def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
         feature = Feature(
             feature_id=feature_id,
             name=feature_name,
-            activity=arch.activity,
+            activity=arch.status_word,
             status=_status_for(arch),
             waiting_on_operator=_waiting_on_operator_of(arch),
             bus=_pick_bus(sessions, arch.session_id),
         )
+        _apply_row_extension(feature, arch)
         # subagents surfaced directly by the architect's own orchid:subagent traffic
         for label in sorted(arch.active_subagents):
             feature.subagents.append(Subagent(label=label))

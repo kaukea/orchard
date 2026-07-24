@@ -41,6 +41,21 @@ class _BusFixtureTestCase(unittest.TestCase):
             envelope(msg_id, sender, body=body, ts=ts, notify_user=notify_user),
         )
 
+    def _put_ask(self, folder, msg_id, sender, question_id, subject, ts, notify_user=True):
+        """A WIRE GRAMMAR v1 ask envelope — question_id/in_reply_to are
+        sibling envelope fields, not part of `body`, so they are layered onto
+        the base envelope() shape here rather than in support.py (out of
+        this step's edit scope)."""
+        env = envelope(msg_id, sender, body=f"orchid:interrupt:question:{subject}",
+                       ts=ts, notify_user=notify_user)
+        env["question_id"] = question_id
+        write_message(self.bus_root, folder, env)
+
+    def _put_reply(self, folder, msg_id, sender, in_reply_to, ts, body="ack"):
+        env = envelope(msg_id, sender, body=body, ts=ts)
+        env["in_reply_to"] = in_reply_to
+        write_message(self.bus_root, folder, env)
+
     def _architect(self, session_id, feature_id, folder=None, name=None):
         """Write the identity announce that makes session_id a renderable
         architect feature."""
@@ -744,6 +759,307 @@ class ResolveReposEnvOverrideTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"ORCHIDS_SIDEBAR_REPOS": str(missing)}):
             resolved = sidebar_model.resolve_repos()
         self.assertEqual(resolved, [])
+
+
+# --------------------------------------------------------------------------
+# WIRE GRAMMAR v1 (bus-message-specifying B3)
+# --------------------------------------------------------------------------
+
+class StatusWordTests(_BusFixtureTestCase):
+    def test_status_prefix_sets_status_word_and_mirrors_activity(self):
+        self._architect("arch-sw1", "feat-sw1")
+        self._put("arch-sw1", "arch-sw1-sw", "arch-sw1", "orchid:status:building",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status_word, "building")
+        # feature.activity is the pre-existing renderer-facing field (sidebar.py
+        # reads it directly) — it must keep mirroring the live doing-word so
+        # the renderer needs no change in this step.
+        self.assertEqual(feature.activity, "building")
+
+    def test_deprecated_orchid_activity_prefix_still_falls_back_to_status_word(self):
+        # one-transition-release fallback: a sender still on the old grammar
+        # must not go blank in the sidebar.
+        self._architect("arch-sw2", "feat-sw2")
+        self._put("arch-sw2", "arch-sw2-legacy", "arch-sw2",
+                  "orchid:activity:doing legacy work",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status_word, "doing legacy work")
+        self.assertEqual(feature.activity, "doing legacy work")
+
+
+class UpdateTextTests(_BusFixtureTestCase):
+    def test_update_sets_update_text(self):
+        self._architect("arch-upd1", "feat-upd1")
+        self._put("arch-upd1", "arch-upd1-u", "arch-upd1",
+                  "orchid:update:shipped the migration",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.update_text, "shipped the migration")
+
+    def test_update_never_drives_status_derivation(self):
+        self._architect("arch-upd2", "feat-upd2")
+        self._put("arch-upd2", "arch-upd2-u", "arch-upd2",
+                  "orchid:update:a long narrative sentence",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status, "idle")
+
+    def test_update_never_sets_notify_even_if_flagged(self):
+        # defensive: the grammar says update never notifies, but the
+        # aggregator must not trust an envelope that claims otherwise.
+        self._architect("arch-upd3", "feat-upd3")
+        self._put("arch-upd3", "arch-upd3-u", "arch-upd3",
+                  "orchid:update:need review", ts="2026-01-01T00:00:01.000000+00:00",
+                  notify_user=True)
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertFalse(feature.waiting_on_operator)
+        self.assertEqual(feature.status, "idle")
+
+
+class PhaseProgressTests(_BusFixtureTestCase):
+    def test_phase_without_tick_uses_base_pct(self):
+        self._architect("arch-ph1", "feat-ph1")
+        self._put("arch-ph1", "arch-ph1-p", "arch-ph1", "orchid:phase:designing",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.phase, "designing")
+        self.assertIsNone(feature.phase_tick)
+        self.assertEqual(feature.progress_pct, 25)
+
+    def test_phase_with_tick_computes_pct(self):
+        self._architect("arch-ph2", "feat-ph2")
+        self._put("arch-ph2", "arch-ph2-p", "arch-ph2", "orchid:phase:building:2/3",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.phase, "building")
+        self.assertEqual(feature.phase_tick, (2, 3))
+        # base 40 + span 45 * 2/3 = 40 + 30 = 70
+        self.assertEqual(feature.progress_pct, 70)
+
+    def test_finished_lifecycle_overrides_pct_to_100(self):
+        self._architect("arch-ph3", "feat-ph3")
+        self._put("arch-ph3", "arch-ph3-p", "arch-ph3", "orchid:phase:scoping",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        self._put("arch-ph3", "arch-ph3-lc", "arch-ph3",
+                  lifecycle_body("finished", feature_id="feat-ph3"),
+                  ts="2026-01-01T00:00:02.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.progress_pct, 100)
+
+    def test_invalid_phase_string_is_ignored(self):
+        self._architect("arch-ph4", "feat-ph4")
+        self._put("arch-ph4", "arch-ph4-p", "arch-ph4", "orchid:phase:bogus",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertIsNone(feature.phase)
+        self.assertIsNone(feature.progress_pct)
+
+
+class SubagentQueueTests(_BusFixtureTestCase):
+    def test_queue_then_start_moves_from_queued_to_running(self):
+        self._architect("arch-q1", "feat-q1")
+        self._put("arch-q1", "arch-q1-1", "arch-q1", "orchid:subagent:queue:build-1",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        self._put("arch-q1", "arch-q1-2", "arch-q1", "orchid:subagent:start:build-1",
+                  ts="2026-01-01T00:00:02.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.subagents_queued, 0)
+        self.assertEqual(feature.subagents_running, 1)
+
+    def test_start_without_prior_queue_adds_directly_to_running(self):
+        self._architect("arch-q2", "feat-q2")
+        self._put("arch-q2", "arch-q2-1", "arch-q2", "orchid:subagent:start:build-2",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.subagents_queued, 0)
+        self.assertEqual(feature.subagents_running, 1)
+
+    def test_queue_only_counted_until_started(self):
+        self._architect("arch-q3", "feat-q3")
+        self._put("arch-q3", "arch-q3-1", "arch-q3", "orchid:subagent:queue:build-3",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.subagents_queued, 1)
+        self.assertEqual(feature.subagents_running, 0)
+
+    def test_done_removes_from_both_queued_and_running(self):
+        self._architect("arch-q4", "feat-q4")
+        self._put("arch-q4", "arch-q4-1", "arch-q4", "orchid:subagent:queue:build-4",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        self._put("arch-q4", "arch-q4-2", "arch-q4", "orchid:subagent:start:build-4",
+                  ts="2026-01-01T00:00:02.000000+00:00")
+        self._put("arch-q4", "arch-q4-3", "arch-q4", "orchid:subagent:done:build-4",
+                  ts="2026-01-01T00:00:03.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.subagents_queued, 0)
+        self.assertEqual(feature.subagents_running, 0)
+
+
+class OpenQuestionsTests(_BusFixtureTestCase):
+    def test_ask_opens_a_question(self):
+        self._architect("arch-oq1", "feat-oq1")
+        self._put_ask("arch-oq1", "arch-oq1-ask", "arch-oq1", "q-1",
+                      "Proceed with deploy?", ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.question_count, 1)
+        self.assertEqual(feature.first_question_subject, "Proceed with deploy?")
+        self.assertEqual(
+            [(q.question_id, q.subject) for q in feature.open_questions],
+            [("q-1", "Proceed with deploy?")],
+        )
+        self.assertEqual(feature.interrupt, "question")
+
+    def test_matching_reply_clears_the_question(self):
+        self._architect("arch-oq2", "feat-oq2")
+        self._put_ask("arch-oq2", "arch-oq2-ask", "arch-oq2", "q-2",
+                      "Ship it?", ts="2026-01-01T00:00:01.000000+00:00")
+        self._put_reply("arch-oq2", "arch-oq2-reply", "operator-1", "q-2",
+                        ts="2026-01-01T00:00:02.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.question_count, 0)
+        self.assertEqual(feature.open_questions, [])
+        self.assertNotEqual(feature.interrupt, "question")
+
+    def test_askers_next_status_clears_the_question(self):
+        # mirrors how last_notify_user clears today: a fresh, non-notify
+        # status/activity signal from the SAME sender supersedes the wait.
+        self._architect("arch-oq3", "feat-oq3")
+        self._put_ask("arch-oq3", "arch-oq3-ask", "arch-oq3", "q-3",
+                      "Continue?", ts="2026-01-01T00:00:01.000000+00:00")
+        self._put("arch-oq3", "arch-oq3-status", "arch-oq3", "orchid:status:building",
+                  ts="2026-01-01T00:00:02.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.question_count, 0)
+        self.assertEqual(feature.status_word, "building")
+
+
+class InterruptDerivationTests(_BusFixtureTestCase):
+    def test_none_by_default(self):
+        self._architect("arch-int1", "feat-int1")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "none")
+
+    def test_question_when_open_questions_present(self):
+        self._architect("arch-int2", "feat-int2")
+        self._put_ask("arch-int2", "arch-int2-ask", "arch-int2", "q-int2",
+                      "Deploy?", ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "question")
+
+    def test_succeeded_on_pre_terminal_done_lifecycle(self):
+        self._architect("arch-int3", "feat-int3")
+        self._put("arch-int3", "arch-int3-lc", "arch-int3",
+                  lifecycle_body("done", feature_id="feat-int3"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "succeeded")
+
+    def test_succeeded_on_finished_lifecycle(self):
+        self._architect("arch-int4", "feat-int4")
+        self._put("arch-int4", "arch-int4-lc", "arch-int4",
+                  lifecycle_body("finished", feature_id="feat-int4"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "succeeded")
+
+    def test_failed_on_abandoned(self):
+        self._architect("arch-int5", "feat-int5")
+        self._put("arch-int5", "arch-int5-lc", "arch-int5",
+                  lifecycle_body("abandoned", feature_id="feat-int5"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "failed")
+
+    def test_failed_on_blocked_with_notify(self):
+        self._architect("arch-int6", "feat-int6")
+        self._put("arch-int6", "arch-int6-lc", "arch-int6",
+                  lifecycle_body("blocked", feature_id="feat-int6"),
+                  ts="2026-01-01T00:00:01.000000+00:00", notify_user=True)
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "failed")
+
+    def test_none_on_blocked_without_notify(self):
+        self._architect("arch-int7", "feat-int7")
+        self._put("arch-int7", "arch-int7-lc", "arch-int7",
+                  lifecycle_body("blocked", feature_id="feat-int7"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "none")
+
+
+class DuplicateMessageDedupTests(_BusFixtureTestCase):
+    """Item 7: a message identical in body+notify_user to the SENDER's
+    previous one changes nothing and re-raises no notify."""
+
+    def test_identical_consecutive_status_messages_stay_idempotent(self):
+        self._architect("arch-dd1", "feat-dd1")
+        self._put("arch-dd1", "arch-dd1-1", "arch-dd1", "orchid:status:waiting for input",
+                  ts="2026-01-01T00:00:01.000000+00:00", notify_user=True)
+        self._put("arch-dd1", "arch-dd1-2", "arch-dd1", "orchid:status:waiting for input",
+                  ts="2026-01-01T00:00:02.000000+00:00", notify_user=True)
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status_word, "waiting for input")
+        self.assertTrue(feature.waiting_on_operator)
+
+    def test_resent_duplicate_ask_after_reply_does_not_reopen_question(self):
+        # the duplicate-summons defect: a stale, at-least-once-delivered
+        # resend of the SAME ask (identical body+notify, same sender)
+        # arriving after the question was already answered must not reopen it.
+        self._architect("arch-dd2", "feat-dd2")
+        self._put_ask("arch-dd2", "ask-1", "arch-dd2", "q-dd2", "Ship now?",
+                      ts="2026-01-01T00:00:01.000000+00:00")
+        self._put_reply("arch-dd2", "reply-1", "operator-x", "q-dd2",
+                        ts="2026-01-01T00:00:02.000000+00:00")
+        self._put_ask("arch-dd2", "ask-1-retry", "arch-dd2", "q-dd2", "Ship now?",
+                      ts="2026-01-01T00:00:03.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.question_count, 0)
+        self.assertEqual(feature.interrupt, "none")
 
 
 if __name__ == "__main__":
