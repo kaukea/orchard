@@ -404,6 +404,23 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   5. Minor: `outcome` enum lacks blocked/abandoned (fail ⊇ them?);
      identity/status request-reply dropped (replaced by published
      state?); gate-reject feedback presumably the script's exit code.
+- GAP REVIEW CORRECTED (round 10, 2026-07-25) after the operator's
+  rebuttal ("English language is asking a question, and outcome — have
+  you read the whole document?") and a full front-to-back re-read:
+  gaps 1, 3 and most of 5 DISSOLVE inside the already-agreed WHAT.
+  (1) The QUESTION interrupt has its path: "the subagent stays the
+  same" retains the ask broker — blocking, queued, the question posed
+  in English with its why + decision-sufficient summary; with
+  `outcome:success|fail` the three interrupts are complete. (3) Phase
+  and % are RENDERER-DERIVED, not carried: phase follows from which
+  role is in flight (delegation + lifecycle events), % from the agreed
+  subphase map's visible ticks — no phase message exists because none
+  is needed. (5) blocked resolves to a QUESTION (blocked = needs the
+  operator); abandoned folds into fail. STANDING, narrowed to two:
+  (2) the body fields of `lifecycle:starting` (project, feature, role,
+  exit-grace) need defining for the sidebar; (4) the project
+  dimension's seat once topics outgrow `global` — already anticipated
+  by his fixed-but-extensible topic list.
 - MEASURED COST MODEL (round 8, 2026-07-25) — replaces the pre-compact
   README estimate; sources: dead-inbox census (registered from 00:10,
   consumed nothing, 243 files), the orchestrator transcript's
