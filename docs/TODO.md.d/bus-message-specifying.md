@@ -369,6 +369,17 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   last-value dedup for status), sender identity gets STAMPED by the
   daemon rather than claimed, and attention (notify) becomes a property
   of the message CLASS — the three interrupts — never a sender flag.
+- ROUND 6 (operator, 2026-07-25): "you are blinded by the work done
+  here" — BOTH orchestrator frames (daemon replacement, then in-place
+  hardening of `bus.py`) were anchored: the first to its own idea, the
+  second to the incumbent artifact. Both are WITHDRAWN as frames. The
+  design frame is the requirement list alone (addressed peer messages by
+  project + session id · allow-listed topics · real time · less traffic
+  · conformance · encryption · cloud agents); the audited facts stay on
+  the table as evidence; the design itself is the operator's to dictate.
+  Structural fact any design must face, previously glossed: the current
+  bus is PER-REPO (spool root under each repo's git dir) — cross-project
+  addressing has no substrate today; repos are islands.
 - COURSE CORRECTION (round 5, 2026-07-25): the operator rejected the
   orchestrator's daemon-first framing — the script has no checks, checks
   have never been TRIED, and a passing "cloud agents later" is not
