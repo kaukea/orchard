@@ -89,6 +89,24 @@ per listener); the hand-ups re-invoked parent agents with full context
 ~0.3M fresh working tokens attributable to bus chatter, dominated by
 duplicate waiting-state rebroadcasts carrying zero information.
 
+**Bus messages, as specified (WIRE GRAMMAR v1).** The free-form layer above
+is retired. Canonical spec: `agents/bus.md`; mechanical enforcement:
+`tools/bus.py` (send and broadcast reject any `orchid:*` body outside the
+grammar). Five classes, each with a declared consumer: `orchid:status:<word>`
+(one/two agent-chosen doing-words, on change only), `orchid:update:<sentence>`
+(log/cockpit-targeted), `orchid:phase:<phase>[:<k>/<n>]` (the five-phase spine
+the sidebar turns into a live percentage), `orchid:subagent:queue|start|done:
+<label>` (counts are the message), `orchid:interrupt:question:<subject>`
+(emitted only by `bus.py ask`). Exactly three DERIVED interrupts may summon
+the operator — QUESTION ⇐ ask, SUCCEEDED ⇐ done/finished, FAILED ⇐
+abandoned/blocked+notify; `--notify-user` is illegal anywhere else, and
+sidecars never author wire text of their own. `bus.py validate [PATH]` audits
+recorded traffic (run against the live bus on 2026-07-24 it measured the old
+grammar at 247 violations across 411 envelopes — the baseline this spec
+retires). The sidebar renders the approved cockpit grammar: solid hue
+headers, one-line feature rows over a progress fill, phase checklist,
+identity line, subagent dots, `?N` question badges, and zero-token footers.
+
 Fix a lesson once, and every repo knows it on the next sync.
 
 **Discipline that holds.** The `workflow` and `workflow-complete` pair enforce

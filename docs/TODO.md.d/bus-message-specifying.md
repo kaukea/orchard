@@ -1,9 +1,15 @@
 - created: 2026-07-24
 - created_by: Sebastien Lambla
+- completed: 2026-07-25
+- completed_during: orchestrator session (f/bus-message-specifying squash-merged, c1734c0)
 
 ## Blockers
 
-- None.
+- None. DONE for the v1 vocabulary/display grammar (merged c1734c0). The
+  transport redesign discussed in Findings (addressed messages, allow-listed
+  topics, env-boundary encryption, admission) is DEFERRED to metronome and
+  carried as its own task [[bus-transport-v2]] — it is NOT part of what this
+  task delivered.
 
 ## Questions
 

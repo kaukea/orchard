@@ -6,6 +6,61 @@ _base: `f65ad36`_
 
 ### ✨ New features
 
+- 🔊 The bus vocabulary is now specified: `agents/bus.md` carries WIRE GRAMMAR
+  v1 — five wire classes (`orchid:status`, `orchid:update`, `orchid:phase`,
+  `orchid:subagent:{queue,start,done}`, `orchid:interrupt:question`), each
+  with a declared consumer and notify-user legality; exactly three derived
+  operator interrupts (QUESTION ⇐ ask, SUCCEEDED ⇐ done/finished, FAILED ⇐
+  abandoned/blocked+notify); status words denylisted against lifecycle terms;
+  legacy `orchid:activity:*` retired to a one-release parse fallback.
+- 🔊 The send audit: orchestrator, architect, groomer, and bloomer contracts
+  rewritten off free-form activity broadcasts onto the wire grammar —
+  change-only status words, log-targeted updates, phase-spine emissions,
+  subagent markers, and operator questions exclusively via the queued
+  `bus.py ask` broker. Sidecar-improvised wire text (the "awaiting operator
+  (native prompt)" rebroadcasts from the operator's as-built audit) is
+  banned; the ban is the interim send choke point pending the delivery-model
+  redesign.
+- ✨ `bus.py` enforces the grammar mechanically on send/broadcast: any
+  `orchid:*` body parses against the five closed classes, malformed or
+  unknown bodies are rejected naming the allowed classes, hand-composed
+  interrupts are refused (ask is their only emitter), and `--notify-user` is
+  restricted to questions and the notify-legal lifecycle states
+  (done/blocked/abandoned). `bus.py ask` emits
+  `orchid:interrupt:question:<subject>`; the question broker needed no
+  change (it matches on `question_id`, never body text).
+- 📡 The sidebar model consumes the vocabulary: status words (legacy
+  `orchid:activity` as a one-release fallback), updates, the five-phase
+  spine with a derived `progress_pct`, queued/running subagent counts, and
+  open questions; a new `interrupt` field carries the only three
+  operator-summoning states, and identical consecutive body+notify
+  signatures are dropped — a repeated waiting broadcast can never summon
+  twice.
+- 🦺 `bus.py validate [PATH|stdin]` audits recorded traffic against the
+  vocabulary — violations (unknown classes, illegal notify, notify-carrying
+  free-prose broadcasts, the retired activity form) exit 1; undirected
+  free-prose broadcasts surface as warnings for the send-path redesign.
+  Role-traffic tests emulate one session per role through the real CLI and
+  prove each contract's sequence yields zero violations.
+- 🎨 The sidebar renders the approved display grammar: per-repo hue triples
+  with deterministic fallback, feature names drawn over the progress fill
+  with the lifted-band sweep as the frame's single animated element, the
+  small-caps phase label, the NBSP-glued identity line on the model colour
+  ramp, the five-phase checklist with inline subagent dots, dim-amber `?N`
+  badges with why-lines, guide-line footers, and data-driven role-emoji /
+  location-badge maps so the two pending emoji picks drop in without code
+  changes.
+- ⚡ Footer and identity data flow from zero-token deterministic sources
+  only — the announce identity, the session transcript through the bus token
+  estimators (which also backfills the model id the identity deliberately
+  omits), and feature-branch commit timestamps for the age-vs-worked stat —
+  behind a 30-second cache so a scan never spawns per-tick subprocesses.
+  Done features close with the collapsed one-line footer.
+- 🧪 An emulator frame check runs the real curses sidebar in a detached tmux
+  pane against a fixture reproducing the approved frame and asserts the
+  rendered glyphs, colours (through the renderer's own xterm256 mapping),
+  fill percentage, checklist, dots, and question badge — the design
+  contract's visual proof, executable in CI.
 - 🪪 The cloud hops now speak as **`callabloom[bot]`** — a kaukea GitHub App (App ID 4354752)
   minted per hop from org secrets, replacing the anonymous `github-actions` actor; falls back to
   the built-in token when the secrets are absent (`cloud-path.yml` all hops + `board-sync.yml`).

@@ -1292,3 +1292,47 @@ execution AND judgment sit with the orchestrator until the autonomy
 ladder/metronome exists, at which point delegation is revisited (operator:
 "as soon as the autonomy ladder is in place we'll remove the autostart and
 delegate").
+
+## [2026-07-25 CEST] Decision-076: The bus vocabulary is five wire classes; only three interrupts may summon the operator
+#bus #messaging #vocabulary #notify #interrupt #sidebar
+
+Operator dictation (2026-07-24) fixed the message model: STATUS (one/two
+plain words, agent-chosen) · STATUS UPDATE (log-targeted sentence) · exactly
+three operator interrupts — SUCCEEDED, FAILED, QUESTION. Wire form (full-go
+architect design): orchid:status / orchid:update / orchid:phase /
+orchid:subagent:{queue,start,done} / orchid:interrupt:question, validated by
+bus.py; any other orchid:* body is rejected; notify_user is legal only on
+ask-questions and lifecycle done/blocked/abandoned; the interrupts are
+derived (QUESTION ⇐ ask, SUCCEEDED ⇐ done/finished, FAILED ⇐ abandoned or
+blocked+notify). Status words colliding with lifecycle vocabulary are denied
+(the orchid:activity:Closing incident). Statuses broadcast on change only
+(the duplicate-notify incident). Supersedes Decision-044's free activity
+label as the status surface; amends Decision-058's display vocabulary with
+the derived-interrupt layer. Lifecycle signals stay internal plumbing.
+
+## [2026-07-25 CEST] Decision-077: The phase spine broadcasts as a typed channel and maps to a live percentage
+#bus #phase #progress #sidebar
+
+Phases ideation → scoping → designing → building → releasing ride
+orchid:phase:<phase>[:<k>/<n>] with spans 10/15/15/45/15 (bases 0/10/25/40/
+85); visible ticks advance the number, hidden plumbing never does; 100 only
+at lifecycle finished. The renderer derives the embedded progress fill from
+this channel alone.
+
+## [2026-07-25 CEST] Decision-078: The blessed mock is the renderer's fixed contract; identity maps are data-driven
+#sidebar #design #mock #emoji
+
+sidebar-mock.py + approved-frame.ans (archived with the feature stream) are
+the visual truth tools/sidebar.py implements: glyph set, RGB palette, hue
+families, model colour ramp, band animation, checklist, identity line,
+footers. Role-emoji, per-repo hue, and 💻/☁️ location-badge maps ship as
+data so pending picks (orchestrator, architect emojis) drop in without code
+changes. Known licensed debt: the KITT-scanner tail polish.
+
+## [2026-07-25 CEST] Decision-079: bus-message-specifying based its renderer files on f/sidebar-titling explicitly
+#sidebar #branching #upstream
+
+The unmerged f/sidebar-titling@9752aed states of tools/sidebar.py,
+sidebar_model.py, sidebar_nav.py, sidebar-mount.sh and their tests were
+absorbed as the build base (operator-sanctioned upstream). Whichever branch
+folds second resolves the overlap trivially by content identity.
