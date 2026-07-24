@@ -27,6 +27,24 @@
 - Live example from today's session: the architect's waiting state arrived
   twice in a row as identical `awaiting operator (native prompt)` notify
   broadcasts; activity labels are free-form prose.
+- Second live example (successor architect, 2026-07-24 close): its
+  `orchid:activity:Closing` broadcast was read by its own bus as a
+  session-departure signal — free-form activity wording collides with
+  lifecycle vocabulary.
+- Operator dictation (2026-07-24 evening, first message of the spec — more
+  to come): agents carry (a) a STATUS — one or two plain words for what
+  they are doing now (reading, writing, messaging, concluding, thinking…),
+  each agent choosing its own word, unlike the Claude UI's invented terms;
+  and (b) a STATUS UPDATE — the sentence describing current work, aimed at
+  the log/main pane, never at the operator. Only ONE main agent is
+  interactive with the operator at a time; agents follow one another.
+- Operator dictation, message 2: exactly THREE interrupt classes may break
+  his flow visually — SUCCEEDED, FAILED, QUESTION. Everything else is
+  already covered by status/status-update and must not interrupt. Concrete
+  offender: every tmux window continuously flashes its activity flag
+  (possibly his rainbow/fabulous plugin) as if everything were interesting —
+  it is not: "I like seeing how the soup is made, but I am here to eat the
+  soup."
 
 ## Proposal
 

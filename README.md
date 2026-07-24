@@ -14,9 +14,12 @@ versioned in one place and delivered identically to every repository you own.
 You talk to the **orchestrator** — it knows the board, reads your mood, and
 suggests what's worth doing next. It never writes a line of code.
 
-While you think, the **bloomer** keeps the backlog sharp: every parked task
-gets researched, scoped, and questioned before you ever pick it up, so nothing
-starts cold.
+While you think, the **bloomer** measures what you actually want: point it
+at a fuzzy task and it asks the fewest questions that most reduce
+uncertainty — chosen by a statistical engine, not by feel — until the
+scope converges with an explicit confidence number. High confidence can
+launch the work; anything less comes back to you with the loose ends
+named.
 
 Say go, and an **architect** takes ONE feature into its own worktree. It
 explores read-only, agrees a plan with you, and touches nothing until you say

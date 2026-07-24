@@ -56,9 +56,12 @@
 
 ## Proposal
 
-The one-go quick pass — five items, all decisions baked in, NO plan-gate
-question rounds (operator mandate): the architect builds exactly this list
-and nothing else.
+The one-go quick pass — seven items, all decisions baked in. OPERATOR
+MANDATE (2026-07-24 evening): decisions are final; the plan-gate question
+round AND the MAKE IT SO prologue are waived for this feature — the
+architect builds exactly this list and nothing else, immediately; the
+operator's gate is the live one-look verification at the end plus THAT IS
+ALL at close.
 
 1. Project header rows regain their gradient background, both projects
    styled identically; header shows the repo name alone.
@@ -74,6 +77,20 @@ and nothing else.
    exactly after its repository (this repo's live session renamed as part of
    the pass); pane titles are set explicitly with `allow-rename off`
    everywhere so no pane ever shows `bash` or flickers.
+6. Animation (operator, amendment round): actively-working rows show a
+   spinner; waiting-on-operator rows blink; everything else is static. A
+   message ARRIVING changes nothing on the row (operator: "Nothing") —
+   animation is state-driven only.
+7. Done state (operator, amendment round): a done feature's row NEVER
+   leaves the current session's view — it renders green, sorts to the top
+   of its project group, and the list keeps accruing below.
+
+OUT of this pass — recorded wants, deliberately unshaped (the operator will
+talk them through; no option-grid shaping, per his order): agent-sent
+message surfacing, tokens/cost per row, elapsed/phase time per row, sound
+on attention; keyboard navigation deferred to its own later round. The
+operator has begun dictating the interaction spec into
+[[bus-message-specifying]] — do not preempt it here.
 
 ## Testing
 

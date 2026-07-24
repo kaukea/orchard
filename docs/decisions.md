@@ -1278,3 +1278,17 @@ removing it would be a regression. Bloomer v1's convergence report carries a
 launch-sizing recommendation (size class + suggested tier) feeding that round.
 Only MEASURED/statistical launch sizing remains future work (the recorded
 future ruling on removing per-role defaults is unchanged).
+
+## [2026-07-24 19:55 CEST] Decision-075: The orchestrator analyzes the bloom report and owns go/no-go
+#bloomer #orchestrator #autonomy #auto-kick #pipeline #launch
+
+Operator ruling (2026-07-24): the bloomer is never delegate-and-forget. The
+orchestrator runs the instrument, itself ANALYZES the statistical response,
+and makes the go/no-go call on dispatching an architect — an agent producing
+statistical evidence of spec completeness cannot self-certify its own launch.
+Partially supersedes Decision-027's "kicks the architect off automatically"
+clause and the v1 graduated outcome's temporary very-high auto-launch: launch
+execution AND judgment sit with the orchestrator until the autonomy
+ladder/metronome exists, at which point delegation is revisited (operator:
+"as soon as the autonomy ladder is in place we'll remove the autostart and
+delegate").

@@ -1,5 +1,7 @@
 - created: 2026-07-20
 - created_by: Sebastien Lambla
+- completed: 2026-07-24
+- completed_during: f/psychometric-discovery
 
 ## Blockers
 
