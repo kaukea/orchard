@@ -1,15 +1,14 @@
 - created: 2026-07-24
 - created_by: Sebastien Lambla
-- completed: 2026-07-25
-- completed_during: orchestrator session (f/bus-message-specifying squash-merged, c1734c0)
 
 ## Blockers
 
-- None. DONE for the v1 vocabulary/display grammar (merged c1734c0). The
-  transport redesign discussed in Findings (addressed messages, allow-listed
-  topics, env-boundary encryption, admission) is DEFERRED to metronome and
-  carried as its own task [[bus-transport-v2]] — it is NOT part of what this
-  task delivered.
+- FUNCTIONAL (operator ruling, 2026-07-25): the v1 vocabulary/display grammar
+  is built, tested (349 green), and merged (c1734c0) — it WORKS. Status is
+  functional, not done, because the full intent includes the transport
+  redesign (addressed messages, allow-listed topics, env-boundary encryption,
+  admission), which is deferred to metronome and carried as the completion
+  follow-up [[bus-transport-v2]].
 
 ## Questions
 

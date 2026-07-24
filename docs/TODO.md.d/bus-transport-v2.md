@@ -4,6 +4,8 @@
 
 ## Blockers
 
+- This is the COMPLETION FOLLOW-UP of [[bus-message-specifying]] (functional):
+  v1 delivered the vocabulary/display grammar; this carries the transport half.
 - Deferred by operator ruling (2026-07-25): the METRONOME project will need a
   transport much bigger and stronger and is expected to REPLACE this wholesale
   — so v2 is designed-but-unbuilt preparation, not built now. `⊘metronome`.
