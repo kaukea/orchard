@@ -318,6 +318,17 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   frame (glyphs, exact colours, layout) and the mock renderer are to be
   preserved as the fixed visual contract; mock script currently at
   scratchpad/sidebar-mock.py, to be staged durably with this task.
+- TRANSPORT DICTATION (operator, 2026-07-25, opening the redesign he
+  announced after the as-built audit — baseline: README "Bus messages, as
+  built", ddccbc5). Two requirements, verbatim intent: (1) agent-to-agent
+  communication is ADDRESSED — an agent reaches a specific peer by
+  session id + project, not by fan-out into every registered spool;
+  (2) a TOPIC layer for real-time communication — agents publish to named
+  topics, and each topic ALLOW-LISTS which message formats may appear on
+  it; anything not permitted on that topic is rejected. Together these
+  replace unconditional broadcast: direct addressing for peer talk,
+  constrained topics for the live picture. Dictation open — more to come;
+  do not shape options around it.
 
 DESIGN-FIRST RULE (operator, 2026-07-24): the VISUAL is agreed before any
 build — a rendered mock the operator adjusts until it is right; the approved
