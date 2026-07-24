@@ -34,6 +34,13 @@ None.
 - Remediation applied same day (hygiene, not the fix): dead spool folders
   archived to `.git/the-works/_ingested/bus-spool-20260723/`, both sidebar
   panes restarted clean.
+- Re-observed after the 2026-07-24 ~14:07 tmux crash (pane capture, evening):
+  the sidebar showed THREE near-identical rows for the one feature — the
+  crashed architect (dead ~5h), the bloomer test session (exited cleanly
+  hours prior, ⚪ row), and the live successor — indistinguishable because
+  every row renders the same truncated board title. The bus itself also
+  still carried the two dead sessions as registered and one orphaned
+  builder as live.
 
 ## Proposal
 

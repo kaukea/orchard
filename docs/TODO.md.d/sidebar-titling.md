@@ -22,6 +22,18 @@
 - Observed (operator, 2026-07-24): gradient backgrounds are missing from the
   project name rows (orchids, SignMc). Both projects render as empty groups
   although no session is open for either.
+- Pane capture (2026-07-24 evening, orchestrator, `tmux capture-pane -e` on
+  the live sidebar): confirms and extends the report —
+  - `orchids` header renders bold+reverse-video (`[1;7m`), `SignMc` renders
+    bold only (`[1m`): no gradient anywhere, and the two project headers are
+    not even styled consistently with each other.
+  - No repo/`/name` composition exists on any row; session rows show only
+    the board title, truncated mid-word with no ellipsis ("last-night-
+    discussio", "Bloomer charter: clo"), so concurrent sessions on one
+    feature are indistinguishable (ghost-row aspect recorded in
+    [[sidebar-witnessing]]).
+  - The reverse-video project header is the loudest element on screen — the
+    opposite of the requested tame/faint repo rendering.
 
 ## Proposal
 
