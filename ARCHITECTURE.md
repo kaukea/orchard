@@ -139,32 +139,45 @@ bus (per repo) ──observed──> sidebar_model ──Fleet──> sidebar.py
   (ask any agent, or `/orchard hide <name>`/`show`) and persists across remounts.
   `$ORCHIDS_SIDEBAR_REPOS` survives only as an explicit manual override. State is
   attributed by message sender and accumulated in memory, so it survives the
-  bus's ephemerality; a sender's state is evicted once its terminal lifecycle
-  signal is observed (paired with the exit-grace contract above so a killed
-  agent's row still clears). Updates are event-driven (inotify), never polled.
+  bus's ephemerality; a sender's state is evicted one scan after an `abandoned`
+  terminal signal (paired with the exit-grace contract above so a killed agent's
+  row still clears), but a `finished`/done feature is instead RETAINED for the
+  life of the sidebar so its completed row never leaves the current view
+  (Decision, 2026-07-24). Updates are event-driven (inotify), never polled.
 - **Renders** a repo → feature → sub-agent tree, plus one collapsed, dimmed bus
-  row per live parent. Every status glyph is STATIC — no spinner, no flashing
-  row, layout never shifts with state — across six non-overlapping states:
-  working 🚧, waiting ⌚ (❓ variant specifically while waiting on the operator),
-  idle ⚪, awaiting-another-agent 🪷, done ✅, failed ❌ (never done's glyph/color).
-  A scroll offset follows the selected row once the tree exceeds the pane's
-  height. The project header is a static half-block colour-gradient bevel (the
-  classic orchid family), flat light-gray instead for a paused project. Each
-  live agent gets a stable colour from an 8-entry orchid-species palette,
-  degrading gracefully on a limited terminal. Truncated text ends in an ellipsis,
-  never a hard cut. Role names appear nowhere; structure carries the role.
+  row per live parent. A project with no live session (no orchestrator session
+  and no feature) is not rendered at all — no empty header groups. Feature rows
+  compose `<dim repo>/<bright name>` so the name dominates and the repo recedes;
+  truncation keeps the name side (eliding the repo from the left with a leading
+  ellipsis) and the activity is secondary, filling only leftover width. Status
+  is STATE-DRIVEN: most glyphs are static across the settled states — waiting ⌚
+  (❓ variant while waiting on the operator), idle ⚪, awaiting-another-agent 🪷,
+  done ✅, failed ❌ (never done's glyph/color); a sub-agent row shows a presence
+  dot ● (its only verifiable state) and vanishes when done; a project header
+  carries no status glyph. Two states animate, curses-only: an actively-working
+  feature glyph spins and a waiting-on-operator row blinks (never triggered by a
+  message merely arriving); the pure text/`--dump` path stays fully static.
+  Done features sort to the top of their project group (green). A scroll offset
+  follows the selected row once the tree exceeds the pane's height. The project
+  header is a half-block colour-gradient bevel (the classic orchid family) that
+  renders on any 256-colour terminal — mapping each gradient step to the nearest
+  xterm-256 index when the terminal cannot redefine colours — flat light-gray
+  instead for a paused project. Each live agent gets a stable colour from an
+  8-entry orchid-species palette, degrading gracefully on a limited terminal.
+  Role names appear nowhere; structure carries the role.
 - **Navigates** by matching the tmux window name — the bare repository name for a
-  repository's orchestrator, `<repo> ▸ <human name>` for a feature (the
+  repository's orchestrator, `<repo>/<human name>` for a feature (the
   session-naming display forms, Decision-032). The human name is read from the
   board's authored short title (`docs/TODO.md`) / sidecar H1 — never a runtime
   grammar transform — falling back to the mechanical hyphen-to-space form only
   pre-intake (`tools/feature_name.py`, one helper, every title call site).
   Switching the client happens on Enter. Windows carry the human-readable
   identity. Teardown and reaping key off a stable `@arch_id` tmux **window**
-  user-option, set on the architect window at launch — immune to the live
-  status-glyph indicator that clobbers pane titles. `arch:<id>` survives only as
-  a non-load-bearing human hint on the pane title. `@arch_id` is the small stable
-  handle contract the sidebar mount also consumes.
+  user-option, set on the architect window at launch. Pane titles are pinned at
+  every launch site with `allow-rename off` + `automatic-rename off` so no pane
+  flickers between its title, nothing, and `bash`; `arch:<id>` remains a
+  human-hint pane title, and `@arch_id` is the small stable handle contract the
+  sidebar mount also consumes.
 - **Mounted automatically** at the orchestrator's own boot, in addition to the
   existing per-architect-spawn mount — no manual step either way
   (`tools/sidebar-mount.sh`, idempotent).
