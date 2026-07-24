@@ -333,6 +333,22 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   axes for the redesign — (1) reduce traffic, (2) enforce conformance,
   (3) encrypt, (4) support cloud agents. Discussion round opened with the
   orchestrator; axes are his, mechanisms under discussion.
+- CLOUD-LEG FACTS (round 3, 2026-07-25). Operator: GitHub-hosted cloud
+  agents already have an update-subscription channel from GitHub; the
+  Claude side was unknown. Verified against current docs (claude-code-
+  guide agent): (a) Claude Code on the web accepts inbound push via
+  Channels — MCP-based channel plugins, custom plugins allowed, two-way
+  while the session is open (code.claude.com/docs/en/channels.md);
+  (b) remote subagents spawned from a local session are parent-mediated
+  only — no external contact surface, and none needed (the parent is on
+  the bus); (c) API Managed Agents accept full inbound push — POST
+  user.message / user.interrupt events to a session by id, multi-turn
+  (platform.claude.com/docs/en/managed-agents/events-and-streaming.md);
+  (d) ALL flavours have egress and can poll (GitHub API, object store,
+  HTTPS). Consequence noted for the design: the remote leg is per-flavour
+  ADAPTERS on the daemon — GitHub events, session-events API, a custom
+  channel plugin — with polling as the universal fallback; envelopes
+  crossing GitHub or the API get sealed + signed.
 
 DESIGN-FIRST RULE (operator, 2026-07-24): the VISUAL is agreed before any
 build — a rendered mock the operator adjusts until it is right; the approved
