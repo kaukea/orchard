@@ -136,6 +136,11 @@ class Repo:
     status: str
     waiting_on_operator: bool
     paused: bool = False
+    # True when the repo has at least one live session (an orchestrator session
+    # or any feature). A repo with no live session is not rendered (the sidebar's
+    # flatten() skips it). Defaults True so hand-built Repo() test fixtures render
+    # as before unless a test opts out; _assemble_repo() sets the real value.
+    has_session: bool = True
     features: list[Feature] = field(default_factory=list)
     bus: Bus | None = None
 
