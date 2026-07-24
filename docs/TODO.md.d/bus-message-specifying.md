@@ -369,6 +369,16 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   last-value dedup for status), sender identity gets STAMPED by the
   daemon rather than claimed, and attention (notify) becomes a property
   of the message CLASS — the three interrupts — never a sender flag.
+- COURSE CORRECTION (round 5, 2026-07-25): the operator rejected the
+  orchestrator's daemon-first framing — the script has no checks, checks
+  have never been TRIED, and a passing "cloud agents later" is not
+  licence to replace the system. Standing proposal (orchestrator, NOT
+  ruled): harden `bus.py` IN PLACE — validate against the message
+  registry at accept, skip delivery of identical unconsumed repeats
+  (no file, no inotify event, no wake), derive notify from message
+  class, canonicalize sender to session id; topics as a thin evolution
+  of the same spool dirs. Encryption and cloud legs stay dictation
+  items for when they are due.
 
 DESIGN-FIRST RULE (operator, 2026-07-24): the VISUAL is agreed before any
 build — a rendered mock the operator adjusts until it is right; the approved
