@@ -1,0 +1,71 @@
+- created: 2026-07-25
+- created_by: Sebastien Lambla
+- created_during: orchestrator session (operator order, absolute priority)
+
+## Blockers
+
+- None.
+
+## Questions
+
+- None open. Root cause and fix are known; this is a mechanical corrective
+  the charter-only delivery never applied.
+
+## Findings
+
+- OPERATOR ORDER (2026-07-25), verbatim intent: the recurring dead-inbox /
+  orphaned-folder "big problem" is NOT a real problem — it is a symptom of the
+  bus never closing properly, and it has been raised before and still not
+  dealt with. Make this ABSOLUTE PRIORITY. The proposed reaper is REJECTED: a
+  reaper would only exist to delete the folders that collect and listen
+  (the inbox spool + the monitor), and those only orphan because proper close
+  does not run. Fix the close, not the litter.
+- ROOT CAUSE: session/agent close kills the bus's MONITOR (the `inotifywait`
+  watcher) directly, instead of WAKING the bus sidecar with a close/release
+  message so it can run its own teardown. Killed externally, the bus never
+  gets to: delete its inbox folder, discard remaining content, verify its
+  watcher is dead, and depart. So the inbox folder and its accumulated
+  messages are left behind — the 244-file `ac9f36c6` orphan and every "dead
+  inbox" complaint since.
+- PRIOR ART — this was already ruled and only half-delivered:
+  - Decision-041 (self-teardown at close; a bus is RELEASED by parent close or
+    self-exits when ORPHANED) — charters only, no mechanical enforcement.
+  - Decision-046 (active-wake): a bus blocked on its monitor must be WOKEN by
+    an inbound message and tear its monitor down ITSELF; killing the monitor
+    externally leaves the bus asleep forever. Delivered on f/agent-closing as
+    D2 = CHARTER TEXT in agents/bus.md only, explicitly marked
+    UNVERIFIED-until-live. The mechanical close path was never changed to
+    send the wake, so charter text telling the bus to wake never fires.
+  - First live observation (2026-07-21, agent-closing sidecar §Testing)
+    already recorded the monitor OUTLIVING the departed bus — evidence the
+    charter-only fix did not hold.
+- The whole [[bus-message-specifying]] "dead inbox" evidence trail
+  (exhibits, the 244-file census, the cost model) traces to THIS bug, not to
+  a delivery-model flaw. Closing this removes the symptom the redesign kept
+  tripping over. Related: [[bus-singleton]], [[window-closing-owning]],
+  [[agent-closing]], [[message-bus]].
+
+## Proposal
+
+Make close mechanically WAKE the bus, and let the bus delete its own folders.
+One corrective:
+- The close path (whatever retires a session — architect-teardown,
+  orchestrator retirement, orphan handling) sends the bus an inbound
+  release/close message instead of killing its monitor process.
+- On that wake the bus runs its existing teardown: stop the watcher, VERIFY it
+  is gone, `bus.py teardown` its inbox folder (removing the folder that
+  collects) and depart.
+- The orphan path (parent already dead, no wake possible) is the one place a
+  swept cleanup is legitimate — bounded to that case only, not a general
+  reaper.
+- No new reaper, no TTL sweeper, no daemon.
+Scope to agree at dispatch; the fix touches the teardown scripts and the bus
+charter's wake mechanics, not the transport grammar.
+
+## Testing
+
+To agree at dispatch — expected shape: drive a real feature close and observe
+(tmux list-panes + bus roster + spool listing) that after `THAT IS ALL` /
+`ALL IT IS` no bus inbox folder, monitor process, pane, or session of the
+closed feature remains. This is the live-close observation Decision-046 was
+left waiting on; it is the gate.

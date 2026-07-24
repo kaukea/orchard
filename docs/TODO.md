@@ -97,6 +97,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `bug · cancelled · · complete · process ·` [~~Architect skips its delegation contract: builds without dispatching builders~~](TODO.md.d/architect-delegation.md) ~handover-contract
 - `feature · done · · complete/interactive · process ·` [Message bus: repo-scoped agent-to-agent messaging via a bus sidecar](TODO.md.d/message-bus.md) ~hook-choreography ~cross-repo-inbox
 - `refactor · todo · · working · process ·` [Bus message specifying: tighten the vocabulary, fix what each agent sends](TODO.md.d/bus-message-specifying.md) ~message-bus ~fleet-documenting ~sidebar-witnessing ~sidebar-titling ~orchard-renaming
+- `bug · todo · critical · plan-ready · process ·` [Bus close actually cleans up: wake the bus to close, never kill its monitor](TODO.md.d/bus-close-cleanup.md) ~agent-closing ~bus-singleton ~window-closing-owning ~message-bus ~bus-message-specifying
 - `bug · todo · critical · plan-ready · process ·` [Bus singleton: exactly one bus sidecar per agent, as designed](TODO.md.d/bus-singleton.md) ~message-bus ~sidebar-polish ~agent-closing
 - `feature · todo · nice-to-have · queued · process ·` [Bus recycling: a deep bus warns its host and hands over to a fresh one](TODO.md.d/bus-recycling.md) ~bus-singleton ~message-bus
 - `housekeeping · todo · idea · queued · process ·` [Fleet documenting: agent wiki pages; channels with JSON Schemas](TODO.md.d/fleet-documenting.md) ~message-bus ~operator-interacting ~digest-identity
