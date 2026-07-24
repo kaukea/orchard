@@ -1,0 +1,7 @@
+session: 20260724-1833-architect · agent: architect · date: 2026-07-24 · feature: psychometric-discovery
+deviations:
+  - rule: one session carries a feature to its close · what: predecessor session killed by a tmux crash between the passed live test and the close; successor finished staging and the handshake from the stream log alone · why: external tmux failure, no rule bent — recorded so the two-session close is visible
+    change: none — the rolling-log protocol held exactly as designed
+  - rule: activity broadcasts are phase labels · what: an orchid:activity:Closing broadcast was interpreted by the session's own bus as a departure signal · why: the label collides with lifecycle close vocabulary
+    change: reserve lifecycle words (closing, done, finished) for signals and use distinct phase wording, or have the bus treat only typed lifecycle signals as lifecycle
+token_saver: the predecessor's rolling ledger and already-staged Changelog/Decision blocks let this successor close in one pass with zero re-derivation; the next biggest cut would be a per-close checklist pointer in the sidecar so a successor need not reload the AGENTS.files.md format sections
