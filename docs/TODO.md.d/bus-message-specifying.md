@@ -326,6 +326,16 @@ bend the visual to match what they want to build. Mock round in progress —
 the approved frame's exact rendering (glyphs, ANSI codes, layout) is to be
 captured here as the design when the operator signs it off.
 
+- Audit exhibits #5/#6 (live, this build, for [[zombie-revival]] /
+  [[sidebar-witnessing]] / the delivery-model redesign): (#5) sidebar-titling's
+  broadcasts reached this session while a directed send to it first resolved
+  "not on the bus", then a later directed send was delivered and answered —
+  broadcast and directed delivery disagreed about the same live agent. (#6)
+  this session's own bus sidecar self-released mid-session without a release
+  order, leaving the inbox registered — addressable but deaf, the dead-inbox
+  shape reproducing in production; replacement sidecar spawned. The registry
+  still lists ac9f36c6 (yesterday's crash orphan).
+
 ## Frozen build plan (architect, 2026-07-24, under the FULL-GO mandate)
 
 WIRE GRAMMAR v1 — the specified vocabulary (canonical spec text ships in
@@ -384,7 +394,110 @@ Steps 1–4 parallel builders (wave 1); 5–6 wave 2; 7 wave 3; 0 and 8 inline.
 
 ## Operator requests
 
-- (none received mid-build yet)
+- (2026-07-24, orchestrator relay, mid-build): the operator ordered an as-built
+  inventory of every bus message format — now README.md §"Bus messages, as
+  built" on main (ddccbc5, postdates my branch point); load-bearing for the
+  audit half. Two findings to honour: (a) no single send path exists (agent
+  defs mandate direct bus.py broadcast; nothing blocks tools); (b) the
+  repeated "awaiting operator (native prompt)" broadcasts match no codebase
+  string — sidecar improvisation. Directives: declare CONSUMERS per message
+  class in the vocabulary; expect single-choke-point sending to be imposed in
+  the operator's forthcoming delivery-model redesign. → status: in progress
+  (consumers-per-class + sidecar-improvisation ban being folded into the
+  spec; choke-point expectation recorded for the redesign, not built here).
+  → RESOLVED at close: IMPLEMENTED — consumers declared per class in
+  agents/bus.md's grammar table; sidecar-improvised wire text banned there
+  with the finding cited; `bus.py validate` separates violations from
+  free-prose warnings so the redesign sees the send-path looseness; live
+  baseline measured (247 violations/411 envelopes) and recorded in the
+  staged Readme delta. DEFERRED BY THE OPERATOR'S OWN DESIGN: the single
+  choke-point send path itself — his delivery-model redesign owns it;
+  returned in Result as a follow-up.
+
+## Changelog entry
+
+(rolling — folds grow as build steps land; verbatim placement at ingest)
+
+- 🔊 The bus vocabulary is now specified: `agents/bus.md` carries WIRE GRAMMAR
+  v1 — five wire classes (`orchid:status`, `orchid:update`, `orchid:phase`,
+  `orchid:subagent:{queue,start,done}`, `orchid:interrupt:question`), each
+  with a declared consumer and notify-user legality; exactly three derived
+  operator interrupts (QUESTION ⇐ ask, SUCCEEDED ⇐ done/finished, FAILED ⇐
+  abandoned/blocked+notify); status words denylisted against lifecycle terms;
+  legacy `orchid:activity:*` retired to a one-release parse fallback.
+- 🔊 The send audit: orchestrator, architect, groomer, and bloomer contracts
+  rewritten off free-form activity broadcasts onto the wire grammar —
+  change-only status words, log-targeted updates, phase-spine emissions,
+  subagent markers, and operator questions exclusively via the queued
+  `bus.py ask` broker. Sidecar-improvised wire text (the "awaiting operator
+  (native prompt)" rebroadcasts from the operator's as-built audit) is
+  banned; the ban is the interim send choke point pending the delivery-model
+  redesign.
+- ✨ `bus.py` enforces the grammar mechanically on send/broadcast: any
+  `orchid:*` body parses against the five closed classes, malformed or
+  unknown bodies are rejected naming the allowed classes, hand-composed
+  interrupts are refused (ask is their only emitter), and `--notify-user` is
+  restricted to questions and the notify-legal lifecycle states
+  (done/blocked/abandoned). `bus.py ask` emits
+  `orchid:interrupt:question:<subject>`; the question broker needed no
+  change (it matches on `question_id`, never body text).
+- 📡 The sidebar model consumes the vocabulary: status words (legacy
+  `orchid:activity` as a one-release fallback), updates, the five-phase
+  spine with a derived `progress_pct`, queued/running subagent counts, and
+  open questions; a new `interrupt` field carries the only three
+  operator-summoning states, and identical consecutive body+notify
+  signatures are dropped — a repeated waiting broadcast can never summon
+  twice.
+- 🦺 `bus.py validate [PATH|stdin]` audits recorded traffic against the
+  vocabulary — violations (unknown classes, illegal notify, notify-carrying
+  free-prose broadcasts, the retired activity form) exit 1; undirected
+  free-prose broadcasts surface as warnings for the send-path redesign.
+  Role-traffic tests emulate one session per role through the real CLI and
+  prove each contract's sequence yields zero violations.
+- 🎨 The sidebar renders the approved display grammar: per-repo hue triples
+  with deterministic fallback, feature names drawn over the progress fill
+  with the lifted-band sweep as the frame's single animated element, the
+  small-caps phase label, the NBSP-glued identity line on the model colour
+  ramp, the five-phase checklist with inline subagent dots, dim-amber `?N`
+  badges with why-lines, guide-line footers, and data-driven role-emoji /
+  location-badge maps so the two pending emoji picks drop in without code
+  changes.
+- ⚡ Footer and identity data flow from zero-token deterministic sources
+  only — the announce identity, the session transcript through the bus token
+  estimators (which also backfills the model id the identity deliberately
+  omits), and feature-branch commit timestamps for the age-vs-worked stat —
+  behind a 30-second cache so a scan never spawns per-tick subprocesses.
+  Done features close with the collapsed one-line footer.
+- 🧪 An emulator frame check runs the real curses sidebar in a detached tmux
+  pane against a fixture reproducing the approved frame and asserts the
+  rendered glyphs, colours (through the renderer's own xterm256 mapping),
+  fill percentage, checklist, dots, and question badge — the design
+  contract's visual proof, executable in CI.
+
+## Readme delta
+
+(for readme-sync at ingest — replaces/extends README.md §"Bus messages, as
+built", which stays as the recorded baseline)
+
+After the as-built table, add:
+
+**Bus messages, as specified (WIRE GRAMMAR v1).** The free-form layer above
+is retired. Canonical spec: `agents/bus.md`; mechanical enforcement:
+`tools/bus.py` (send and broadcast reject any `orchid:*` body outside the
+grammar). Five classes, each with a declared consumer: `orchid:status:<word>`
+(one/two agent-chosen doing-words, on change only), `orchid:update:<sentence>`
+(log/cockpit-targeted), `orchid:phase:<phase>[:<k>/<n>]` (the five-phase spine
+the sidebar turns into a live percentage), `orchid:subagent:queue|start|done:
+<label>` (counts are the message), `orchid:interrupt:question:<subject>`
+(emitted only by `bus.py ask`). Exactly three DERIVED interrupts may summon
+the operator — QUESTION ⇐ ask, SUCCEEDED ⇐ done/finished, FAILED ⇐
+abandoned/blocked+notify; `--notify-user` is illegal anywhere else, and
+sidecars never author wire text of their own. `bus.py validate [PATH]` audits
+recorded traffic (run against the live bus on 2026-07-24 it measured the old
+grammar at 247 violations across 411 envelopes — the baseline this spec
+retires). The sidebar renders the approved cockpit grammar: solid hue
+headers, one-line feature rows over a progress fill, phase checklist,
+identity line, subagent dots, `?N` question badges, and zero-token footers.
 
 ## Decision entries
 
@@ -436,3 +549,42 @@ folds second resolves the overlap trivially by content identity.
 
 To agree when bloomed — expected shape: a session of each role runs and its
 bus traffic validates against the specification with no unspecified message.
+
+EXECUTED (2026-07-24, full-go build — real results):
+- Role-session traffic validation (the agreed shape): tests/test_bus_traffic.py
+  emulates one session per role (orchestrator, architect, groomer, bloomer)
+  through the real bus.py CLI into a sandboxed bus root; `bus.py validate`
+  over each root → ZERO violations. Negative cases prove the boundary: the
+  improvised "awaiting operator (native prompt)" notify broadcast, and
+  `orchid:activity:Closing`, are both flagged; directed free prose is not.
+- Grammar enforcement: tests/test_bus.py (71) — every class's valid and
+  rejected forms, notify legality per class and per lifecycle state, ask
+  body. LIVE check: orchid:activity:Closing, notify-on-status, and a
+  lifecycle-colliding status word all refused by the real CLI; new-grammar
+  sends accepted (this session flipped mid-build and ran on it).
+- Emulator frame check (design contract): tests/test_sidebar_frame.py runs
+  the real curses renderer in a detached tmux pane against the approved
+  frame's scenario — glyphs, hue/ramp colours, 62% fill, small-caps label,
+  ●●●○○ dots, ?1 badge + why-line all asserted; RAN (tmux 3.5a), not skipped.
+- Full suite: 349 passed, 8 subtests, 0 failed (python3 -m pytest tests/ -q).
+- Live audit over the real bus root: 247 violations, 3 warnings across 411
+  envelopes — all pre-spec legacy traffic; the measured baseline this spec
+  retires.
+
+Result: done · branch f/bus-message-specifying · HEAD 90bca0a (+ docs commit
+to follow) · all four defect classes from Findings closed by construction
+(free-form wording → closed classes; duplicate notifies → change-only rule +
+model dedup; lifecycle collision → denylist + structural separation;
+question path → ask-broker only). Follow-ups returned to the orchestrator:
+(1) single choke-point send path — operator's delivery-model redesign owns
+it (deferred by design); (2) bus.py status_of(session_id) refactor to retire
+sidebar_model._read_status's parameterized duplication; (3) KITT-scanner
+sweep polish — the operator's explicit return-marker debt, scheduled
+refinement pass; (4) legacy orchid:activity parse fallback removal after one
+transition release; (5) pending orchestrator/architect emoji picks drop into
+the data map when the operator rules; (6) exhibits #5/#6 (broadcast vs
+directed delivery disagreement; sidecar self-release leaving a deaf
+registered inbox) as live evidence for [[zombie-revival]] /
+[[sidebar-witnessing]] / the redesign. Sub-agents: 6 explorers + 8 builders
+dispatched, all returned; bus sidecar #1 self-released (exhibit #6),
+replaced by #2.

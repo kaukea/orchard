@@ -107,10 +107,19 @@ session ──spawns──> bus sidecar ──announce──> every peer's inbox
   mutable — context occupancy and token spend) are answered by the sidecar off the
   parent's transcript, so they cost the parent no context and keep answering while
   it is busy or wedged.
-- Agents also **broadcast their live activity** as ordinary dynamic messages —
-  `orchid:activity:<text>` on each change, and `orchid:subagent:start|done:<label>`
-  around a sub-agent — which the fleet sidebar renders. No new mechanism: these are
-  plain broadcasts on the same bus.
+- Agents **broadcast on a specified vocabulary** — WIRE GRAMMAR v1, canonical in
+  `agents/bus.md`, mechanically enforced by `bus.py` (any other `orchid:*` body is
+  rejected at send). Five classes, each with a declared consumer:
+  `orchid:status:<word>` (one/two agent-chosen doing-words, on change only),
+  `orchid:update:<sentence>` (log/cockpit-targeted), `orchid:phase:<phase>[:<k>/<n>]`
+  (the five-phase spine ideation→scoping→designing→building→releasing, from which
+  the sidebar derives a live percentage), `orchid:subagent:queue|start|done:<label>`
+  (counts are the message), and `orchid:interrupt:question:<subject>` (emitted only
+  by `bus.py ask`). Exactly three DERIVED interrupts may summon the operator —
+  QUESTION ⇐ ask, SUCCEEDED ⇐ done/finished, FAILED ⇐ abandoned/blocked+notify —
+  and `--notify-user` is illegal everywhere else. Sidecars never author wire text
+  of their own. `bus.py validate` audits recorded traffic against the grammar.
+  No new mechanism: plain broadcasts on the same bus.
 - **Operator approvals relay** as a distinct operator-origin class: an approval
   typed outside an agent's own window (e.g. in the orchestrator pane) is forwarded
   verbatim with an `operator_origin` flag, which a gate-waiting agent accepts as the
@@ -142,11 +151,20 @@ bus (per repo) ──observed──> sidebar_model ──Fleet──> sidebar.py
   bus's ephemerality; a sender's state is evicted once its terminal lifecycle
   signal is observed (paired with the exit-grace contract above so a killed
   agent's row still clears). Updates are event-driven (inotify), never polled.
-- **Renders** a repo → feature → sub-agent tree, plus one collapsed, dimmed bus
-  row per live parent. Every status glyph is STATIC — no spinner, no flashing
-  row, layout never shifts with state — across six non-overlapping states:
-  working 🚧, waiting ⌚ (❓ variant specifically while waiting on the operator),
-  idle ⚪, awaiting-another-agent 🪷, done ✅, failed ❌ (never done's glyph/color).
+- **Renders the approved display grammar** (fixed visual contract: the blessed
+  mock archived with the bus-message-specifying stream). Repo headers are solid
+  per-repo hue blocks; a feature is ONE line — its name drawn over the progress
+  fill derived from the phase channel, right-aligned percentage, dim-amber `?N`
+  badge when questions wait (never red). One circle family carries state: ✓ done
+  (green, sorted to top, retained), ⠧ active, ○ waiting/todo — no watch or timer
+  glyphs. The live feature line carries the frame's single animated element, a
+  bidirectional lifted-band sweep; beneath it the small-caps phase label, the
+  NBSP-glued identity line (status word ⋮ role ⋮ model on the model colour ramp),
+  the five-phase checklist with inline subagent dots (● running, ○ queued —
+  count is the information; done subagents vanish), and dim guide-line footers
+  (age vs worked, tokens/dollars — deterministic zero-token local sources).
+  Role-emoji and location-badge maps are data-driven so pending picks drop in
+  without code changes.
   A scroll offset follows the selected row once the tree exceeds the pane's
   height. The project header is a static half-block colour-gradient bevel (the
   classic orchid family), flat light-gray instead for a paused project. Each
