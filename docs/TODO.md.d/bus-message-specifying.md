@@ -268,6 +268,21 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   placement pick, flagged for veto: the dots move inline onto the
   checklist's active phase line ("⠧ building ●●●○○"), the workforce shown
   inside the phase it works.
+- ROUND 10 (operator): small-caps phase label opens the sub-block for
+  segregation; blank guide lines between segments — vertical breathing is
+  mandated; the model name is NEVER alone on a line — truncate it
+  (mid-string or entirely) rather than wrap it.
+- PHASE APPROVAL (operator, 2026-07-25): "the rest works for me — good to
+  go for this phase." ONE RECORDED DEBT, his explicit return-marker: the
+  sweep is still not the KITT effect he specifically requested — KITT the
+  car's scanner (bright core with a trailing fade sweeping side to side)
+  in the existing colour scheme, not a flat lifted block. To be polished
+  in a third/fourth pass; DO NOT let this drop — he asked twice that we
+  get back to it.
+- Design-contract capture pending: once round 10 renders, the approved
+  frame (glyphs, exact colours, layout) and the mock renderer are to be
+  preserved as the fixed visual contract; mock script currently at
+  scratchpad/sidebar-mock.py, to be staged durably with this task.
 
 DESIGN-FIRST RULE (operator, 2026-07-24): the VISUAL is agreed before any
 build — a rendered mock the operator adjusts until it is right; the approved
