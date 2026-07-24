@@ -1,7 +1,8 @@
-"""Unit tests for tools/sidebar.py's pure presentation layer: flatten() and
-render_lines(). No curses involved — these are plain functions over
-dataclasses, exactly the split the module's own docstring calls out as what
-gets tested.
+"""Unit tests for tools/sidebar.py's pure presentation layer: flatten(),
+render_lines(), and the display-grammar composition helpers added for the
+mock's visual contract (bus-message-specifying B5). No curses involved —
+these are plain functions over dataclasses, exactly the split the module's
+own docstring calls out as what gets tested.
 
 Runs under both `python3 -m unittest discover` and `pytest`; stdlib only.
 """
@@ -53,6 +54,30 @@ class FlattenTests(unittest.TestCase):
         self.assertTrue(sub_row.is_subagent)
         self.assertFalse(feature_row.is_subagent)
         self.assertFalse(repo_row.is_subagent)
+
+    def test_feature_row_carries_display_grammar_fields(self):
+        # bus-message-specifying B5: flatten() copies the wire-grammar
+        # fields onto the Row so the curses draw path never reaches back
+        # into the model, plus a `source` pointer for optional fields.
+        fleet = _fleet()
+        feature = fleet.repos[0].features[0]
+        feature.phase = "building"
+        feature.progress_pct = 62
+        feature.subagents_running = 3
+        feature.subagents_queued = 2
+        feature.question_count = 1
+        feature.first_question_subject = "scope fork"
+        feature.status_word = "writing"
+
+        feature_row = next(r for r in sidebar.flatten(fleet) if r.kind == "feature")
+        self.assertEqual(feature_row.phase, "building")
+        self.assertEqual(feature_row.progress_pct, 62)
+        self.assertEqual(feature_row.subagents_running, 3)
+        self.assertEqual(feature_row.subagents_queued, 2)
+        self.assertEqual(feature_row.question_count, 1)
+        self.assertEqual(feature_row.first_question_subject, "scope fork")
+        self.assertEqual(feature_row.status_word, "writing")
+        self.assertIs(feature_row.source, feature)
 
     def test_bus_row_is_first_in_its_parents_group(self):
         fleet = _fleet()
@@ -118,8 +143,8 @@ class FlattenTests(unittest.TestCase):
 
 class RenderLinesTests(unittest.TestCase):
     def test_status_emoji_per_feature_row(self):
-        # status glyphs now live on FEATURE rows -- a repo header carries
-        # none (sidebar-titling item 4). Looked up by which line contains the
+        # status glyphs live on FEATURE rows -- a repo header carries none
+        # (sidebar-titling item 4). Looked up by which line contains the
         # feature's name rather than by position, since done-first sorting
         # (item 7) reorders the "done" row ahead of the others.
         statuses = ["working", "waiting", "idle", "awaiting_agent", "done", "failed"]
@@ -133,7 +158,7 @@ class RenderLinesTests(unittest.TestCase):
         ])
         lines = sidebar.render_lines(fleet, width=64)
         for status in statuses:
-            line = next(l for l in lines if f"/{status}" in l)
+            line = next(l for l in lines if status in l)
             self.assertIn(sidebar.STATUS_EMOJI[status], line)
 
     def test_repo_header_has_no_leading_status_glyph(self):
@@ -145,10 +170,34 @@ class RenderLinesTests(unittest.TestCase):
         for glyph in sidebar.STATUS_EMOJI.values():
             self.assertNotIn(glyph, lines[0])
 
-    def test_feature_row_renders_repo_slash_name(self):
-        # sidebar-titling item 2: "<repo>/<name>" composition.
+    def test_feature_row_renders_the_name_without_a_repo_prefix(self):
+        # bus-message-specifying B5: the mock's feature row shows only the
+        # feature's own name -- the repo is already named by the header
+        # block above its group, so the row no longer repeats it (this
+        # replaces the sidebar-titling "<repo>/<name>" row composition).
         lines = sidebar.render_lines(_fleet(), width=64)
-        self.assertIn("repoA/feat one", lines[1])
+        self.assertIn("feat one", lines[1])
+        self.assertNotIn("repoA/feat one", lines[1])
+
+    def test_done_feature_row_shows_check_and_percentage(self):
+        fleet = _fleet()
+        fleet.repos[0].features[0].status = "done"
+        fleet.repos[0].features[0].progress_pct = 100
+        lines = sidebar.render_lines(fleet, width=64)
+        self.assertIn(sidebar.STATUS_EMOJI["done"], lines[1])
+        self.assertIn("100%", lines[1])
+
+    def test_question_count_badge_appears_before_percentage(self):
+        fleet = _fleet()
+        fleet.repos[0].features[0].question_count = 1
+        fleet.repos[0].features[0].progress_pct = 40
+        lines = sidebar.render_lines(fleet, width=64)
+        self.assertIn("?1", lines[1])
+        self.assertLess(lines[1].index("?1"), lines[1].index("40%"))
+
+    def test_no_badge_when_no_open_questions(self):
+        lines = sidebar.render_lines(_fleet(), width=64)
+        self.assertNotIn("?", lines[1])
 
     def test_done_and_failed_glyphs_are_distinct(self):
         # explicit operator correction: never the same encoding for done vs
@@ -157,8 +206,10 @@ class RenderLinesTests(unittest.TestCase):
         self.assertNotEqual(sidebar.STATUS_EMOJI["done"], sidebar.STATUS_EMOJI["failed"])
 
     def test_idle_waiting_and_awaiting_agent_intentionally_share_the_hollow_circle(self):
-        # visual contract (sidebar-titling OVERRIDE 2): one circle family --
-        # idle/component-wait/awaiting-agent collapse to the same glyph.
+        # visual contract (sidebar-titling OVERRIDE 2, reaffirmed by the
+        # mock -- bus-message-specifying B5 item 7): one circle family --
+        # idle/component-wait/awaiting-agent collapse to the same glyph, and
+        # there is no longer a separate operator-wait glyph variant either.
         self.assertEqual(sidebar.STATUS_EMOJI["idle"], "○")
         self.assertEqual(sidebar.STATUS_EMOJI["waiting"], "○")
         self.assertEqual(sidebar.STATUS_EMOJI["awaiting_agent"], "○")
@@ -170,26 +221,27 @@ class RenderLinesTests(unittest.TestCase):
         }
         self.assertEqual(len(distinguishable), 4)
 
-    def test_waiting_on_operator_shows_question_mark_variant(self):
+    def test_waiting_rows_render_the_same_hollow_circle_regardless_of_operator_flag(self):
+        # bus-message-specifying B5 item 7: "hollow circle only -- no
+        # watch/timer glyphs anywhere in row status" -- waiting_on_operator
+        # no longer selects a different glyph (that distinction moved to the
+        # ?N badge / question-detail lines).
         fleet = _fleet()
         fleet.repos[0].features[0].status = "waiting"
-        fleet.repos[0].features[0].waiting_on_operator = True
-        lines = sidebar.render_lines(fleet, width=64)
-        self.assertIn(sidebar.WAITING_ON_OPERATOR_EMOJI, lines[1])
-        self.assertNotIn(sidebar.STATUS_EMOJI["waiting"], lines[1])
 
-    def test_waiting_without_operator_flag_shows_hollow_circle(self):
-        fleet = _fleet()
-        fleet.repos[0].features[0].status = "waiting"
+        fleet.repos[0].features[0].waiting_on_operator = True
+        operator_wait_line = sidebar.render_lines(fleet, width=64)[1]
+
         fleet.repos[0].features[0].waiting_on_operator = False
-        lines = sidebar.render_lines(fleet, width=64)
-        self.assertIn(sidebar.STATUS_EMOJI["waiting"], lines[1])
-        self.assertNotIn(sidebar.WAITING_ON_OPERATOR_EMOJI, lines[1])
+        component_wait_line = sidebar.render_lines(fleet, width=64)[1]
+
+        self.assertIn(sidebar.STATUS_EMOJI["waiting"], operator_wait_line)
+        self.assertIn(sidebar.STATUS_EMOJI["waiting"], component_wait_line)
 
     def test_no_animation_same_state_renders_identically_across_calls(self):
-        # no spinner_frame/flash_on parameters exist any more -- a repeated
-        # render of the SAME fleet must be byte-identical, and no row's
-        # glyph column may ever go blank (as the old odd-frame flash did).
+        # a repeated render of the SAME fleet must be byte-identical -- the
+        # band sweep and every other display-grammar addition is
+        # curses-only (see render_lines()'s docstring).
         fleet = _fleet()
         first = sidebar.render_lines(fleet, width=64)
         second = sidebar.render_lines(fleet, width=64)
@@ -327,80 +379,277 @@ class TruncateEllipsisTests(unittest.TestCase):
         self.assertTrue(truncated.endswith(sidebar.ELLIPSIS))
 
 
-class TruncateKeepNameTests(unittest.TestCase):
-    """sidebar-titling item 2: the name side of a "<repo>/<name>" feature row
-    must always survive truncation -- only the repo side is ever elided, and
-    always from the LEFT with a leading ellipsis."""
+class FeatureRowLayoutTests(unittest.TestCase):
+    """bus-message-specifying B5 item 2: glyph + name drawn over the
+    progress fill, right-aligned dim percentage, optional "?N" badge before
+    it. `_feature_row_layout` is the single source of truth shared by the
+    plain-text compose and the curses per-column painter."""
 
-    def test_short_composition_is_unaffected(self):
-        self.assertEqual(
-            sidebar._truncate_keep_name("orchids", "fleet sidebar", 100),
-            "orchids/fleet sidebar",
+    def test_compose_feature_row_text_lays_out_glyph_name_and_percentage(self):
+        text = sidebar.compose_feature_row_text("⠧", "sidebar titling", 62, 27)
+        self.assertTrue(text.startswith("⠧ sidebar titling"))
+        self.assertTrue(text.endswith("62%"))
+        self.assertEqual(len(text), 27)
+
+    def test_badge_is_inserted_before_the_percentage(self):
+        text = sidebar.compose_feature_row_text("○", "focus returning", 40, 40, badge="?1")
+        self.assertIn("?1 40%", text)
+
+    def test_long_name_is_truncated_before_the_tail_is_sacrificed(self):
+        text = sidebar.compose_feature_row_text(
+            "⠧", "a very very long feature name indeed", 62, 24,
         )
+        self.assertTrue(text.endswith("62%"))
+        self.assertEqual(len(text), 24)
 
-    def test_no_repo_name_is_just_the_name(self):
-        self.assertEqual(
-            sidebar._truncate_keep_name("", "fleet sidebar", 100), "fleet sidebar",
+    def test_layout_pad_width_fills_exactly_to_the_requested_width(self):
+        glyph, shown_name, pad_width, badge_text, pct_text = sidebar._feature_row_layout(
+            "✓", "bloomer v1", 100, 27, None,
         )
-
-    def test_repo_side_elided_with_leading_ellipsis_name_survives(self):
-        result = sidebar._truncate_keep_name("orchids", "fleet sidebar", 19)
-        self.assertEqual(len(result), 19)
-        self.assertTrue(result.startswith(sidebar.ELLIPSIS))
-        self.assertTrue(result.endswith("fleet sidebar"))
-
-    def test_name_alone_too_long_falls_back_to_right_truncate(self):
-        long_name = "a very very long feature name indeed"
-        result = sidebar._truncate_keep_name("orchids", long_name, 10)
-        # matches _truncate's own right-cut-with-trailing-ellipsis exactly --
-        # nothing left of the repo side to elide once the name alone overflows
-        self.assertEqual(result, sidebar._truncate(long_name, 10))
-        self.assertEqual(len(result), 10)
-        self.assertTrue(result.endswith(sidebar.ELLIPSIS))
+        used = len(glyph) + 1 + len(shown_name) + pad_width + len(badge_text) + len(pct_text)
+        self.assertEqual(used, 27)
 
 
-class FeatureRowSegmentsTests(unittest.TestCase):
-    """sidebar-titling item 2: the <repo>/<name> gets first claim on the row
-    width; the activity is secondary and fills only what is left, so a long
-    activity never starves the name."""
+class FillColsTests(unittest.TestCase):
+    """bus-message-specifying B5 item 3: fill_cols(pct, width) math, mirrors
+    the mock's `round(WIDTH * pct / 100)` exactly."""
 
-    def _feature(self, repo_name, label, activity):
-        return sidebar.Row(
-            depth=1, kind="feature", target=f"{repo_name}/{label}", label=label,
-            status="working", waiting_on_operator=False, is_subagent=False,
-            activity=activity, repo_name=repo_name,
+    def test_zero_percent_fills_nothing(self):
+        self.assertEqual(sidebar.fill_cols(0, 27), 0)
+
+    def test_hundred_percent_fills_the_whole_width(self):
+        self.assertEqual(sidebar.fill_cols(100, 27), 27)
+
+    def test_partial_percent_rounds_to_nearest_column(self):
+        self.assertEqual(sidebar.fill_cols(62, 27), round(27 * 62 / 100))
+        self.assertEqual(sidebar.fill_cols(50, 10), 5)
+
+
+class BandSweepTests(unittest.TestCase):
+    """bus-message-specifying B5 item 3: the bidirectional lifted-band sweep
+    -- band width (abs(col-pos)<=2), a triangular wave over [0, span], and
+    lifted colour = lerp(fill, white, 0.18)."""
+
+    def test_band_position_ramps_up_then_back_down(self):
+        span = 5
+        positions = [sidebar.band_position(t, span) for t in range(2 * span + 1)]
+        self.assertEqual(positions, [0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0])
+
+    def test_band_position_is_periodic(self):
+        span = 4
+        first_cycle = [sidebar.band_position(t, span) for t in range(2 * span)]
+        second_cycle = [sidebar.band_position(t + 2 * span, span) for t in range(2 * span)]
+        self.assertEqual(first_cycle, second_cycle)
+
+    def test_band_span_is_never_less_than_one(self):
+        self.assertEqual(sidebar.band_span(0), 1)
+        self.assertEqual(sidebar.band_span(1), 1)
+        self.assertEqual(sidebar.band_span(6), 5)
+
+    def test_band_column_colour_is_lifted_only_within_two_columns_of_the_band(self):
+        fill = (40, 31, 54)
+        pos = 10
+        self.assertEqual(sidebar.band_column_colour(pos, pos, 27, fill), sidebar.lifted_fill_colour(fill))
+        self.assertEqual(sidebar.band_column_colour(pos + 2, pos, 27, fill), sidebar.lifted_fill_colour(fill))
+        self.assertEqual(sidebar.band_column_colour(pos + 3, pos, 27, fill), fill)
+
+    def test_band_column_colour_is_none_past_travel_end(self):
+        self.assertIsNone(sidebar.band_column_colour(20, 10, 20, (40, 31, 54)))
+
+    def test_lifted_fill_colour_is_18_percent_toward_white(self):
+        fill = (40, 31, 54)
+        self.assertEqual(sidebar.lifted_fill_colour(fill), sidebar.lerp(fill, sidebar.WHITE, 0.18))
+
+
+class SmallCapsTests(unittest.TestCase):
+    """bus-message-specifying B5 item 4: the phase label is small-caps
+    Unicode, matching the mock's literal "ʙᴜɪʟᴅɪɴɢ" for "building"."""
+
+    def test_building_matches_the_mocks_literal_small_caps(self):
+        self.assertEqual(sidebar.small_caps("building"), "ʙᴜɪʟᴅɪɴɢ")
+
+    def test_releasing_converts_every_letter(self):
+        self.assertEqual(sidebar.small_caps("releasing"), "ʀᴇʟᴇᴀꜱɪɴɢ")
+
+    def test_non_letters_pass_through_unchanged(self):
+        self.assertEqual(sidebar.small_caps("a b-c"), "ᴀ ʙ-ᴄ")
+
+
+class IdentityLineTests(unittest.TestCase):
+    """bus-message-specifying B5 item 4: "status_word plain ⋮ role
+    dim-italic ⋮ model coloured", glued with NBSP around ⋮, model truncated
+    rather than ever wrapped alone."""
+
+    def test_full_identity_glues_segments_with_nbsp_around_the_separator(self):
+        text = sidebar.identity_line_text("writing", "architect", "opus-4.8", 100)
+        sep = sidebar.NBSP + "⋮" + sidebar.NBSP
+        self.assertEqual(text, "writing" + sep + "architect" + sep + "opus-4.8")
+
+    def test_model_is_truncated_to_the_remaining_room_not_wrapped(self):
+        doing, role, model = sidebar.compose_identity_line("writing", "architect", "opus-4.8", 24)
+        self.assertEqual(doing, "writing")
+        self.assertEqual(role, "architect")
+        self.assertTrue(model == "" or "opus-4.8".startswith(model))
+        self.assertNotIn("\n", model)
+
+    def test_role_none_omits_the_role_segment_entirely(self):
+        doing, role, model = sidebar.compose_identity_line("writing", None, "opus-4.8", 100)
+        self.assertEqual(role, "")
+        text = sidebar.identity_line_text("writing", None, "opus-4.8", 100)
+        self.assertNotIn(sidebar.NBSP + "⋮" + sidebar.NBSP + sidebar.NBSP, text)
+        self.assertIn("opus-4.8", text)
+
+    def test_model_none_omits_the_model_segment_entirely(self):
+        text = sidebar.identity_line_text("writing", "architect", None, 100)
+        self.assertEqual(text, "writing" + sidebar.NBSP + "⋮" + sidebar.NBSP + "architect")
+
+    def test_model_tier_colour_keys_off_the_family_prefix(self):
+        self.assertEqual(sidebar.model_tier_colour("opus-4.8"), sidebar.MODEL_TIERS["opus"])
+        self.assertEqual(sidebar.model_tier_colour("sonnet-5"), sidebar.MODEL_TIERS["sonnet"])
+        self.assertEqual(sidebar.model_tier_colour(None), sidebar.TEXT)
+        self.assertEqual(sidebar.model_tier_colour("unknown-model"), sidebar.TEXT)
+
+
+class PhaseChecklistTests(unittest.TestCase):
+    """bus-message-specifying B5 item 4: five-phase vertical checklist (done
+    / active / todo), the word in accent only while active."""
+
+    def test_phases_before_the_active_one_are_done(self):
+        states = dict(sidebar.phase_states("building"))
+        self.assertEqual(states["ideation"], "done")
+        self.assertEqual(states["scoping"], "done")
+        self.assertEqual(states["designing"], "done")
+        self.assertEqual(states["building"], "active")
+        self.assertEqual(states["releasing"], "todo")
+
+    def test_all_phases_are_todo_when_no_phase_is_active(self):
+        states = dict(sidebar.phase_states(None))
+        self.assertTrue(all(state == "todo" for state in states.values()))
+
+    def test_unknown_phase_name_is_treated_as_no_active_phase(self):
+        states = dict(sidebar.phase_states("not-a-real-phase"))
+        self.assertTrue(all(state == "todo" for state in states.values()))
+
+    def test_phase_order_matches_the_canonical_five_phases(self):
+        words = [word for word, _state in sidebar.phase_states("scoping")]
+        self.assertEqual(words, list(sidebar.PHASES))
+
+    def test_phase_mark_per_state(self):
+        self.assertEqual(sidebar.phase_mark("done"), "●")
+        self.assertEqual(sidebar.phase_mark("active"), "⠧")
+        self.assertEqual(sidebar.phase_mark("todo"), "○")
+
+    def test_inline_dot_counts_running_then_queued(self):
+        self.assertEqual(sidebar.phase_dot_suffix(3, 2), "●●●○○")
+        self.assertEqual(sidebar.phase_dot_suffix(0, 0), "")
+        self.assertEqual(sidebar.phase_dot_suffix(1, 0), "●")
+        self.assertEqual(sidebar.phase_dot_suffix(0, 1), "○")
+
+
+class QuestionBadgeTests(unittest.TestCase):
+    """bus-message-specifying B5 item 2/5: the "?N" badge, amber, never red;
+    presence keyed strictly on question_count > 0."""
+
+    def test_badge_absent_when_no_open_questions(self):
+        self.assertIsNone(sidebar.question_badge(0))
+
+    def test_badge_present_and_formatted_with_count(self):
+        self.assertEqual(sidebar.question_badge(1), "?1")
+        self.assertEqual(sidebar.question_badge(3), "?3")
+
+    def test_badge_colour_is_amber_never_red(self):
+        self.assertEqual(sidebar.AMBER, (0xC6, 0x98, 0x54))
+        red = (255, 0, 0)
+        self.assertNotEqual(sidebar.AMBER, red)
+
+    def test_question_count_text_pluralises(self):
+        self.assertEqual(sidebar.question_count_text(1), "1 question")
+        self.assertEqual(sidebar.question_count_text(2), "2 questions")
+        self.assertEqual(sidebar.question_count_text(0), "0 questions")
+
+
+class FooterLinesTests(unittest.TestCase):
+    """bus-message-specifying B5 item 4: footer lines render only when the
+    model actually exposes age/worked/tokens/dollars -- this step invents no
+    collection mechanism, so absent data means the lines are omitted."""
+
+    def test_footer_omitted_entirely_when_no_data_is_available(self):
+        feature = sm.Feature(
+            feature_id="f", name="f", activity="", status="working",
+            waiting_on_operator=False,
         )
+        self.assertEqual(sidebar.footer_lines(feature), [])
 
-    def test_long_activity_does_not_starve_the_name(self):
-        row = self._feature("orchids", "fleet sidebar", "a" * 200)
-        indent, glyph, repo_part, name_part, suffix = sidebar._feature_row_segments(row, 40)
-        # the whole "<repo>/<name>" survives intact no matter how long the
-        # activity is; the activity only fills the leftover space, truncated,
-        # and never pushes the total past the width budget
-        self.assertEqual(repo_part, "orchids/")
-        self.assertEqual(name_part, "fleet sidebar")
-        self.assertLessEqual(len(indent + glyph + " " + repo_part + name_part + suffix), 40)
+    def test_footer_omitted_when_source_is_none(self):
+        self.assertEqual(sidebar.footer_lines(None), [])
 
-    def test_activity_fills_only_the_remainder(self):
-        row = self._feature("orchids", "x", "building the thing")
-        indent, glyph, repo_part, name_part, suffix = sidebar._feature_row_segments(row, 40)
-        self.assertEqual(repo_part + name_part, "orchids/x")
-        self.assertTrue(suffix.startswith(" "))
-        # nothing overflows the width budget
-        self.assertLessEqual(len(indent + glyph + " " + repo_part + name_part + suffix), 40)
+    def test_footer_renders_both_lines_when_all_four_values_are_present(self):
+        class _Stats:
+            age = "3h12"
+            worked = "1h47"
+            tokens = "212k"
+            dollars = "4.12"
 
-    def test_narrow_width_keeps_name_over_repo_and_activity(self):
-        row = self._feature("orchids", "fleet sidebar", "building")
-        _, _, repo_part, name_part, suffix = sidebar._feature_row_segments(row, 20)
-        # the name side always survives; repo may be elided, activity dropped
-        self.assertTrue(name_part.endswith("sidebar") or name_part.endswith(sidebar.ELLIPSIS))
-        self.assertEqual(suffix, "")
+        lines = sidebar.footer_lines(_Stats())
+        self.assertEqual(lines, ["⏱ 3h12 ⋮ worked 1h47", "⚡ 212k ⋮ $4.12"])
+
+    def test_footer_first_line_needs_both_age_and_worked(self):
+        class _PartialStats:
+            age = "3h12"
+            worked = None
+            tokens = "212k"
+            dollars = "4.12"
+
+        lines = sidebar.footer_lines(_PartialStats())
+        self.assertEqual(lines, ["⚡ 212k ⋮ $4.12"])
+
+
+class RepoHueTests(unittest.TestCase):
+    """sidebar-titling OVERRIDE 1, hue values updated by bus-message-
+    specifying B5 to the mock's exact triples: each repo gets a fixed SOLID
+    hue triple, not a gradient. `orchids`/`signmc` get their named triple
+    (case-insensitive); everything else gets a stable, repeatable triple
+    derived from the fallback palette."""
+
+    def test_orchids_maps_to_the_mocks_exact_triple(self):
+        self.assertEqual(sidebar._repo_hue("orchids"), sidebar.REPO_HUES["orchids"])
+        self.assertEqual(sidebar.REPO_HUES["orchids"]["header"], (0x2C, 0x18, 0x3E))
+        self.assertEqual(sidebar.REPO_HUES["orchids"]["fill"], (0x28, 0x1F, 0x36))
+        self.assertEqual(sidebar.REPO_HUES["orchids"]["accent"], (0xAC, 0x88, 0xD6))
+
+    def test_signmc_maps_to_the_mocks_exact_triple(self):
+        self.assertEqual(sidebar._repo_hue("signmc"), sidebar.REPO_HUES["signmc"])
+        self.assertEqual(sidebar.REPO_HUES["signmc"]["header"], (0x09, 0x2A, 0x2D))
+        self.assertEqual(sidebar.REPO_HUES["signmc"]["fill"], (0x16, 0x2A, 0x2E))
+        self.assertEqual(sidebar.REPO_HUES["signmc"]["accent"], (0x6E, 0xB4, 0xB0))
+
+    def test_named_hue_match_is_case_insensitive(self):
+        self.assertEqual(sidebar._repo_hue("Orchids"), sidebar.REPO_HUES["orchids"])
+        self.assertEqual(sidebar._repo_hue("SIGNMC"), sidebar.REPO_HUES["signmc"])
+
+    def test_unknown_repo_gets_a_stable_repeatable_fallback_triple(self):
+        first = sidebar._repo_hue("some-other-repo")
+        second = sidebar._repo_hue("some-other-repo")
+        self.assertEqual(first, second)
+        self.assertIn(first["header"], sidebar.FALLBACK_HEADER_HUES)
+
+    def test_unknown_repo_never_collides_with_a_named_hue(self):
+        hue = sidebar._repo_hue("some-other-repo")
+        named_headers = {h["header"] for h in sidebar.REPO_HUES.values()}
+        self.assertNotIn(hue["header"], named_headers)
+
+    def test_different_unknown_repos_can_get_different_triples(self):
+        # not a strict requirement (hash collisions are allowed), but the
+        # fallback set has more than one entry so this should hold for the
+        # names actually exercised in practice.
+        hues = {sidebar._repo_hue(f"repo-{i}")["header"] for i in range(4)}
+        self.assertGreater(len(hues), 1)
 
 
 class Xterm256Tests(unittest.TestCase):
     """sidebar-titling item 1: the RGB -> nearest-xterm256-index helper that
-    lets the solid header hue block render on a 256-colour terminal without
-    can_change_color() support."""
+    lets a colour render on a 256-colour terminal without can_change_color()
+    support."""
 
     def test_black_maps_to_cube_origin(self):
         self.assertEqual(sidebar._rgb_to_xterm256((0, 0, 0)), 16)
@@ -409,10 +658,23 @@ class Xterm256Tests(unittest.TestCase):
         self.assertEqual(sidebar._rgb_to_xterm256((255, 255, 255)), 231)
 
     def test_saturated_colour_maps_into_the_colour_cube_range(self):
-        for rgb in (sidebar.HEADER_HUES["orchids"], sidebar.HEADER_HUES["signmc"]):
+        # the accent hues are the mock's brightest, most saturated colours
+        # (used for the active-phase glyph/text) -- they land in the 6x6x6
+        # cube; the dark header/fill hues are low-saturation enough to be
+        # closer to the grayscale ramp instead (both are valid outcomes of
+        # "nearest palette index", covered together by
+        # test_every_repo_hue_maps_into_a_valid_xterm256_index).
+        for rgb in (sidebar.REPO_HUES["orchids"]["accent"], sidebar.REPO_HUES["signmc"]["accent"]):
             index = sidebar._rgb_to_xterm256(rgb)
             self.assertGreaterEqual(index, 16)
             self.assertLessEqual(index, 231)
+
+    def test_every_repo_hue_maps_into_a_valid_xterm256_index(self):
+        for hue in list(sidebar.REPO_HUES.values()):
+            for rgb in hue.values():
+                index = sidebar._rgb_to_xterm256(rgb)
+                self.assertGreaterEqual(index, 16)
+                self.assertLessEqual(index, 255)
 
     def test_neutral_gray_maps_into_the_grayscale_ramp(self):
         index = sidebar._rgb_to_xterm256((128, 128, 128))
@@ -420,30 +682,31 @@ class Xterm256Tests(unittest.TestCase):
         self.assertLessEqual(index, 255)
 
 
-class RepoHueTests(unittest.TestCase):
-    """sidebar-titling OVERRIDE 1: each repo gets a fixed SOLID hue, not a
-    gradient. `orchids`/`signmc` get their named hue (case-insensitive);
-    everything else gets a stable, repeatable hue from the fallback palette."""
+class RoleEmojiTests(unittest.TestCase):
+    """bus-message-specifying B5 item 8: ROLE_EMOJI/LOCATION_BADGES are
+    data-driven and exported even where the mock's frame shows no emoji --
+    None means "pending operator pick", rendering as no emoji rather than a
+    placeholder or a crash."""
 
-    def test_orchids_maps_to_dark_violet(self):
-        self.assertEqual(sidebar._repo_hue("orchids"), sidebar.HEADER_HUES["orchids"])
+    def test_known_roles_map_to_their_emoji(self):
+        self.assertEqual(sidebar.ROLE_EMOJI["bloomer"], "🌸")
+        self.assertEqual(sidebar.ROLE_EMOJI["housekeeper"], "🍂")
+        self.assertEqual(sidebar.ROLE_EMOJI["bus"], "📯")
+        self.assertEqual(sidebar.ROLE_EMOJI["builder"], "🌾")
 
-    def test_signmc_maps_to_dark_teal(self):
-        self.assertEqual(sidebar._repo_hue("signmc"), sidebar.HEADER_HUES["signmc"])
+    def test_pending_pick_roles_are_none(self):
+        self.assertIsNone(sidebar.ROLE_EMOJI["orchestrator"])
+        self.assertIsNone(sidebar.ROLE_EMOJI["architect"])
 
-    def test_named_hue_match_is_case_insensitive(self):
-        self.assertEqual(sidebar._repo_hue("Orchids"), sidebar.HEADER_HUES["orchids"])
-        self.assertEqual(sidebar._repo_hue("SIGNMC"), sidebar.HEADER_HUES["signmc"])
+    def test_role_emoji_helper_returns_none_without_crashing(self):
+        self.assertIsNone(sidebar.role_emoji("orchestrator"))
+        self.assertIsNone(sidebar.role_emoji("architect"))
+        self.assertIsNone(sidebar.role_emoji("unknown-role"))
+        self.assertIsNone(sidebar.role_emoji(None))
 
-    def test_unknown_repo_gets_a_stable_repeatable_fallback_hue(self):
-        first = sidebar._repo_hue("some-other-repo")
-        second = sidebar._repo_hue("some-other-repo")
-        self.assertEqual(first, second)
-        self.assertIn(first, sidebar.FALLBACK_HEADER_HUES)
-
-    def test_unknown_repo_never_collides_with_a_named_hue(self):
-        hue = sidebar._repo_hue("some-other-repo")
-        self.assertNotIn(hue, sidebar.HEADER_HUES.values())
+    def test_location_badges_are_exported(self):
+        self.assertEqual(sidebar.LOCATION_BADGES["local"], "💻")
+        self.assertEqual(sidebar.LOCATION_BADGES["cloud"], "☁️")
 
 
 class HeaderLineTests(unittest.TestCase):
