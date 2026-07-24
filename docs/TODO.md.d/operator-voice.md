@@ -48,6 +48,32 @@
   PRIVATE and never enter git; the operator gates what the eventual skill
   ships.
 
+- Mining round COMPLETE (2026-07-24 evening; deliverables staged in
+  `.git/the-works/operator-voice/`: inventory, four fingerprints, classifier,
+  method — email-derived exemplars flagged PRIVATE). Sampled: 1,018
+  hand-written GitHub commits 2009–2025, 509 issue comments, 13 PR bodies,
+  15 pre-agentic local commits, but only 8 substantive sent emails — the
+  connected Gmail mailbox is the NEW secure@ identity (9 sent threads, all
+  July 2026); no historical or personal mail is reachable through it.
+- Classes derived: `commit-en` HIGH confidence (subject-only 93.5%, mixed
+  verb moods, typos shipped unamended) · `discussion-en` HIGH (verdict-first,
+  median 20 words, em-dashes in only 1.6% of comments — a strong
+  anti-Claude tell) · `casual-fr` LOW (n=1: tutoiement, accents dropped at
+  speed) · `formal-fr` CONTAMINATED (assessed agent-drafted — its exact
+  phrases co-occur in captured transcripts; kept only as an
+  operator-approved template, never as hand voice). No authentic
+  formal-English class was derivable.
+- Contamination findings (method-level, reusable by [[corpus-indexing]]):
+  trailer absence is NOT proof of hand authorship — 743 trailer-free
+  fleet-era commits matching the house gitmoji style were excluded
+  wholesale; the agentic era begins ~Dec 2025, not June 2026
+  (`Co-authored-by: Junie` commits caught in older repos); perfect
+  typography in the formal-French letters is itself the assistance
+  signature.
+- OPEN: French voice and genuine email voice need a real historical-mail
+  source (Thunderbird account or a local archive) — the operator picks the
+  source; see session notes.
+
 ## Proposal
 
 (to shape at its scope round) The operator's voice — style, rhythm,
