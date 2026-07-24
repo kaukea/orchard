@@ -28,5 +28,7 @@ if ! pane=$(tmux split-window -h -b -l '17%' -d -t "$window" -P -F '#{pane_id}' 
   exit 0
 fi
 tmux select-pane -t "$pane" -T 'orchid-sidebar' 2>/dev/null || true
+tmux set-window-option -t "$pane" automatic-rename off 2>/dev/null || true  # pin the title: stop python3/bash clobbering it
+tmux set-window-option -t "$pane" allow-rename off 2>/dev/null || true      # pin the title: stop python3/bash clobbering it
 
 exit 0

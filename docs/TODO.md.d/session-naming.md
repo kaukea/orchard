@@ -46,6 +46,20 @@
   contract's first live application. Launch sites and this sidecar's spec, plan,
   and result text updated in place; the dated plan-round finding above keeps its
   original slash wording as history.
+- Reverted (2026-07-24, fleet-sidebar one-go pass, Decision-075): the separator goes
+  back to `/` (U+002F) — the sidebar renderer composes its navigation target as
+  `<repo>/<feature name>` and navigates by window name, so the window name MUST use
+  `/` to stay selectable. Every launch site that names an architect/workstream
+  window or session is updated from `<repo> ▸ <name>` to `<repo>/<name>`; the
+  `▸`-era Proposal/Tech-plan/Result text below is updated in place to match, per
+  this file's own convention of keeping only the DATED historical findings above in
+  their original wording. Same pass: every pane that sets a title with
+  `select-pane -T` also gets `allow-rename off` alongside `automatic-rename off` on
+  its window, so `claude`/`bash` cannot clobber the pinned title (architect
+  `arch:<id>`, bloomer `bloom:<id>`, sidebar-mount `orchid-sidebar`, peek
+  `peek:<name>`, and the orchestrator's own summoned window). The orchestrator
+  session stays named 1:1 after its repository (Decision-032, unchanged, reconfirmed
+  here) — this pass only pins its window title, it does not touch session naming.
 
 ## Proposal
 
@@ -59,7 +73,7 @@ on:
   This is a difference of MOOD, not word order: there is NO string transform from a
   commit subject to a name — the id is authored by asking "what is this work?",
   which is why it resembles part of the sidecar short title. The sidebar is the
-  test: `orchids ▸ <name>` must read as something that is happening, never as a
+  test: `orchids/<name>` must read as something that is happening, never as a
   barked order. The style call is enforced at AUTHORING time — intake and the
   ripener check it; no lint can judge mood. Unique on the board; the sidecar
   filename. Forward-only — existing ids stay.
@@ -67,8 +81,9 @@ on:
   swap is the ONLY mechanical rule in the contract; derived, never authored
   separately, so it cannot drift.
 - **claude session name**: for WORKSTREAM sessions (architects, ripeners),
-  `<repository> ▸ <human name>` (e.g. `orchids ▸ session naming`), passed with
-  `--name` at every `claude` launch — this is what makes the claude UI navigable.
+  `<repository>/<human name>` (e.g. `orchids/session naming`), passed with
+  `--name` at every `claude` launch — this is what makes the claude UI navigable,
+  and matches the sidebar's own navigation target so window selection works.
 - **the orchestrator is NOT the two-part form**: session names name SESSIONS, and there is
   exactly ONE orchestrator per repository — it orchestrates the workstreams. Its
   session name is the repository name alone (`orchids`); summoning or reviving it
@@ -79,8 +94,8 @@ on:
   prep, sidecars) is a SUBAGENT — hidden away, never a named session, visible only in
   the sidebar thanks to the bus (activity broadcasts show them by name as they come
   and go). Which agent is doing what is live state, never name material. Two name
-  shapes exist, total: `<repo>` (the orchestrator) and `<repo> ▸ <human name>` (a
-  feature workstream, e.g. `orchids ▸ eating carrots`), all lowercase. Nothing else.
+  shapes exist, total: `<repo>` (the orchestrator) and `<repo>/<human name>` (a
+  feature workstream, e.g. `orchids/eating carrots`), all lowercase. Nothing else.
 - **agent names appear NOWHERE** (operator + orchestrator concur, 2026-07-21): the
   hierarchy carries the role (the repo row IS the orchestrator; a feature session IS
   its one agent — a session can only have one agent), phase/activity words carry the
@@ -89,7 +104,12 @@ on:
 - **sidebar row**: the human name alone ([[fleet-sidebar]]).
 - **tmux**: existing machine titles (`arch:<id>`) stay — tooling matches on them
   (teardown); titles refresh only where bus lifecycle signals already fire; no new
-  hooks. Epics / parent chains deferred.
+  hooks. Epics / parent chains deferred. Every launch site that sets a pane title
+  (`select-pane -T`) also pins it — `automatic-rename off` AND `allow-rename off` on
+  that pane's window — so `claude`/`bash` cannot clobber it live via terminal escape
+  sequences; a pane no longer flickers between the pinned title, nothing, and `bash`.
+  The orchestrator session itself is named 1:1 after its repository (Decision-032) —
+  this pinning is about the pane TITLE, it does not change session naming.
 
 Enforcement is forward-only: launch sites (orchestrator architect spawn, cloud path,
 future spawns) adopt `--name`; nothing is retro-renamed.
@@ -106,11 +126,11 @@ kebab (no spaces) and human names are only ever derived, never authored. The swa
 order-agnostic — the gerund-first rule governs how a NEW id is authored, not the code.
 bash sites inline `${id//-/ }`; Python surfaces it once in the bus.
 
-**Launch sites that adopt `--name "<repo> ▸ <human name>"` (forward-only, no retro
+**Launch sites that adopt `--name "<repo>/<human name>"` (forward-only, no retro
 renames):**
 
 - Local architect spawn — `agents/orchestrator.md` `tmux split-window … claude
-  --agent architect`: add `--name "orchids ▸ ${id//-/ }"`.
+  --agent architect`: add `--name "orchids/${id//-/ }"`.
 - Orchestrator root session — `skills/orchestrator/SKILL.md` summon line
   `claude --resume … || claude --name …`: the pair moves from `<project>
   Orchestrator` to the **bare repository name** `<project>` (resume key and name must
@@ -154,16 +174,16 @@ which assumes a live tmux UI the runner has not got):
 
 - automated in the runner — a check script asserts (a) id→human→id round-trips for
   every `docs/TODO.md.d/*.md` id; (b) `bus.py identity` emits the derived `name` for a
-  set `feature_id`; (c) each edited launch line carries `--name "<repo> ▸ …"`; (d) the
+  set `feature_id`; (c) each edited launch line carries `--name "<repo>/…"`; (d) the
   `select-pane -T "arch:<id>"` line is unchanged.
-- operator-manual — the actual "claude UI lists `<repo> ▸ <human name>`" visual check
+- operator-manual — the actual "claude UI lists `<repo>/<human name>`" visual check
   needs a real interactive spawn the headless runner cannot inspect; left for the
   operator (or a local run) and called out as such, not self-approved.
 
 ## Testing
 
 Spawn an orchestrator and an architect: the claude UI lists
-`<repo> ▸ <human name>` for each; the id→human-name derivation round-trips for every
+`<repo>/<human name>` for each; the id→human-name derivation round-trips for every
 board id; the bus identity carries the same name; `tmux list-panes` still matches the
 teardown's `arch:<id>` lookup.
 
@@ -177,14 +197,17 @@ bus-visible, on-change activity broadcast).
 
 Launch sites (build):
 
-- `agents/orchestrator.md` — architect spawn gains `--name "orchids ▸ ${id//-/ }"`
+- `agents/orchestrator.md` — architect spawn gains `--name "orchids/${id//-/ }"`
   (an `id=<id>` capture added so the human name derives in-shell); the
-  `select-pane -T "arch:<id>"` teardown line is byte-for-byte unchanged.
+  `select-pane -T "arch:<id>"` teardown line is byte-for-byte unchanged. (Separator
+  updated 2026-07-24 from the `▸` this Result originally recorded — see the dated
+  Finding above.)
 - `skills/orchestrator/SKILL.md` — root summon becomes the **bare** repo name
   `claude --resume "<project>" || claude --name "<project>"` (Decision-032: one
   orchestrator per repo, name = repo; no two-part form, no `Orchestrator` suffix).
 - `skills/ripen-tasks/SKILL.md` — ripener `--bg` launch gains
-  `--name "orchids ▸ ${id//-/ }"` (feature human name, never the role).
+  `--name "orchids/${id//-/ }"` (feature human name, never the role; separator
+  updated 2026-07-24, see the dated Finding above).
 - `tools/bus.py` `identity_of()` — gains a derived `name` (`feature_id` with
   `-`→space), so the sidebar / any bash consumer reads one field.
 

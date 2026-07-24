@@ -170,11 +170,12 @@ On an explicit go for feature X:
    # types are UNSUMMONABLE from its worktree (operator's Agent(<type>) deny), so the
    # guard hook's agent_type exemption cannot be laundered through a spawned subagent;
    # the sidecar-scoped guard hook ships with the intake-enforcing build
-   win=$(tmux new-window -P -F '#{window_id}' -n "orchids ▸ $name" -c .claude/worktrees/<id> \
-     "ORCHID_PARENT_SESSION=$CLAUDE_CODE_SESSION_ID claude --agent architect --name \"orchids ▸ $name\" 'Boot: read your sidecar and begin discovery.'")
+   win=$(tmux new-window -P -F '#{window_id}' -n "orchids/$name" -c .claude/worktrees/<id> \
+     "ORCHID_PARENT_SESSION=$CLAUDE_CODE_SESSION_ID claude --agent architect --name \"orchids/$name\" 'Boot: read your sidecar and begin discovery.'")
    tmux set-window-option -t "$win" automatic-rename off  # window shows the session name, not the program
    tmux set-option -w -t "$win" @arch_id "<id>"           # stable teardown/reaping handle (window user-option); pane title is clobbered by claude, so it's now only a human hint
    tmux select-pane -t "$win" -T "arch:<id>"              # arch:<id> stays the pane-TITLE handle teardown/reaping match
+   tmux set-window-option -t "$win" allow-rename off      # pin the title: stop claude/bash clobbering it (automatic-rename off already set above)
    .claude/tools/sidebar-mount.sh "$win"                  # mount the fleet sidebar into the new window
    ```
    The initial prompt is part of the spawn — a fresh session waits silently for its first

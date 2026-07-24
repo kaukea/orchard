@@ -51,6 +51,8 @@ cmd="ORCHID_PARENT_SESSION='${CLAUDE_CODE_SESSION_ID:-}' claude --agent bloomer 
 
 new_pane=$(tx split-window -v -l '75%' -c "$repo_root" -P -F '#{pane_id}' "$cmd")
 tx select-pane -t "$new_pane" -T "bloom:$task_id"
+tx set-window-option -t "$new_pane" automatic-rename off  # pin the title: stop claude/bash clobbering it
+tx set-window-option -t "$new_pane" allow-rename off       # pin the title: stop claude/bash clobbering it
 # Leave focus on the bloomer pane — split-window already activates the new
 # pane, this makes the intent explicit and survives future flag changes.
 tx select-pane -t "$new_pane"

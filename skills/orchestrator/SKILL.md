@@ -209,8 +209,11 @@ not the session (Decision-049, renewal mechanism updated by Decision-071).
   Always lands in the same-named orchestrator — resumed if alive, created if gone (crash,
   expiry). This is for *starting work* and *recovery*, and opens a fresh window. Name that
   window the repository so the status bar shows it, not the program —
-  `tmux set-window-option automatic-rename off; tmux rename-window "<project>"` — then mount
-  the sidebar into it: `.claude/tools/sidebar-mount.sh`.
+  `tmux set-window-option automatic-rename off; tmux set-window-option allow-rename off;
+  tmux rename-window "<project>"` (the `allow-rename off` pins the title so `claude`/`bash`
+  cannot clobber it) — then mount the sidebar into it: `.claude/tools/sidebar-mount.sh`. The
+  session itself stays named 1:1 after this repository (line 206 above) — one orchestrator
+  per repo, its name *is* the repo, never a two-part or suffixed form.
 - **Renewal (`/compress`):** when you judge the session bloated, refresh `MOOD.md`, then
   tell the operator to type `/compress`. Compaction summarises context **in place** — it
   keeps **one durable session** (same id, same title, no UI sprawl) and continues, so the

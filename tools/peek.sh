@@ -22,4 +22,6 @@ else
   pane=$(tmux split-window -v -t "$col" -P -F '#{pane_id}' "$cmd")
 fi
 tmux select-pane -t "$pane" -T "peek:$(basename "$file" .jsonl)"
+tmux set-window-option -t "$pane" automatic-rename off  # pin the title: stop tail/jq clobbering it
+tmux set-window-option -t "$pane" allow-rename off       # pin the title: stop tail/jq clobbering it
 echo "$pane"
