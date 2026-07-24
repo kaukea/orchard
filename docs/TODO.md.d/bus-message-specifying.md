@@ -404,6 +404,30 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   5. Minor: `outcome` enum lacks blocked/abandoned (fail ⊇ them?);
      identity/status request-reply dropped (replaced by published
      state?); gate-reject feedback presumably the script's exit code.
+- ROUND 14 RULING (operator, 2026-07-25): nothing ever REQUESTS its
+  project or placement over the bus — the script derives it from its
+  own execution context (the worktree it runs in, the CLI it already
+  has). Identity/placement request-reply is dead in every form; the
+  subscription folders and monitors are likewise created from locally
+  derived knowledge. Same principle as rounds 11–12: mechanical
+  knowledge is local; the bus carries only what third parties display.
+- ROUND 13 — THE GENERATED SPEC FINALLY READ (2026-07-25, on the
+  operator's pointer): the full-go build had CLOSED on
+  f/bus-message-specifying with WIRE GRAMMAR v1 — canonical text in
+  agents/bus.md (branch), mechanical enforcement in bus.py, 349 tests,
+  `bus.py validate` baseline 247 violations/411 envelopes. Corrections
+  to today's record: `orchid:update:` is NOT a conformance leak — it is
+  a specified v1 class sent legitimately by the flipped build session;
+  the notify-from-class rule, the change-only/consecutive-dedup rule,
+  and question-only-via-ask — all presented in today's discussion as
+  design points — were BUILT yesterday on that branch. Relationship now
+  explicit: the operator's `orchard:` schema is the DELIVERY-MODEL
+  layer the build itself deferred to him (its follow-up #1: the single
+  choke-point send path); v1's five classes are the vocabulary his
+  typed subjects map onto, prefix orchid:→orchard: riding the rename.
+  One seam noted, unruled, for when the layers meet: v1 carries
+  progress as `orchid:phase:<phase>[:k/n]` tick math; round 11 placed
+  an optional 0–100 on status.
 - ROUND 12 RULING (operator, 2026-07-25) — refines 11(a):
   `lifecycle:starting` announces that an agent has started, in a
   certain LOCATION, for a certain PROJECT — and carries nothing beyond
