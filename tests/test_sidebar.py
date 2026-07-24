@@ -156,10 +156,19 @@ class RenderLinesTests(unittest.TestCase):
         # and green at a traffic light")
         self.assertNotEqual(sidebar.STATUS_EMOJI["done"], sidebar.STATUS_EMOJI["failed"])
 
-    def test_all_six_status_glyphs_are_distinct(self):
-        glyphs = list(sidebar.STATUS_EMOJI.values())
-        self.assertEqual(len(glyphs), len(set(glyphs)))
-        self.assertEqual(len(glyphs), 6)
+    def test_idle_waiting_and_awaiting_agent_intentionally_share_the_hollow_circle(self):
+        # visual contract (sidebar-titling OVERRIDE 2): one circle family --
+        # idle/component-wait/awaiting-agent collapse to the same glyph.
+        self.assertEqual(sidebar.STATUS_EMOJI["idle"], "○")
+        self.assertEqual(sidebar.STATUS_EMOJI["waiting"], "○")
+        self.assertEqual(sidebar.STATUS_EMOJI["awaiting_agent"], "○")
+
+    def test_working_done_and_failed_glyphs_stay_distinct_from_each_other_and_the_circle(self):
+        distinguishable = {
+            sidebar.STATUS_EMOJI["working"], sidebar.STATUS_EMOJI["done"],
+            sidebar.STATUS_EMOJI["failed"], sidebar.STATUS_EMOJI["idle"],
+        }
+        self.assertEqual(len(distinguishable), 4)
 
     def test_waiting_on_operator_shows_question_mark_variant(self):
         fleet = _fleet()
@@ -169,7 +178,7 @@ class RenderLinesTests(unittest.TestCase):
         self.assertIn(sidebar.WAITING_ON_OPERATOR_EMOJI, lines[1])
         self.assertNotIn(sidebar.STATUS_EMOJI["waiting"], lines[1])
 
-    def test_waiting_without_operator_flag_shows_watch_glyph(self):
+    def test_waiting_without_operator_flag_shows_hollow_circle(self):
         fleet = _fleet()
         fleet.repos[0].features[0].status = "waiting"
         fleet.repos[0].features[0].waiting_on_operator = False
@@ -390,7 +399,7 @@ class FeatureRowSegmentsTests(unittest.TestCase):
 
 class Xterm256Tests(unittest.TestCase):
     """sidebar-titling item 1: the RGB -> nearest-xterm256-index helper that
-    lets the header gradient render on a 256-colour terminal without
+    lets the solid header hue block render on a 256-colour terminal without
     can_change_color() support."""
 
     def test_black_maps_to_cube_origin(self):
@@ -400,7 +409,7 @@ class Xterm256Tests(unittest.TestCase):
         self.assertEqual(sidebar._rgb_to_xterm256((255, 255, 255)), 231)
 
     def test_saturated_colour_maps_into_the_colour_cube_range(self):
-        for rgb in (sidebar.ORCHID_GRADIENT_DARK, sidebar.ORCHID_GRADIENT_LIGHT):
+        for rgb in (sidebar.HEADER_HUES["orchids"], sidebar.HEADER_HUES["signmc"]):
             index = sidebar._rgb_to_xterm256(rgb)
             self.assertGreaterEqual(index, 16)
             self.assertLessEqual(index, 231)
@@ -411,31 +420,33 @@ class Xterm256Tests(unittest.TestCase):
         self.assertLessEqual(index, 255)
 
 
-class HeaderGradientTests(unittest.TestCase):
-    def test_paused_is_flat_light_gray(self):
-        colours = sidebar.header_gradient(8, paused=True)
-        self.assertEqual(len(colours), 8)
-        self.assertTrue(all(c == sidebar.PAUSED_HEADER_GRAY for c in colours))
+class RepoHueTests(unittest.TestCase):
+    """sidebar-titling OVERRIDE 1: each repo gets a fixed SOLID hue, not a
+    gradient. `orchids`/`signmc` get their named hue (case-insensitive);
+    everything else gets a stable, repeatable hue from the fallback palette."""
 
-    def test_active_project_gradient_varies_across_width(self):
-        colours = sidebar.header_gradient(8, paused=False)
-        self.assertEqual(len(colours), 8)
-        self.assertGreater(len(set(colours)), 1)  # not flat -- a real gradient
-        self.assertEqual(colours[0], sidebar.ORCHID_GRADIENT_DARK)
-        self.assertEqual(colours[-1], sidebar.ORCHID_GRADIENT_LIGHT)
+    def test_orchids_maps_to_dark_violet(self):
+        self.assertEqual(sidebar._repo_hue("orchids"), sidebar.HEADER_HUES["orchids"])
 
-    def test_gradient_is_static_across_repeated_calls(self):
-        # no tick/frame parameter exists -- same input always yields the
-        # same output (sidebar-polish item 10: STATIC, not animated)
-        first = sidebar.header_gradient(8, paused=False)
-        second = sidebar.header_gradient(8, paused=False)
+    def test_signmc_maps_to_dark_teal(self):
+        self.assertEqual(sidebar._repo_hue("signmc"), sidebar.HEADER_HUES["signmc"])
+
+    def test_named_hue_match_is_case_insensitive(self):
+        self.assertEqual(sidebar._repo_hue("Orchids"), sidebar.HEADER_HUES["orchids"])
+        self.assertEqual(sidebar._repo_hue("SIGNMC"), sidebar.HEADER_HUES["signmc"])
+
+    def test_unknown_repo_gets_a_stable_repeatable_fallback_hue(self):
+        first = sidebar._repo_hue("some-other-repo")
+        second = sidebar._repo_hue("some-other-repo")
         self.assertEqual(first, second)
+        self.assertIn(first, sidebar.FALLBACK_HEADER_HUES)
 
-    def test_paused_and_active_never_share_colours(self):
-        active = set(sidebar.header_gradient(8, paused=False))
-        paused = set(sidebar.header_gradient(8, paused=True))
-        self.assertTrue(active.isdisjoint(paused))
+    def test_unknown_repo_never_collides_with_a_named_hue(self):
+        hue = sidebar._repo_hue("some-other-repo")
+        self.assertNotIn(hue, sidebar.HEADER_HUES.values())
 
+
+class HeaderLineTests(unittest.TestCase):
     def test_header_line_centres_title(self):
         line = sidebar.render_header_line("orchids", 15)
         self.assertEqual(len(line), 15)

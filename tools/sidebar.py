@@ -16,8 +16,15 @@ row blinks (curses.A_BLINK) — driven purely by the row's current status,
 never by message arrival. Every OTHER row stays a single fixed-width
 character, unconditionally the same on every frame. The pure text path
 (`render_lines`) never animates at all — it renders the static glyph
-(🚧) for a working row regardless — so tests stay deterministic. Row layout
-never shifts because a glyph disappeared or reappeared.
+(STATUS_EMOJI["working"], the spinner's first frame) for a working row
+regardless — so tests stay deterministic. Row layout never shifts because a
+glyph disappeared or reappeared.
+
+VISUAL CONTRACT (sidebar-titling, operator-approved): project headers are a
+SOLID per-repo hue block (never a gradient), and status glyphs are ONE
+circle family — hollow ○ for anything idle/waiting/awaiting-agent, filled ●
+for done, plus a plain amber "?" for an operator-blocked wait. See
+`_repo_hue()` and `STATUS_EMOJI` below.
 
 CLI:
   python3 tools/sidebar.py          run the interactive curses UI
@@ -39,23 +46,36 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sidebar_model  # noqa: E402
 import sidebar_nav  # noqa: E402
 
+# Spinner frames (sidebar-titling item 6) for an actively-working FEATURE row,
+# curses-only — cycled by a tick counter in main(); the pure text path never
+# receives a frame and always renders the static STATUS_EMOJI["working"].
+SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
 # Six-state status vocabulary (final, settled — sidebar-polish item 9,
-# revised: NOT the old "three plus one" framing). Each glyph is fixed text —
-# in the pure path (render_lines) it is unconditionally the same on every
-# frame; in curses only, the "working" glyph may be replaced by a spinner
-# frame (see SPINNER_FRAMES / _status_emoji's spinner_char param) — every
-# other glyph is still never swapped per-tick, never blank-on-odd-frame.
+# revised: NOT the old "three plus one" framing). ONE CIRCLE FAMILY (visual
+# contract, sidebar-titling OVERRIDE 2 — banning the old mixed watch/hourglass
+# vocabulary): idle, component-wait, and awaiting-agent all collapse to the
+# same hollow circle ○ — they are not distinguished by glyph, only by any
+# accompanying activity text. "done" is the filled circle ●, deliberately the
+# same glyph as SUBAGENT_GLYPH (distinguished by colour/position, not shape).
+# Each glyph is fixed text — in the pure path (render_lines) it is
+# unconditionally the same on every frame; in curses only, the "working"
+# glyph may be replaced by a spinner frame (see SPINNER_FRAMES / _status_
+# emoji's spinner_char param) — every other glyph is still never swapped
+# per-tick, never blank-on-odd-frame.
 STATUS_EMOJI = {
-    "working": "🚧",
-    "waiting": "⌚",
-    "idle": "⚪",
-    "awaiting_agent": "🪷",
-    "done": "✅",
-    "failed": "❌",
+    "working": SPINNER_FRAMES[0],  # static representative; curses animates via spinner_char
+    "waiting": "○",  # U+25CB hollow circle — subdued/waiting-to-start
+    "idle": "○",
+    "awaiting_agent": "○",
+    "done": "●",  # U+25CF filled circle
+    "failed": "❌",  # unchanged — red stays reserved for danger
 }
-# ❓ VARIANT of "waiting" specifically when the wait is on the OPERATOR
-# (row.waiting_on_operator) rather than an external component.
-WAITING_ON_OPERATOR_EMOJI = "❓"
+# Plain "?" VARIANT of "waiting" specifically when the wait is on the
+# OPERATOR (row.waiting_on_operator) rather than an external component —
+# rendered DIM AMBER in curses (never red); the pure text path just emits
+# the bare character.
+WAITING_ON_OPERATOR_EMOJI = "?"
 
 # Subagent presence glyph (sidebar-titling item 4): a subagent row has no
 # verifiable state beyond "it currently exists in the model" — it disappears
@@ -63,13 +83,8 @@ WAITING_ON_OPERATOR_EMOJI = "❓"
 # unverifiable claim) and there is deliberately no "idle" counterpart glyph.
 SUBAGENT_GLYPH = "●"
 
-# Spinner frames (sidebar-titling item 6) for an actively-working FEATURE row,
-# curses-only — cycled by a tick counter in main(); the pure text path never
-# receives a frame and always renders the static STATUS_EMOJI["working"].
-SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-
 BUS_GLYPH = "📬"
-NO_ACTIVITY_TEXT = "· no activity ·"
+NO_ACTIVITY_TEXT = "⋮ no activity ⋮"
 ELLIPSIS = "…"
 
 # Separator between repo name and feature name in BOTH a feature row's
@@ -95,12 +110,39 @@ ORCHID_PALETTE = [
     ("blue",    (0x4A, 0x7B, 0xC8), curses.COLOR_BLUE),
 ]
 
-# Project header gradient (sidebar-polish item 10): classic orchid colour
-# family (#DA70D6-ish), STATIC — no per-frame movement. PAUSED projects get a
-# flat, very light gray instead (no gradient at all).
-ORCHID_GRADIENT_DARK = (0x9B, 0x30, 0x93)
-ORCHID_GRADIENT_LIGHT = (0xF0, 0xC6, 0xEE)
+# Amber accent (sidebar-titling OVERRIDE 2) — used ONLY for the
+# operator-question "?" glyph; never red (that's reserved for "failed").
+AMBER_RGB = (0xE8, 0x8A, 0x2E)
+
+# Project header hue (sidebar-titling OVERRIDE 1, replacing the old orchid
+# gradient): each repo gets a fixed SOLID dark hue block, STATIC — no
+# per-frame movement, no interpolation. The two named repos below get a
+# fixed hue (case-insensitive match); any other repo is assigned one of the
+# fallback hues by a stable hash of its lowercased name (see `_repo_hue`).
+# PAUSED projects get a flat, very light gray instead (no hue at all).
+HEADER_HUES = {
+    "orchids": (0x4A, 0x1C, 0x63),  # dark violet
+    "signmc": (0x0E, 0x4B, 0x4B),   # dark teal
+}
+FALLBACK_HEADER_HUES = [
+    (0x1C, 0x2E, 0x4A),  # dark blue
+    (0x4A, 0x3A, 0x1C),  # dark olive
+    (0x1C, 0x4A, 0x2E),  # dark green
+    (0x4A, 0x1C, 0x2E),  # dark maroon
+]
 PAUSED_HEADER_GRAY = (0xD9, 0xD9, 0xD9)
+
+
+def _repo_hue(repo_name: str) -> tuple[int, int, int]:
+    """Stable per-repo dark hue (0-255 RGB) for the solid header block.
+    Case-insensitive match against `HEADER_HUES`; any other repo name is
+    assigned one of `FALLBACK_HEADER_HUES` by a stable hash (zlib.crc32) of
+    its lowercased name, so a given repo always gets the same hue."""
+    key = repo_name.lower()
+    if key in HEADER_HUES:
+        return HEADER_HUES[key]
+    index = zlib.crc32(key.encode("utf-8")) % len(FALLBACK_HEADER_HUES)
+    return FALLBACK_HEADER_HUES[index]
 
 
 # --------------------------------------------------------------------------
@@ -351,33 +393,12 @@ def _watch_thread(shared: _SharedFleet) -> None:
 
 
 # --------------------------------------------------------------------------
-# Project header gradient (pure) — sidebar-polish item 10
+# Project header text (pure) — sidebar-titling OVERRIDE 1
 # --------------------------------------------------------------------------
-
-def _lerp_rgb(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
-    return tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
-
-
-def header_gradient(width: int, paused: bool = False) -> list[tuple[int, int, int]]:
-    """One RGB tuple per column, STATIC (same input -> same output, always —
-    no frame/tick parameter exists to animate it). PAUSED is a flat, very
-    light gray; otherwise a smooth interpolation across the classic orchid
-    colour family (#DA70D6-ish)."""
-    if width <= 0:
-        return []
-    if paused:
-        return [PAUSED_HEADER_GRAY] * width
-    if width == 1:
-        return [_lerp_rgb(ORCHID_GRADIENT_DARK, ORCHID_GRADIENT_LIGHT, 0.5)]
-    return [
-        _lerp_rgb(ORCHID_GRADIENT_DARK, ORCHID_GRADIENT_LIGHT, i / (width - 1))
-        for i in range(width)
-    ]
-
 
 def render_header_line(title: str, width: int) -> str:
     """Title centred over `width` columns, space-padded both sides — the
-    text drawn on top of the curses gradient bevel."""
+    text drawn on top of the curses solid-hue header block."""
     if width <= 0:
         return ""
     text = _truncate(title, width)
@@ -408,6 +429,25 @@ def _init_colours() -> dict[str, int]:
     curses.init_pair(4, curses.COLOR_WHITE, bg)    # awaiting_agent (dim white)
     curses.init_pair(5, curses.COLOR_GREEN, bg)    # done
     curses.init_pair(6, curses.COLOR_RED, bg)      # failed — never shares done's pair
+
+    # Pair 7: amber, used ONLY for the operator-question "?" glyph (sidebar-
+    # titling OVERRIDE 2) — prefers the exact AMBER_RGB via custom colour or
+    # its nearest xterm-256 index, falling back to plain ANSI yellow on a
+    # limited terminal.
+    amber_fg = curses.COLOR_YELLOW
+    try:
+        if curses.COLORS >= 256:
+            if curses.can_change_color():
+                amber_colour_id = 95  # arbitrary custom slot, clear of agent (64+) and header (96+) slots
+                r, g, b = _rgb_to_curses(AMBER_RGB)
+                curses.init_color(amber_colour_id, r, g, b)
+                amber_fg = amber_colour_id
+            else:
+                amber_fg = _rgb_to_xterm256(AMBER_RGB)
+    except curses.error:
+        amber_fg = curses.COLOR_YELLOW
+    curses.init_pair(7, amber_fg, bg)
+
     return {
         "working": curses.color_pair(1),
         "waiting": curses.color_pair(2),
@@ -415,6 +455,7 @@ def _init_colours() -> dict[str, int]:
         "awaiting_agent": curses.color_pair(4) | curses.A_DIM,
         "done": curses.color_pair(5) | curses.A_BOLD,
         "failed": curses.color_pair(6) | curses.A_BOLD,
+        "_operator_question": curses.color_pair(7) | curses.A_DIM,
     }
 
 
@@ -433,9 +474,10 @@ def _nearest_cube_step(v: int) -> int:
 
 def _rgb_to_xterm256(rgb: tuple[int, int, int]) -> int:
     """Nearest xterm-256 palette index for a 0-255 RGB triple — sidebar-
-    titling item 1: lets the header gradient render on a terminal that
-    reports 256 colours but not `can_change_color()` (no custom RGB), by
-    picking a fixed palette slot instead. Only searches the machine-
+    titling item 1: lets the solid header hue block (and the amber "?" glyph)
+    render on a terminal that reports 256 colours but not
+    `can_change_color()` (no custom RGB), by picking a fixed palette slot
+    instead. Only searches the machine-
     computable ranges: the 6x6x6 colour cube (indices 16-231) and the 24-step
     grayscale ramp (232-255) — never the 16 standard colours, whose actual
     RGBs vary per terminal theme and so cannot be matched reliably."""
@@ -456,12 +498,11 @@ def _rgb_to_xterm256(rgb: tuple[int, int, int]) -> int:
     return 232 + gray_index
 
 
-# Colour-pair ids reserved for per-agent tint (item 4) and the header
-# gradient (item 10) — kept clear of the 1-6 status pairs above.
+# Colour-pair ids reserved for per-agent tint (item 4) and the per-repo
+# header hues (sidebar-titling OVERRIDE 1) — kept clear of the 1-7 status
+# pairs above.
 _AGENT_PAIR_BASE = 10
 _HEADER_PAIR_BASE = 30
-_HEADER_STEPS = 8
-_HEADER_PAUSED_PAIR = _HEADER_PAIR_BASE + _HEADER_STEPS
 
 
 def _init_agent_colours() -> list[int] | None:
@@ -500,15 +541,20 @@ def _agent_colour_index(key: str) -> int:
     return zlib.crc32(key.encode("utf-8")) % len(ORCHID_PALETTE)
 
 
-def _init_header_colours() -> tuple[list[int], int] | tuple[None, None]:
-    """(gradient step pairs, paused pair), or (None, None) on a terminal that
-    can't render the gradient at all — callers fall back to plain text.
+def _init_header_colours() -> tuple[dict[tuple[int, int, int], int], int] | tuple[None, None]:
+    """({hue RGB: colour-pair attr} for every known header hue, paused pair
+    attr), or (None, None) on a terminal that can't render a solid hue block
+    at all — callers fall back to a plain centred DIM line.
+
+    One pair per distinct hue (foreground = light white, background = the
+    hue) — the two named `HEADER_HUES` plus each `FALLBACK_HEADER_HUES` entry
+    plus `PAUSED_HEADER_GRAY`, not one pair per repo.
 
     sidebar-titling item 1: a terminal with `curses.COLORS >= 256` but no
     `can_change_color()` (no custom RGB — the common case on the live
-    tmux/xterm-256color the sidebar actually runs in) still gets the
-    gradient, by mapping each step's RGB to its NEAREST xterm-256 palette
-    index (`_rgb_to_xterm256`) instead of defining a custom colour. Only a
+    tmux/xterm-256color the sidebar actually runs in) still gets the solid
+    hue, by mapping each hue's RGB to its NEAREST xterm-256 palette index
+    (`_rgb_to_xterm256`) instead of defining a custom colour. Only a
     genuinely <256-colour or colourless terminal falls back to plain text."""
     if not curses.has_colors():
         return None, None
@@ -516,28 +562,29 @@ def _init_header_colours() -> tuple[list[int], int] | tuple[None, None]:
         if curses.COLORS < 256:
             return None, None
         can_custom = curses.can_change_color()
-        steps = header_gradient(_HEADER_STEPS, paused=False)
-        pairs = []
-        for i, rgb in enumerate(steps):
+        hues = list(HEADER_HUES.values()) + FALLBACK_HEADER_HUES
+        light_fg = curses.COLOR_WHITE
+        pair_map: dict[tuple[int, int, int], int] = {}
+        for i, rgb in enumerate(hues):
             pair_id = _HEADER_PAIR_BASE + i
             if can_custom:
                 colour_id = 96 + i
                 r, g, b = _rgb_to_curses(rgb)
                 curses.init_color(colour_id, r, g, b)
-                curses.init_pair(pair_id, curses.COLOR_BLACK, colour_id)
+                curses.init_pair(pair_id, light_fg, colour_id)
             else:
-                curses.init_pair(pair_id, curses.COLOR_BLACK, _rgb_to_xterm256(rgb))
-            pairs.append(curses.color_pair(pair_id))
+                curses.init_pair(pair_id, light_fg, _rgb_to_xterm256(rgb))
+            pair_map[rgb] = curses.color_pair(pair_id)
+
+        paused_pair_id = _HEADER_PAIR_BASE + len(hues)
         if can_custom:
-            paused_colour_id = 96 + _HEADER_STEPS
+            paused_colour_id = 96 + len(hues)
             r, g, b = _rgb_to_curses(PAUSED_HEADER_GRAY)
             curses.init_color(paused_colour_id, r, g, b)
-            curses.init_pair(_HEADER_PAUSED_PAIR, curses.COLOR_BLACK, paused_colour_id)
+            curses.init_pair(paused_pair_id, light_fg, paused_colour_id)
         else:
-            curses.init_pair(
-                _HEADER_PAUSED_PAIR, curses.COLOR_BLACK, _rgb_to_xterm256(PAUSED_HEADER_GRAY),
-            )
-        return pairs, curses.color_pair(_HEADER_PAUSED_PAIR)
+            curses.init_pair(paused_pair_id, light_fg, _rgb_to_xterm256(PAUSED_HEADER_GRAY))
+        return pair_map, curses.color_pair(paused_pair_id)
     except curses.error:
         return None, None
 
@@ -550,20 +597,24 @@ def _safe_addstr(stdscr, y: int, x: int, text: str, attr: int) -> None:
 
 
 def _draw_header(stdscr, y: int, width: int, title: str, paused: bool, selected: bool,
-                  header_pairs: list[int] | None, paused_pair: int | None) -> None:
-    """Half-block (▀) gradient bevel with the centred title drawn on top —
-    STATIC, no per-frame movement. Falls back to a plain centred line with
-    no colour on a terminal that can't support the custom gradient pairs."""
+                  header_pairs: dict[tuple[int, int, int], int] | None,
+                  paused_pair: int | None) -> None:
+    """SOLID per-repo hue block (sidebar-titling OVERRIDE 1) with the
+    centred title drawn on top, thin/DIM and never bold — STATIC, no
+    per-frame movement. PAUSED stays flat light-gray. A selected header
+    keeps a visible A_REVERSE on the title. Falls back to a plain centred
+    DIM line with no colour on a terminal that can't support the custom
+    hue pairs."""
     text = render_header_line(title, width)
-    text_attr = curses.A_BOLD | (curses.A_REVERSE if selected else 0)
 
     if header_pairs is None:
-        _safe_addstr(stdscr, y, 0, text, text_attr if not paused else curses.A_DIM)
+        text_attr = curses.A_DIM | (curses.A_REVERSE if selected else 0)
+        _safe_addstr(stdscr, y, 0, text, text_attr)
         return
 
-    for x in range(width):
-        attr = paused_pair if paused else header_pairs[x % len(header_pairs)]
-        _safe_addstr(stdscr, y, x, "▀", attr)
+    pair = paused_pair if paused else header_pairs.get(_repo_hue(title), 0)
+    text_attr = pair | curses.A_DIM | (curses.A_REVERSE if selected else 0)
+    _safe_addstr(stdscr, y, 0, " " * width, pair)
     _safe_addstr(stdscr, y, 0, text, text_attr)
 
 
@@ -584,10 +635,15 @@ def _draw_feature_row(stdscr, y: int, width: int, row: Row, selected: bool,
     if selected:
         base_attr |= curses.A_REVERSE
 
+    if row.status == "waiting" and row.waiting_on_operator:
+        glyph_colour = colour_pairs.get("_operator_question", 0)
+    else:
+        glyph_colour = colour_pairs.get(row.status, 0)
+
     x = 0
     _safe_addstr(stdscr, y, x, indent, base_attr)
     x += len(indent)
-    _safe_addstr(stdscr, y, x, glyph, base_attr | colour_pairs.get(row.status, 0))
+    _safe_addstr(stdscr, y, x, glyph, base_attr | glyph_colour)
     x += len(glyph)
     _safe_addstr(stdscr, y, x, " ", base_attr)
     x += 1
@@ -601,7 +657,7 @@ def _draw_feature_row(stdscr, y: int, width: int, row: Row, selected: bool,
 
 def _draw(stdscr, rows: list[Row], selected: int, offset: int,
           colour_pairs: dict[str, int], agent_colours: list[int] | None,
-          header_pairs: list[int] | None, paused_pair: int | None,
+          header_pairs: dict[tuple[int, int, int], int] | None, paused_pair: int | None,
           spinner_char: str | None = None) -> None:
     stdscr.erase()
     max_y, max_x = stdscr.getmaxyx()
