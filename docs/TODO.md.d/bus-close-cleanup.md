@@ -48,19 +48,32 @@
 ## Proposal
 
 Make close mechanically WAKE the bus, and let the bus delete its own folders.
-One corrective:
-- The close path (whatever retires a session — architect-teardown,
-  orchestrator retirement, orphan handling) sends the bus an inbound
-  release/close message instead of killing its monitor process.
-- On that wake the bus runs its existing teardown: stop the watcher, VERIFY it
-  is gone, `bus.py teardown` its inbox folder (removing the folder that
-  collects) and depart.
+
+MECHANISM (operator, 2026-07-25) — the wake IS a message, using only today's
+mechanics. The bus sidecar is asleep, blocked on its `inotifywait`; the ONLY
+thing that wakes it is a message arriving in the folder it watches. So:
+- The closing agent SENDS ITSELF a message — "I'm closing, stop all messaging
+  function." That write lands in the watched inbox and trips the monitor.
+- The bus wakes on it, recognizes the close directive, CLOSES ITS OWN MONITOR
+  (the charter already says it knows how — Decision-046), tears down its inbox
+  folder, and exits cleanly, leaving NOTHING behind.
+- NEVER kill the monitor externally — an externally-killed monitor never gives
+  the bus the turn it needs to clean up (the exact current bug).
+
+One corrective, built on that mechanism:
+- The close path (architect-teardown, orchestrator retirement) performs the
+  self-message wake instead of killing the monitor process.
+- On that wake the bus runs its existing teardown: recognize the close signal,
+  stop the watcher, VERIFY it is gone, `bus.py teardown` its inbox folder
+  (removing the folder that collects) and depart.
 - The orphan path (parent already dead, no wake possible) is the one place a
   swept cleanup is legitimate — bounded to that case only, not a general
   reaper.
 - No new reaper, no TTL sweeper, no daemon.
 Scope to agree at dispatch; the fix touches the teardown scripts and the bus
-charter's wake mechanics, not the transport grammar.
+charter's wake mechanics, not the transport grammar. Same self-message wake is
+what assures the cross-agent-notify scenario ([[bus-message-specifying]]
+round 18): a live listener is one a message can reach and turn.
 
 ## Testing
 
