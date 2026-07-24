@@ -1,0 +1,7 @@
+sidebar-titling close — deviations from the frozen seven:
+- Item 6 reversed the sidebar's prior no-animation invariant (operator amendment): spinner for working, blink for operator-wait; docstrings + ARCHITECTURE updated.
+- Items 1/4 re-specified mid-gate by an operator visual-contract amendment: gradient headers -> solid per-repo hue block (orchids violet, signmc teal, hash fallback); mixed emoji vocab -> one circle family (hollow O subdued waits, filled dot done+subagent, spinner active, dim-amber ? operator, X failed); vertical-ellipsis separators. Rebuilt via a 4th builder.
+- Scoped OUT the larger bus-message-specifying cockpit grammar (phase spine, progress bar, footers, emoji rename, KITT sweep) though it shares the contract file — separate feature, now has its own architect.
+- Inline (not delegated), justified: has_session contract field (unblock parallel builders); item-2 truncation-priority fix (long activity was starving the name — caught in own verification); 2 separator-consistency edits on files no builder owned; ARCHITECTURE + sidecar.
+- Interpretation calls the operator approved at the eyeball: SignMc renders with an idle-only orchestrator session; headers do not animate; done dot shares the subagent dot glyph by the one-circle-family contract; fallback hues for other repos.
+Delegation: discovery 5 explorers; build 4 builders (model/renderer/launch-sites/visual-contract) partitioned by file; 204->206 tests green (from 184 baseline). HEAD 9752aed.
