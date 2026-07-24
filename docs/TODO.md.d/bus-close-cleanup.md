@@ -74,6 +74,22 @@
 
 ## Proposal
 
+THE GOVERNING CONTRACT (operator, 2026-07-25) — the two-phase close is the
+interlock that makes premature-kill structurally impossible; the fix is to
+HONOUR it, not add machinery:
+- CLOSING = "I'm cleaning, go away" — the agent is actively self-tearing-down
+  (bus closes its monitor + folder; architect runs its teardown). NOTHING
+  reaps an agent in `closing`. Hands off.
+- CLOSED = "take it away, mama" — self-cleanup is COMPLETE; only now is it
+  safe for a parent to remove whatever remains.
+The bug is any reap of an agent still in `closing`. The reaper/housekeeper
+acts ONLY on `closed`. WIRE TOUCHPOINT (observation for the operator, not a
+self-made change): WIRE GRAMMAR v1's lifecycle enum is
+started/building/testing/done/finished/blocked/abandoned — it does not carry
+an explicit `closing` vs `closed` pair; the fix may need the two-phase signal
+made explicit on the wire so a reaper can tell "still cleaning" from "safe to
+take away". To confirm at dispatch.
+
 Make close mechanically WAKE the bus, and let the bus delete its own folders.
 
 MECHANISM (operator, 2026-07-25) — the wake IS a message, using only today's
