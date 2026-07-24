@@ -74,6 +74,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `bug · todo · nice-to-have · plan-ready · process ·` [Skills cite decision numbers that mean something else in decisions.md](TODO.md.d/decision-collision-skills.md)
 - `housekeeping · todo · nice-to-have · blocked-on-answers · process · gh#26` [Rename the TODO vocabulary to task list](TODO.md.d/todo-to-task-list.md)
 - `housekeeping · done · · complete/interactive · process · gh#27` [Retire the ripen word family: rename the skill, the agent, and the verb](TODO.md.d/retire-groom-vocabulary.md) ~todo-to-task-list
+- `refactor · todo · · blocked-on-answers · process ·` [Orchard renaming: every role wears an orchard name, its emoji, and a location badge](TODO.md.d/orchard-renaming.md) ~retire-groom-vocabulary ~bus-message-specifying ~bloomer-repointing
 - `feature · todo · critical · blocked-on-answers · process · gh#28` [Injection integrity: make instructions arrive intact, not summarised](TODO.md.d/injection-integrity.md) ⊘readme-changelog-ownership ~session-start-hook
 - `feature · cancelled · · complete · process · gh#29` [~~Sidecar liveness: prove an agent is still listening after load~~](TODO.md.d/bus-liveness.md) ~message-bus
 - `feature · todo · · blocked-on-answers · process · gh#30` [Zombie delivery: scripts revive dead sessions before handing them messages](TODO.md.d/zombie-revival.md) ~bus-liveness ~message-bus

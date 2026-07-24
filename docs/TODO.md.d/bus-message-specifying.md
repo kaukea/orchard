@@ -212,6 +212,17 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   after the emoji mapping: REMIND HIM of the last topic, the FOOTER of
   each feature; (c) emoji↔agent mapping requested (roles had emojis once,
   lost to "the wrong solution").
+- EMOJI/NAME RULING (operator, round 5): all-orchard naming approved in
+  principle ("close enough … I like all of them"). Settled: bloomer 🌸
+  stays; housekeeper → GROUNDSKEEPER; bus → COURIER (old-mail family);
+  builder → the PLANTING family (planter/sower — not grafter), pick
+  pending. Open with alternatives requested: orchestrator (gardener?
+  orchardist?) and architect (landscaper concept accepted, word+emoji
+  alternatives wanted). VISIBILITY RULE: the roles watched longest get the
+  MOST VISIBLE emojis. CLOUD RULE: no per-role cloud variants in user
+  surfaces — what users need is WHERE a thing executes: two location
+  badges, one local-machine, one cloud, orthogonal to the role emoji, and
+  available immediately. Mega-rename boarded as [[orchard-renaming]].
 
 DESIGN-FIRST RULE (operator, 2026-07-24): the VISUAL is agreed before any
 build — a rendered mock the operator adjusts until it is right; the approved
