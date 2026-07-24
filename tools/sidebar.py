@@ -9,10 +9,15 @@ on. The curses app (`main`, run through `curses.wrapper`) is a thin loop that
 polls a background `sidebar_model.watch()` thread and draws each line with
 its status colour.
 
-NO ANIMATION (sidebar-polish item 1 + revised item 9): every status glyph is
-a single fixed-width character, unconditionally the same on every frame for
-unchanged state — no spinner, no flash. Row layout never shifts because a
-glyph disappeared or reappeared.
+ANIMATION IS STATE-DRIVEN, curses-only (sidebar-titling item 6, revising the
+old blanket "no animation" invariant): an actively-working FEATURE row's
+glyph cycles through a spinner (SPINNER_FRAMES), and a waiting-on-operator
+row blinks (curses.A_BLINK) — driven purely by the row's current status,
+never by message arrival. Every OTHER row stays a single fixed-width
+character, unconditionally the same on every frame. The pure text path
+(`render_lines`) never animates at all — it renders the static glyph
+(🚧) for a working row regardless — so tests stay deterministic. Row layout
+never shifts because a glyph disappeared or reappeared.
 
 CLI:
   python3 tools/sidebar.py          run the interactive curses UI
@@ -35,8 +40,11 @@ import sidebar_model  # noqa: E402
 import sidebar_nav  # noqa: E402
 
 # Six-state status vocabulary (final, settled — sidebar-polish item 9,
-# revised: NOT the old "three plus one" framing). Every glyph is static —
-# never swapped per-tick, never blank-on-odd-frame.
+# revised: NOT the old "three plus one" framing). Each glyph is fixed text —
+# in the pure path (render_lines) it is unconditionally the same on every
+# frame; in curses only, the "working" glyph may be replaced by a spinner
+# frame (see SPINNER_FRAMES / _status_emoji's spinner_char param) — every
+# other glyph is still never swapped per-tick, never blank-on-odd-frame.
 STATUS_EMOJI = {
     "working": "🚧",
     "waiting": "⌚",
@@ -49,15 +57,26 @@ STATUS_EMOJI = {
 # (row.waiting_on_operator) rather than an external component.
 WAITING_ON_OPERATOR_EMOJI = "❓"
 
+# Subagent presence glyph (sidebar-titling item 4): a subagent row has no
+# verifiable state beyond "it currently exists in the model" — it disappears
+# from the tree the moment it's done — so it is never rendered "working" (an
+# unverifiable claim) and there is deliberately no "idle" counterpart glyph.
+SUBAGENT_GLYPH = "●"
+
+# Spinner frames (sidebar-titling item 6) for an actively-working FEATURE row,
+# curses-only — cycled by a tick counter in main(); the pure text path never
+# receives a frame and always renders the static STATUS_EMOJI["working"].
+SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
 BUS_GLYPH = "📬"
 NO_ACTIVITY_TEXT = "· no activity ·"
 ELLIPSIS = "…"
 
-# Separator between repo name and feature human name in a feature/architect
-# window's target name, e.g. "orchids ▸ fleet sidebar". Must match the real
-# tmux window names produced by the session-naming scheme exactly: U+25B8
-# with one space on each side.
-TARGET_SEPARATOR = " ▸ "
+# Separator between repo name and feature name in BOTH a feature row's
+# display text ("<repo>/<name>", sidebar-titling item 2) and its tmux window
+# target name — tmux window names are produced by the session-naming scheme
+# as "<repo>/<name>" to match exactly.
+TARGET_SEPARATOR = "/"
 
 # Per-agent colour palette (sidebar-polish item 4): the 8 most popular
 # orchid-species colours (operator ruling, Decision — sidebar-polish
@@ -99,6 +118,7 @@ class Row:
     is_subagent: bool
     activity: str = field(default="")
     paused: bool = field(default=False)  # only meaningful for kind == "repo"
+    repo_name: str = field(default="")  # owning repo's name; only meaningful for kind == "feature"
 
 
 def _bus_row(depth: int, target: str, bus: sidebar_model.Bus) -> Row:
@@ -112,9 +132,20 @@ def flatten(fleet: sidebar_model.Fleet) -> list[Row]:
     """Fleet -> flat list of Row, depth-first (repo, its features, their
     subagents). A live parent's collapsed bus row (sidebar-polish item 5), if
     any, is the FIRST row in that parent's group — before its features or
-    subagents."""
+    subagents.
+
+    A repo with no live session (`not repo.has_session`) is skipped entirely
+    — header AND group — an empty project has nothing to show (sidebar-
+    titling item 3).
+
+    Within a repo's features, `done` features sort FIRST (stable sort,
+    done-first), ahead of everything still live — sidebar-titling item 7;
+    subagent rows are exempt (they never persist past their own completion,
+    so there is nothing to sort or retain)."""
     rows: list[Row] = []
     for repo in fleet.repos:
+        if not repo.has_session:
+            continue
         rows.append(Row(
             depth=0, kind="repo", target=repo.name, label=repo.name,
             status=repo.status, waiting_on_operator=repo.waiting_on_operator,
@@ -122,12 +153,13 @@ def flatten(fleet: sidebar_model.Fleet) -> list[Row]:
         ))
         if repo.bus is not None:
             rows.append(_bus_row(1, repo.name, repo.bus))
-        for feature in repo.features:
+        features = sorted(repo.features, key=lambda f: f.status != "done")
+        for feature in features:
             feature_target = f"{repo.name}{TARGET_SEPARATOR}{feature.name}"
             rows.append(Row(
                 depth=1, kind="feature", target=feature_target, label=feature.name,
                 status=feature.status, waiting_on_operator=feature.waiting_on_operator,
-                is_subagent=False, activity=feature.activity,
+                is_subagent=False, activity=feature.activity, repo_name=repo.name,
             ))
             if feature.bus is not None:
                 rows.append(_bus_row(2, feature_target, feature.bus))
@@ -139,19 +171,34 @@ def flatten(fleet: sidebar_model.Fleet) -> list[Row]:
     return rows
 
 
-def _status_emoji(row: Row) -> str:
+def _status_emoji(row: Row, spinner_char: str | None = None) -> str:
+    """`spinner_char`, when given, replaces the static "working" glyph — used
+    ONLY by the curses draw path (sidebar-titling item 6); the pure text path
+    never passes it, so render_lines stays static."""
     if row.status == "waiting" and row.waiting_on_operator:
         return WAITING_ON_OPERATOR_EMOJI
+    if row.status == "working" and spinner_char is not None:
+        return spinner_char
     return STATUS_EMOJI.get(row.status, " ")
 
 
-def _row_text(row: Row) -> str:
+def _row_text(row: Row, spinner_char: str | None = None) -> str:
     indent = "  " * row.depth
     if row.kind == "bus":
         return f"{indent}{BUS_GLYPH} {row.label}"
+    if row.kind == "subagent":
+        # presence in the model IS the only verifiable subagent state — no
+        # "idle" counterpart glyph exists (sidebar-titling item 4).
+        return f"{indent}{SUBAGENT_GLYPH} {row.label}"
+    if row.kind == "repo":
+        # repo headers carry no leading status glyph in EITHER path — curses
+        # already drew none (via _draw_header); the pure path now matches
+        # (sidebar-titling item 4).
+        return f"{indent}{row.label}"
 
-    text = f"{indent}{_status_emoji(row)} {row.label}"
-    if row.kind == "feature" and row.activity:
+    name = f"{row.repo_name}/{row.label}" if row.repo_name else row.label
+    text = f"{indent}{_status_emoji(row, spinner_char)} {name}"
+    if row.activity:
         text = f"{text} {row.activity}"
     return text
 
@@ -163,6 +210,48 @@ def _truncate(text: str, width: int) -> str:
     if width <= 0 or len(text) <= width:
         return text[:width] if width > 0 else text
     return text[:width - 1] + ELLIPSIS
+
+
+def _truncate_keep_name(repo_name: str, name: str, width: int) -> str:
+    """Compose "<repo>/<name>" (or just `name` when `repo_name` is empty),
+    truncated to `width` while KEEPING THE NAME side intact (sidebar-titling
+    item 2) — the repo side is elided from the LEFT with a leading ELLIPSIS,
+    e.g. "…ids/fleet sidebar". If `name` alone still exceeds `width`, falls
+    back to `_truncate`'s normal right-cut-with-trailing-ellipsis on the name
+    alone (there is nothing left to elide from the repo side)."""
+    full = f"{repo_name}/{name}" if repo_name else name
+    if width <= 0:
+        return ""
+    if len(full) <= width:
+        return full
+    if len(name) > width:
+        return _truncate(name, width)
+    tail_len = max(width - len(ELLIPSIS), 0)
+    tail = full[-tail_len:] if tail_len > 0 else ""
+    return ELLIPSIS + tail
+
+
+def _feature_row_segments(
+    row: Row, width: int, spinner_char: str | None = None,
+) -> tuple[str, str, str, str, str]:
+    """(indent, glyph, repo_part, name_part, suffix) for a feature row at
+    `width` columns (a leading selection marker, if any, is NOT included in
+    `width` — callers account for it separately). `repo_part` includes its
+    trailing '/' when present; `name_part` is never truncated ahead of
+    `repo_part` (see `_truncate_keep_name`). Shared by the pure text path
+    (render_lines) and the curses draw path so the dim/bold segment
+    boundaries always match the plain-text composition exactly."""
+    indent = "  " * row.depth
+    glyph = _status_emoji(row, spinner_char)
+    suffix = f" {row.activity}" if row.activity else ""
+    fixed = len(indent) + len(glyph) + 1 + len(suffix)  # +1 for the space after glyph
+    composed = _truncate_keep_name(row.repo_name, row.label, width - fixed)
+    slash_idx = composed.rfind("/")
+    if slash_idx == -1:
+        repo_part, name_part = "", composed
+    else:
+        repo_part, name_part = composed[:slash_idx + 1], composed[slash_idx + 1:]
+    return indent, glyph, repo_part, name_part, suffix
 
 
 def clamp_scroll_offset(offset: int, selected: int, count: int, height: int) -> int:
@@ -201,8 +290,10 @@ def render_lines(
     `height` (the default) renders every row, unwindowed — the original
     behaviour.
 
-    No animation-related parameters (spinner_frame/flash_on) — every status
-    glyph is static, so a frame depends only on the fleet's current state."""
+    No animation-related parameters (spinner_char/flash_on) — this path never
+    animates, regardless of state; the curses draw path is the only one that
+    ever passes a spinner_char (sidebar-titling item 6), so a render_lines
+    frame depends only on the fleet's current state."""
     rows = flatten(fleet)
     if not rows:
         return [_truncate(NO_ACTIVITY_TEXT, width)]
@@ -216,7 +307,14 @@ def render_lines(
     lines = []
     for i, row in enumerate(window, start=start):
         marker = ">" if i == selected else " "
-        lines.append(_truncate(marker + _row_text(row), width))
+        if row.kind == "feature":
+            indent, glyph, repo_part, name_part, suffix = _feature_row_segments(
+                row, max(width - len(marker), 0),
+            )
+            line = f"{marker}{indent}{glyph} {repo_part}{name_part}{suffix}"
+            lines.append(_truncate(line, width))
+        else:
+            lines.append(_truncate(marker + _row_text(row), width))
     return lines
 
 
@@ -318,6 +416,39 @@ def _rgb_to_curses(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
     return tuple(round(c * 1000 / 255) for c in rgb)
 
 
+# The 6 steps (0-5) of the xterm-256 colour cube map to these 0-255 values.
+_XTERM256_CUBE_STEPS = (0, 95, 135, 175, 215, 255)
+
+
+def _nearest_cube_step(v: int) -> int:
+    return min(range(6), key=lambda i: abs(v - _XTERM256_CUBE_STEPS[i]))
+
+
+def _rgb_to_xterm256(rgb: tuple[int, int, int]) -> int:
+    """Nearest xterm-256 palette index for a 0-255 RGB triple — sidebar-
+    titling item 1: lets the header gradient render on a terminal that
+    reports 256 colours but not `can_change_color()` (no custom RGB), by
+    picking a fixed palette slot instead. Only searches the machine-
+    computable ranges: the 6x6x6 colour cube (indices 16-231) and the 24-step
+    grayscale ramp (232-255) — never the 16 standard colours, whose actual
+    RGBs vary per terminal theme and so cannot be matched reliably."""
+    r, g, b = rgb
+    ri, gi, bi = _nearest_cube_step(r), _nearest_cube_step(g), _nearest_cube_step(b)
+    cube_rgb = (_XTERM256_CUBE_STEPS[ri], _XTERM256_CUBE_STEPS[gi], _XTERM256_CUBE_STEPS[bi])
+    cube_index = 16 + 36 * ri + 6 * gi + bi
+
+    gray_index = max(0, min(23, round(((r + g + b) / 3 - 8) / 10)))
+    gray_value = 8 + gray_index * 10
+    gray_rgb = (gray_value, gray_value, gray_value)
+
+    def _dist2(a: tuple[int, int, int], b_: tuple[int, int, int]) -> int:
+        return sum((a[i] - b_[i]) ** 2 for i in range(3))
+
+    if _dist2(cube_rgb, rgb) <= _dist2(gray_rgb, rgb):
+        return cube_index
+    return 232 + gray_index
+
+
 # Colour-pair ids reserved for per-agent tint (item 4) and the header
 # gradient (item 10) — kept clear of the 1-6 status pairs above.
 _AGENT_PAIR_BASE = 10
@@ -364,26 +495,41 @@ def _agent_colour_index(key: str) -> int:
 
 def _init_header_colours() -> tuple[list[int], int] | tuple[None, None]:
     """(gradient step pairs, paused pair), or (None, None) on a terminal that
-    can't support custom colours — callers fall back to plain text."""
+    can't render the gradient at all — callers fall back to plain text.
+
+    sidebar-titling item 1: a terminal with `curses.COLORS >= 256` but no
+    `can_change_color()` (no custom RGB — the common case on the live
+    tmux/xterm-256color the sidebar actually runs in) still gets the
+    gradient, by mapping each step's RGB to its NEAREST xterm-256 palette
+    index (`_rgb_to_xterm256`) instead of defining a custom colour. Only a
+    genuinely <256-colour or colourless terminal falls back to plain text."""
     if not curses.has_colors():
         return None, None
     try:
-        can_custom = curses.COLORS >= 256 and curses.can_change_color()
-        if not can_custom:
+        if curses.COLORS < 256:
             return None, None
+        can_custom = curses.can_change_color()
         steps = header_gradient(_HEADER_STEPS, paused=False)
         pairs = []
         for i, rgb in enumerate(steps):
-            colour_id = 96 + i
-            r, g, b = _rgb_to_curses(rgb)
-            curses.init_color(colour_id, r, g, b)
             pair_id = _HEADER_PAIR_BASE + i
-            curses.init_pair(pair_id, curses.COLOR_BLACK, colour_id)
+            if can_custom:
+                colour_id = 96 + i
+                r, g, b = _rgb_to_curses(rgb)
+                curses.init_color(colour_id, r, g, b)
+                curses.init_pair(pair_id, curses.COLOR_BLACK, colour_id)
+            else:
+                curses.init_pair(pair_id, curses.COLOR_BLACK, _rgb_to_xterm256(rgb))
             pairs.append(curses.color_pair(pair_id))
-        paused_colour_id = 96 + _HEADER_STEPS
-        r, g, b = _rgb_to_curses(PAUSED_HEADER_GRAY)
-        curses.init_color(paused_colour_id, r, g, b)
-        curses.init_pair(_HEADER_PAUSED_PAIR, curses.COLOR_BLACK, paused_colour_id)
+        if can_custom:
+            paused_colour_id = 96 + _HEADER_STEPS
+            r, g, b = _rgb_to_curses(PAUSED_HEADER_GRAY)
+            curses.init_color(paused_colour_id, r, g, b)
+            curses.init_pair(_HEADER_PAUSED_PAIR, curses.COLOR_BLACK, paused_colour_id)
+        else:
+            curses.init_pair(
+                _HEADER_PAUSED_PAIR, curses.COLOR_BLACK, _rgb_to_xterm256(PAUSED_HEADER_GRAY),
+            )
         return pairs, curses.color_pair(_HEADER_PAUSED_PAIR)
     except curses.error:
         return None, None
@@ -414,9 +560,42 @@ def _draw_header(stdscr, y: int, width: int, title: str, paused: bool, selected:
     _safe_addstr(stdscr, y, 0, text, text_attr)
 
 
+def _draw_feature_row(stdscr, y: int, width: int, row: Row, selected: bool,
+                       colour_pairs: dict[str, int], agent_colours: list[int] | None,
+                       spinner_char: str | None) -> None:
+    """<repo>/<name> with the repo segment DIM and the name segment BOLD
+    (sidebar-titling item 2) so the name dominates and the repo recedes; the
+    status glyph keeps its own status colour. The working glyph animates via
+    `spinner_char` (item 6) — curses-only, never the pure text path."""
+    indent, glyph, repo_part, name_part, suffix = _feature_row_segments(row, width, spinner_char)
+
+    base_attr = 0
+    if agent_colours:
+        base_attr |= agent_colours[_agent_colour_index(_agent_colour_key(row))]
+    if row.status == "waiting" and row.waiting_on_operator:
+        base_attr |= curses.A_BLINK
+    if selected:
+        base_attr |= curses.A_REVERSE
+
+    x = 0
+    _safe_addstr(stdscr, y, x, indent, base_attr)
+    x += len(indent)
+    _safe_addstr(stdscr, y, x, glyph, base_attr | colour_pairs.get(row.status, 0))
+    x += len(glyph)
+    _safe_addstr(stdscr, y, x, " ", base_attr)
+    x += 1
+    _safe_addstr(stdscr, y, x, repo_part, base_attr | curses.A_DIM)
+    x += len(repo_part)
+    _safe_addstr(stdscr, y, x, name_part, base_attr | curses.A_BOLD)
+    x += len(name_part)
+    if suffix:
+        _safe_addstr(stdscr, y, x, suffix, base_attr)
+
+
 def _draw(stdscr, rows: list[Row], selected: int, offset: int,
           colour_pairs: dict[str, int], agent_colours: list[int] | None,
-          header_pairs: list[int] | None, paused_pair: int | None) -> None:
+          header_pairs: list[int] | None, paused_pair: int | None,
+          spinner_char: str | None = None) -> None:
     stdscr.erase()
     max_y, max_x = stdscr.getmaxyx()
 
@@ -434,6 +613,11 @@ def _draw(stdscr, rows: list[Row], selected: int, offset: int,
                          header_pairs, paused_pair)
             y += 1
             continue
+        if row.kind == "feature":
+            _draw_feature_row(stdscr, y, max_x, row, i == selected,
+                              colour_pairs, agent_colours, spinner_char)
+            y += 1
+            continue
 
         text = _truncate(_row_text(row), max_x)
         attr = colour_pairs.get(row.status, 0)
@@ -441,6 +625,8 @@ def _draw(stdscr, rows: list[Row], selected: int, offset: int,
             attr |= curses.A_ITALIC | curses.A_DIM
         if agent_colours:
             attr |= agent_colours[_agent_colour_index(_agent_colour_key(row))]
+        if row.status == "waiting" and row.waiting_on_operator:
+            attr |= curses.A_BLINK
         if i == selected:
             attr |= curses.A_REVERSE
         _safe_addstr(stdscr, y, 0, text, attr)
@@ -478,16 +664,26 @@ def main(stdscr) -> None:
 
     selected = 0
     scroll_offset = 0
+    # Spinner tick counter (sidebar-titling item 6): stdscr.timeout(150) above
+    # means one loop iteration is ~150ms per getch(); advancing the frame
+    # every 2 ticks is ~300ms per frame. Curses-only — render_lines never
+    # sees this.
+    tick = 0
+    spinner_index = 0
 
     while True:
         rows = flatten(shared.get())
         selected = _clamp_selected(selected, len(rows))
         max_y, _max_x = stdscr.getmaxyx()
         scroll_offset = clamp_scroll_offset(scroll_offset, selected, len(rows), max_y)
+        spinner_char = SPINNER_FRAMES[spinner_index % len(SPINNER_FRAMES)]
         _draw(stdscr, rows, selected, scroll_offset, colour_pairs, agent_colours,
-              header_pairs, paused_pair)
+              header_pairs, paused_pair, spinner_char)
 
         key = stdscr.getch()
+        tick += 1
+        if tick % 2 == 0:
+            spinner_index += 1
 
         if key in (curses.KEY_UP, ord("k")):
             selected = max(0, selected - 1)
