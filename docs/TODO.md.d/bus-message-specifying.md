@@ -369,6 +369,24 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   last-value dedup for status), sender identity gets STAMPED by the
   daemon rather than claimed, and attention (notify) becomes a property
   of the message CLASS — the three interrupts — never a sender flag.
+- MEASURED COST MODEL (round 8, 2026-07-25) — replaces the pre-compact
+  README estimate; sources: dead-inbox census (registered from 00:10,
+  consumed nothing, 243 files), the orchestrator transcript's
+  notification count, the bus sidecar's own token counters. 2026-07-24
+  actuals: 243 broadcasts fleet-wide; 357 full-context re-invocations
+  of the orchestrator by background events, 118 of them carrying the
+  single improvised waiting string; sidecar marginal cost ~175 tokens
+  per message per listener (~170k/day across ~4 listeners). Dominant
+  term by ~40×: the re-invocations — 357 × ~200k context ≈ ~70M
+  cache-read plus ~0.3–1M fresh. Corrections to the estimate: the
+  sidecar-layer total (150–200k) was right only by cancellation
+  (per-unit ~5× high, volume ~5× low); the hand-up count (~45) and
+  cache volume (7M) were ~8–10× LOW. The round-7 rulings applied to the
+  same measured day: volume 243→~80 (dedup at the gate), status wakes
+  →0 (sidebar reads published state), orchestrator re-invocations
+  357→~15–20 (genuine interrupts only) — a ~20× cut in the dominant
+  term, and cost decouples from fleet size × message rate, scaling
+  instead with decisions that need the operator's agent.
 - ROUND 7 DICTATION (operator, 2026-07-25) — three rulings for v1:
   (1) invented chatter dies AT THE SCRIPT — the send path stops
   accepting free-text bodies; only registry vocabulary passes.
