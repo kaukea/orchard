@@ -23,7 +23,7 @@ build approval are human-only, always.
 | Role | Model | Dispatch | Scope & boundary |
 |---|---|---|---|
 | orchestrator | opus | top-level session (`claude --agent orchestrator`) | Knows the board, prioritises, holds MOOD, hands ONE feature to an architect on explicit operator go. Never codes; never opens a sidecar in steady state. Authors only the workflow component, directly on `main`. Enforces the exit-grace lifecycle contract: kills a session that overruns its own declared window past its terminal signal, broadcasting that signal on its behalf. |
-| bloomer | sonnet | dispatched per parked task | Prep only: advances one task's readiness, fleshes its sidecar, commits. Never builds, branches, or opens PRs; build-ready parks at `plan-ready`. |
+| bloomer | fable-5 | own pane inside the orchestrator's window (`tools/bloomer-launch.sh` / `bloomer-teardown.sh`) | The Decision-027 intake-measurement instrument: turns a two-to-three-sentence functional spec into a converged WHAT. Question selection and stopping are owned by the statistical engine `tools/bloom_engine.py` (EIG + IRT/Fisher-information selection, SE-threshold stop; item parameters flagged uncalibrated); phrasing and parsing by the LLM. Asks only on measured low confidence, records voluntary deferrals, and reports a graduated confidence band over the bus — the orchestrator executes any launch. Single-writer on its task's sidecar. Scheduled backlog-prep passes stay with the demoted predecessor definition until the repoint follow-up. |
 | architect | opus | worktree session (`.claude/worktrees/<id>`, branch `f/<id>`) | One feature; its sidecar is the whole scope. Read-only discovery (parallel explorers) → plan agreed with the operator → **no file edit before MAKE IT SO** → builds/tests → on the operator's `THAT IS ALL`, countersigns and signals `finished` on the bus. Never reads the board or prior conversation. |
 | builder | sonnet | headless subagent from the architect | Exactly one step-spec; returns typed diff + self-test. |
 | housekeeper | sonnet | headless, in the MAIN repo, dispatched on the architect's `finished` signal | The deterministic close: verify docs, tag, squash-merge, push, remove worktree + branch. Verifies documentation, never authors it. |
@@ -58,9 +58,10 @@ GitHub action (comment, commit, PR, push, merge) is signed by **`callabloom[bot]
 a kaukea GitHub App token minted per hop from org secrets (`CALLABLOOM_APP_ID` /
 `CALLABLOOM_PRIVATE_KEY`), falling back to the built-in `github.token` when absent.
 `issue_comment` fires only from the default branch — pre-merge, hops are
-exercised via `workflow_dispatch` (inputs: hop, issue). Intake and blooming run
-as manual issue comments until the bloomer charter lands; operator-less
-statistical kick-off is deferred with it.
+exercised via `workflow_dispatch` (inputs: hop, issue). Intake and blooming stay
+manual issue comments on this surface — GitHub has no iterative-survey
+primitive, so the bloomer instrument is local-pane only; operator-less
+statistical kick-off on the cloud surface is deferred with it.
 
 ## The message bus
 

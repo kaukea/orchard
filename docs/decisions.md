@@ -1247,3 +1247,34 @@ delivery configuration belongs in `AGENTS.d` instead; its exact shape is to be
 proposed by the scheduled delivery-config review and validated by the operator
 before adoption. Until then the two standing BLOCKED lines on orchids'
 AGENTS.shared.md / AGENTS.files.md stay as-is.
+
+## [2026-07-24 13:05 CEST] Decision-072: Bloomer v1 engine includes IRT/Fisher despite uncalibrated items
+#bloomer #psychometrics #irt #eig #engine #convergence
+
+Operator ruling (2026-07-24, plan gate): the v1 statistical engine implements
+the full blueprint-§8 composition — EIG/BED question selection AND IRT item
+modelling with Fisher-information selection and SE-threshold stopping —
+overriding the Opus blueprint review's recommendation to drop the IRT/Fisher
+formalism at n=1. Mitigation recorded with the ruling: item parameters are
+LLM-assumed at generation and every convergence report flags them as
+uncalibrated; accumulated live runs are the future calibration path.
+
+## [2026-07-24 13:05 CEST] Decision-073: Groomer stays under its name until the bloomer is judged ready
+#bloomer #groomer #retirement #pipeline #bloom-tasks
+
+Operator ruling (2026-07-24, plan gate): the demoted `groomer` definition and
+every pipeline reference to it (orchestrator bloom round, `bloom-tasks` skill)
+stay UNTOUCHED while bloomer v1 is built and proven. Once the bloomer is
+judged ready, a separate analysis decides what in the groomer is worth keeping
+before any retirement or repoint. Supersedes this task's earlier
+delete-at-landing intent; the repoint work is an explicit follow-up.
+
+## [2026-07-24 13:05 CEST] Decision-074: Launch sizing stays in the pipeline; the bloomer feeds it
+#bloomer #launch-sizing #model-effort #pipeline
+
+Operator ruling (2026-07-24, plan gate): the existing launch-sizing round
+(Decision-019 model/effort scaling) remains part of the handoff pipeline —
+removing it would be a regression. Bloomer v1's convergence report carries a
+launch-sizing recommendation (size class + suggested tier) feeding that round.
+Only MEASURED/statistical launch sizing remains future work (the recorded
+future ruling on removing per-role defaults is unchanged).
