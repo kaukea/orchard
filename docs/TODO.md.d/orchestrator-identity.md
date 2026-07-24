@@ -19,6 +19,9 @@
   session; that session is always named after the project.
 - Feeds [[sidebar-titling]]: project-named sessions are what make the
   faint-repo `/name` rendering coherent in the sidebar.
+- Naming slice pulled forward (2026-07-24 evening): the rename-sessions-
+  after-their-repo half ships in the sidebar-titling one-go quick pass; this
+  task retains the single-instance / duplicate-handling enforcement.
 
 ## Proposal
 
