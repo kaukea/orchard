@@ -404,6 +404,17 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   5. Minor: `outcome` enum lacks blocked/abandoned (fail ⊇ them?);
      identity/status request-reply dropped (replaced by published
      state?); gate-reject feedback presumably the script's exit code.
+- ROUND 11 RULINGS (operator, 2026-07-25): (a) IDENTITY NEVER RIDES THE
+  BUS — only the agent itself needs its identity; it loads its bus
+  subagent with it at boot, and the script stamps anything downstream
+  from that local knowledge. Standing gap 2 dissolves: `lifecycle:
+  starting` carries no identity body. (b) PROGRESS rides STATUS —
+  `orchard:agent:status` = status word + OPTIONAL progress 0–100 +
+  optional text. Both standing gaps now closed; the schema stands.
+  (c) STANDING META-RULE for reading him: an example he provides is NOT
+  a specification — its terms are illustrative; engage the intent,
+  never token-lint a draft, and do not push toward closure he has not
+  asked for. (Saved to operator memory.)
 - GAP REVIEW CORRECTED (round 10, 2026-07-25) after the operator's
   rebuttal ("English language is asking a question, and outcome — have
   you read the whole document?") and a full front-to-back re-read:
