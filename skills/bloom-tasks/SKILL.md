@@ -42,7 +42,7 @@ is trigger-agnostic, so adding a schedule later changes only how it is kicked of
    one task per groomer. PREFER the Agent tool from a live session: a `claude --bg` groomer
    is headless and PARKS FOREVER on its first permission prompt (live-fired 2026-07-22 —
    two bloomers blocked 19 minutes unattended); use `claude --bg --agent groomer --name
-   "orchids ▸ ${id//-/ }"` only when the needed permissions are pre-allowed. The
+   "orchids/${id//-/ }"` only when the needed permissions are pre-allowed. The
    `--name` carries the feature's human name (id with `-` → spaces), never the role. The
    groomer is **prep-only**: it
    advances the stage, fleshes the sidecar, projects the readiness badge, runs `board_lint.py`,
