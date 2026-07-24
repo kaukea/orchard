@@ -404,6 +404,24 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   5. Minor: `outcome` enum lacks blocked/abandoned (fail ⊇ them?);
      identity/status request-reply dropped (replaced by published
      state?); gate-reject feedback presumably the script's exit code.
+- ROUND 18 — ASSURE THE CROSS-AGENT-NOTIFY SCENARIO (operator,
+  2026-07-25). Trigger: the orchestrator, to detect the grammar close,
+  ran an out-of-band watch — polling git for the branch-ref deletion and
+  inspecting spool folders — instead of learning it from the bus. That
+  hand-rolled coordination IS what the bus is for: one agent knowing when
+  a peer reaches a state (here, close finished). RULING: the scenario is
+  nominally covered (lifecycle `finished`/`done`, `outcome`,
+  `delegation:end`) but NOT ASSURED — nothing guarantees the signal
+  reaches a LIVE listener, so agents fall back to git/tmux polling. Amend
+  the design so cross-agent completion/coordination is a FIRST-CLASS,
+  ASSURED, TESTED case: an agent learns of a peer's state change through
+  the bus ALONE, never by polling git or the filesystem. NOT an ack
+  (round 16 stands — one-way, no receipt back to the sender); this is
+  delivery ASSURANCE to the receiver — the signal must reach a live
+  inbox and be acted on. The reason it is "not sured" today is precisely
+  [[bus-close-cleanup]] (signals landing in dead inboxes) plus
+  folder-existence ≠ listening; that fix is the enabler, and this
+  scenario is its acceptance test.
 - ROUND 17 — SCOPE RULING (operator, 2026-07-25), decisive, reframes the
   whole redesign:
   · THE SEAL IS THE ENVIRONMENT BOUNDARY, NOT THE LOCAL UID. The point of
@@ -633,3 +651,13 @@ captured here as the design when the operator signs it off.
 
 To agree when bloomed — expected shape: a session of each role runs and its
 bus traffic validates against the specification with no unspecified message.
+
+ASSURED-SCENARIO GATE (operator, round 18) — MUST pass before the delivery
+model is called done: an agent detects a PEER'S completion (a `finished`/
+`done`/`outcome`/`delegation:end` signal) through the bus ALONE and acts on
+it, with NO git-ref or filesystem polling anywhere in the path. Concretely:
+the orchestrator learns a feature close finished from the housekeeper's/
+architect's bus signal reaching its live inbox — the exact coordination it
+had to hand-roll by polling `git`/spool folders this session. Depends on
+[[bus-close-cleanup]] (a live listener that a signal can reach); that fix
+and this test land together.
