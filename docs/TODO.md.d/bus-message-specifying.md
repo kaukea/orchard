@@ -404,6 +404,14 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   5. Minor: `outcome` enum lacks blocked/abandoned (fail ⊇ them?);
      identity/status request-reply dropped (replaced by published
      state?); gate-reject feedback presumably the script's exit code.
+- ROUND 12 RULING (operator, 2026-07-25) — refines 11(a):
+  `lifecycle:starting` announces that an agent has started, in a
+  certain LOCATION, for a certain PROJECT — and carries nothing beyond
+  what the sidebar displays. The boundary PRINCIPLE: what is required
+  MECHANICALLY (exit-grace, session internals, any identifying detail)
+  is not what is required to be COMMUNICATED to third parties — the
+  mechanical stays in boot context; the bus carries the display
+  minimum only.
 - ROUND 11 RULINGS (operator, 2026-07-25): (a) IDENTITY NEVER RIDES THE
   BUS — only the agent itself needs its identity; it loads its bus
   subagent with it at boot, and the script stamps anything downstream
