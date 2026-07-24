@@ -71,6 +71,14 @@ Usage:
                                                 --title/--summary: optional short framing shown
                                                 prominently above the question in the popup.
   bus.py root                                  print the bus root
+  bus.py validate [PATH]                       audit recorded traffic against
+                                                WIRE GRAMMAR v1; PATH is a
+                                                bus-root directory read
+                                                recursively, else envelopes
+                                                come JSON-lines from stdin;
+                                                prints one line per violation/
+                                                warning + a summary count,
+                                                exit 1 if any violation
 """
 import argparse
 import json
@@ -654,6 +662,135 @@ def cmd_ask(args) -> None:
     print(answer)
 
 
+def _orchid_interrupt_violation(body: str, env: dict) -> str | None:
+    """orchid:interrupt:* is illegal everywhere except as the well-formed
+    question shape `bus.py ask` itself emits (_question_envelope): unlike
+    enforce_orchid_grammar (which bans interrupt outright for hand-sent
+    send/broadcast), recorded traffic legitimately contains these, so
+    validate checks the shape instead of rejecting the class."""
+    rest = body[len("orchid:interrupt:"):]
+    subclass, sep, subject = rest.partition(":")
+    if subclass != "question" or not sep or not subject:
+        return "orchid:interrupt:* must be orchid:interrupt:question:<subject>"
+    if not env.get("question_id"):
+        return "orchid:interrupt:question message missing question_id"
+    return None
+
+
+def _orchid_traffic_violation(env: dict, body: str) -> str | None:
+    cls = _orchid_class(body)
+    if cls == "interrupt":
+        return _orchid_interrupt_violation(body, env)
+    validator = ORCHID_BODY_VALIDATORS.get(cls)
+    if validator is None:
+        return f"unknown orchid:* class {cls!r}"
+    rest = body[len("orchid:"):].partition(":")[2]
+    reason = validator(rest)
+    if reason:
+        return reason
+    if cls in NOTIFY_FORBIDDEN_ORCHID_CLASSES and env.get("notify_user"):
+        return f"--notify-user is not legal on orchid:{cls}:* bodies"
+    return None
+
+
+def _lifecycle_traffic_violation(env: dict, body: dict) -> str | None:
+    state = body.get("state")
+    if state not in LIFECYCLE_STATES:
+        return f"lifecycle state {state!r} not one of {LIFECYCLE_STATES}"
+    if env.get("notify_user") and state not in SIGNAL_NOTIFY_STATES:
+        return f"notify_user is not legal on lifecycle state {state!r}"
+    return None
+
+
+def _free_prose_traffic_flag(env: dict) -> tuple[str, str] | None:
+    """Free prose (no wire-grammar class, no fixed request, no reply) is only
+    legal directed — a broadcast is, at best, legal peer prose flagged for
+    the operator's send-path redesign (WARNING), and at worst an unspecified
+    summons (VIOLATION) when it carries notify_user: nothing outside
+    ask/lifecycle may summon the operator."""
+    if env.get("to") != "*":
+        return None
+    if env.get("notify_user"):
+        return "violation", "free-prose broadcast carries notify_user — only ask/lifecycle may summon"
+    return "warning", "undirected free-prose broadcast (legal peer prose; send-path redesign candidate)"
+
+
+def _classify_traffic(env: dict) -> tuple[str, str] | None:
+    """None means the envelope is fine. Otherwise (severity, reason), where
+    severity is "violation" or "warning". Checked in the order WIRE GRAMMAR v1
+    defines the traffic: orchid:* classes, lifecycle pushes, identity/depart
+    pushes, fixed requests and replies, then whatever free prose remains."""
+    if not isinstance(env, dict):
+        return "violation", "envelope is not a JSON object"
+    body = env.get("body")
+    if isinstance(body, str) and body.startswith("orchid:"):
+        reason = _orchid_traffic_violation(env, body)
+        return ("violation", reason) if reason else None
+    if isinstance(body, dict) and body.get("kind") == "lifecycle":
+        reason = _lifecycle_traffic_violation(env, body)
+        return ("violation", reason) if reason else None
+    if isinstance(body, dict) and "session_id" in body:
+        return None
+    if isinstance(body, str) and body in FIXED:
+        return None
+    if env.get("in_reply_to"):
+        return None
+    return _free_prose_traffic_flag(env)
+
+
+def _path_envelope_sources(root: Path):
+    for f in sorted(root.rglob("*.json")):
+        if not f.name.startswith("."):
+            yield str(f.relative_to(root)), f.read_text(encoding="utf-8")
+
+
+def _stdin_envelope_sources():
+    for lineno, line in enumerate(sys.stdin, start=1):
+        line = line.strip()
+        if line:
+            yield f"<stdin>:{lineno}", line
+
+
+def _report(label: str, severity: str, frm: str, reason: str) -> None:
+    print(f"{severity.upper()} {label} from={frm}: {reason}")
+
+
+def cmd_validate(args) -> None:
+    """Audit recorded bus traffic against WIRE GRAMMAR v1 (the feature's
+    agreed test method: a role's traffic must validate with no unspecified
+    message). PATH is a bus-root directory, read recursively; with no PATH,
+    envelopes come JSON-lines from stdin."""
+    if args.path:
+        root = Path(args.path)
+        if not root.is_dir():
+            sys.exit(f"bus: validate — no such path {args.path!r}")
+        sources = _path_envelope_sources(root)
+    else:
+        sources = _stdin_envelope_sources()
+
+    total = violations = warnings = 0
+    for label, text in sources:
+        total += 1
+        try:
+            env = json.loads(text)
+        except json.JSONDecodeError as exc:
+            violations += 1
+            _report(label, "violation", "?", f"malformed JSON ({exc})")
+            continue
+        outcome = _classify_traffic(env)
+        if outcome is None:
+            continue
+        severity, reason = outcome
+        _report(label, severity, env.get("from", "?"), reason)
+        if severity == "violation":
+            violations += 1
+        else:
+            warnings += 1
+
+    print(f"{violations} violation(s), {warnings} warning(s) across {total} envelope(s)")
+    sys.exit(1 if violations else 0)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="repo-scoped agent message bus")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -735,6 +872,12 @@ def main() -> None:
                         "(default 1.0) — polling cadence only, not a timeout: "
                         "ask never gives up on its own")
     s.set_defaults(func=cmd_ask)
+
+    s = sub.add_parser("validate")
+    s.add_argument("path", nargs="?", default=None,
+                    help="bus-root directory to audit recursively; omit to "
+                         "read JSON-lines envelopes from stdin")
+    s.set_defaults(func=cmd_validate)
 
     args = p.parse_args()
     if getattr(args, "agent_id", "sentinel") is None:
