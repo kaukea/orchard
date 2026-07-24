@@ -349,6 +349,26 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   ADAPTERS on the daemon — GitHub events, session-events API, a custom
   channel plugin — with polling as the universal fallback; envelopes
   crossing GitHub or the API get sealed + signed.
+- SPOOL FORENSICS (round 4, 2026-07-25) — the operator suspected low
+  compliance with the send script; the spools show the OPPOSITE. All 441
+  surviving envelopes are exact `make_envelope` shape, zero malformed:
+  everything goes THROUGH `bus.py`. The script enforces nothing on
+  broadcast — `cmd_broadcast` -> `fan_out` with no body validation, no
+  prefix check, no allow-list, no dedup (only validations in the whole
+  tool: agent-id shape, lifecycle enum, the two FIXED request bodies).
+  The flood is script-compliant: 225/441 copies (51%) are the one
+  improvised string `orchid:activity:awaiting operator (native prompt)`,
+  every copy notify_user=true, top senders the orchestrator's own
+  sidecar (119 copies) and the grammar architect's (120). Two further
+  leaks: a FIFTH prefix live in the wild (`orchid:update:<text>`, absent
+  from the audit inventory), and sender identity is free-form — some
+  envelopes sign as session id, others as feature name. Dead-inbox
+  accumulation re-confirmed (orphan spool: 236 copies). Consequences for
+  the design: harder script-mandates buy nothing; conformance must live
+  INSIDE the pipe (registry + per-topic allow-lists at accept time,
+  last-value dedup for status), sender identity gets STAMPED by the
+  daemon rather than claimed, and attention (notify) becomes a property
+  of the message CLASS — the three interrupts — never a sender flag.
 
 DESIGN-FIRST RULE (operator, 2026-07-24): the VISUAL is agreed before any
 build — a rendered mock the operator adjusts until it is right; the approved
