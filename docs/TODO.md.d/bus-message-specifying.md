@@ -369,6 +369,21 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   last-value dedup for status), sender identity gets STAMPED by the
   daemon rather than claimed, and attention (notify) becomes a property
   of the message CLASS — the three interrupts — never a sender flag.
+- ROUND 7 DICTATION (operator, 2026-07-25) — three rulings for v1:
+  (1) invented chatter dies AT THE SCRIPT — the send path stops
+  accepting free-text bodies; only registry vocabulary passes.
+  (2) PUB is enabled in v1: published canonical state is what the
+  sidebar renders — no pub, no sidebar; full pub/SUB (subscription
+  filtering) may come later. (3) CANONICAL BODIES: one state = one
+  enumerated token; the JSON body is a machine interface consumed by
+  tools (the sidebar first), so agents stop phrasing one state twenty
+  ways. Touchpoint flagged, NOT resolved (operator to place): the
+  display grammar's agent-chosen 1-2-word status needs a defined seat —
+  its own field — inside the canonical body. Monitor fact verified for
+  his wake question: a Monitor is a zero-token shell watch; only lines
+  its filter EMITS become agent wakes; non-matching traffic costs
+  nothing; the harness rate-limits over-emitting monitors. Wake-on-
+  precondition is real, and free until the precondition fires.
 - ROUND 6 (operator, 2026-07-25): "you are blinded by the work done
   here" — BOTH orchestrator frames (daemon replacement, then in-place
   hardening of `bus.py`) were anchored: the first to its own idea, the
