@@ -157,10 +157,39 @@
 
 ## Proposal
 
-(to shape at bloom) One specified bus-message vocabulary — every message
-class named, its purpose, payload and consumer defined; every agent's actual
-sends audited against it and corrected so the sidebar and orchestrator read
-one dialect.
+AGREED WHAT (operator dictation 2026-07-24, thirteen messages, reformulation
+accepted — full record in Findings above). The display-and-messaging grammar:
+
+- **Phase spine**: ideation → scoping → designing → building → releasing.
+  A soft scale, each phase containing the last; testing lives inside
+  building; documentation inside releasing; sizing/dispatch and ingest are
+  orchestrator plumbing and never surface. Maps to a live 100% via the
+  agreed subphase map (visible ticks advance the number; hidden work never
+  does). Spans as drafted: 10/15/15/45/15, adjustable.
+- **Feature row**: ONE line — the feature name drawn over the advancing
+  progress fill. Beneath it while live: the current agent's one-word
+  status; the running agent's name, subdued; ephemeral subagent rows whose
+  COUNT is their only message. Window/status titles carry project +
+  feature; one window per feature (parallelism is cross-feature, plus the
+  invisible subagent pool).
+- **Motion**: exactly one moving thing per feature — a group spinner while
+  anyone inside works; a watch icon when waiting-its-turn; finished steps
+  freeze to single completed/failed lines; done FEATURES go green, sort to
+  top, never leave; done SUBAGENTS vanish. No flashing, no sound.
+- **Message classes**: STATUS (one/two plain words, agent-chosen) · STATUS
+  UPDATE (log-targeted sentence, never operator-targeted) · exactly three
+  interrupts — SUCCEEDED, FAILED, QUESTION. Questions ride the broker path
+  (never the native UI popup) so they can QUEUE for the right moment, and
+  each arrives prefaced by why it is asked plus a decision-sufficient
+  summary, answered from the orchestrator window without moving.
+- **Identity**: each agent role carries its own emoji (revival); ONE
+  interactive main agent at a time; the orchestrator window is the cockpit
+  where all statuses synthesize — target capacity, five-six connected
+  architects driven without visiting them.
+- **The audit half**: every agent's ACTUAL sends are audited against this
+  vocabulary and corrected — the four live exhibits in Findings (duplicate
+  waiting notifies, Closing/lifecycle collision, dead-inbox delivery,
+  unreachable live agent) define the defect classes to close.
 
 ## Testing
 
