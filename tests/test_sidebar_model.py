@@ -5,9 +5,12 @@ Fixtures are real git-init'd temp repos with bus message files written by
 hand (see tests/support.py) — build_model() is exercised end to end, never
 mocked.
 """
+import json
 import os
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -40,6 +43,21 @@ class _BusFixtureTestCase(unittest.TestCase):
             self.bus_root, folder,
             envelope(msg_id, sender, body=body, ts=ts, notify_user=notify_user),
         )
+
+    def _put_ask(self, folder, msg_id, sender, question_id, subject, ts, notify_user=True):
+        """A WIRE GRAMMAR v1 ask envelope — question_id/in_reply_to are
+        sibling envelope fields, not part of `body`, so they are layered onto
+        the base envelope() shape here rather than in support.py (out of
+        this step's edit scope)."""
+        env = envelope(msg_id, sender, body=f"orchid:interrupt:question:{subject}",
+                       ts=ts, notify_user=notify_user)
+        env["question_id"] = question_id
+        write_message(self.bus_root, folder, env)
+
+    def _put_reply(self, folder, msg_id, sender, in_reply_to, ts, body="ack"):
+        env = envelope(msg_id, sender, body=body, ts=ts)
+        env["in_reply_to"] = in_reply_to
+        write_message(self.bus_root, folder, env)
 
     def _architect(self, session_id, feature_id, folder=None, name=None):
         """Write the identity announce that makes session_id a renderable
@@ -378,10 +396,15 @@ class InternalRowFilteringTests(_BusFixtureTestCase):
 
 
 class StaleRowEvictionTests(unittest.TestCase):
-    """Root-cause fix: a sender's ENTIRE state is evicted (not just its
-    waiting flag) a scan after its terminal lifecycle signal — exercised
-    directly against a long-lived _BusAggregator, the only way to observe
-    multi-scan behaviour (build_model() always starts a fresh one)."""
+    """Root-cause fix: a sender's ENTIRE state used to be evicted a scan
+    after its terminal lifecycle signal, for BOTH finished and abandoned —
+    exercised directly against a long-lived _BusAggregator, the only way to
+    observe multi-scan behaviour (build_model() always starts a fresh one).
+
+    Operator decision, 2026-07-24 (sidebar-titling item 7): a done feature's
+    row must never leave the current sidebar's view. `finished` senders are
+    now retained forever (never evicted); `abandoned` senders keep the prior
+    one-scan-grace-then-evict behaviour."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -392,7 +415,7 @@ class StaleRowEvictionTests(unittest.TestCase):
     def _put(self, folder, msg_id, sender, body, ts):
         write_message(self.bus_root, folder, envelope(msg_id, sender, body=body, ts=ts))
 
-    def test_terminal_state_evicted_one_scan_after_signal(self):
+    def test_finished_state_is_retained_across_many_scans(self):
         self._put("arch-stale", "arch-stale-id", "arch-stale",
                   identity_body("arch-stale", agent_type="architect",
                                 feature_id="feat-stale"),
@@ -406,8 +429,33 @@ class StaleRowEvictionTests(unittest.TestCase):
                   lifecycle_body("finished", feature_id="feat-stale"),
                   ts="2026-01-01T00:00:01.000000+00:00")
         agg.scan(self.bus_root)
-        # same scan the terminal signal arrived on: still visible as "done"
+        # same scan the terminal signal arrived on: visible as "done"
         self.assertEqual(agg.repo(self.repo).features[0].status, "done")
+
+        # a done feature's row never leaves — it must still be present (and
+        # still "done") across many further scans, not evicted after one
+        # scan's grace, and not requiring the message files to still exist
+        # on disk (both ids are already in _seen_ids so re-applying is moot).
+        for _ in range(5):
+            agg.scan(self.bus_root)
+            self.assertEqual(agg.repo(self.repo).features[0].status, "done")
+
+    def test_abandoned_state_evicted_one_scan_after_signal(self):
+        self._put("arch-fail", "arch-fail-id", "arch-fail",
+                  identity_body("arch-fail", agent_type="architect",
+                                feature_id="feat-fail"),
+                  ts="2026-01-01T00:00:00.000000+00:00")
+
+        agg = sidebar_model._BusAggregator()
+        agg.scan(self.bus_root)
+        self.assertEqual(agg.repo(self.repo).features[0].status, "idle")
+
+        self._put("arch-fail", "arch-fail-lc", "arch-fail",
+                  lifecycle_body("abandoned", feature_id="feat-fail"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        agg.scan(self.bus_root)
+        # same scan the terminal signal arrived on: still visible as "failed"
+        self.assertEqual(agg.repo(self.repo).features[0].status, "failed")
 
         # neither message file needs to be removed for this: eviction is
         # driven by the terminal signal already observed, not by disk
@@ -565,6 +613,32 @@ class RepoStatusTests(_BusFixtureTestCase):
         self.assertEqual(fleet.repos[0].status, "idle")
 
 
+class HasSessionTests(_BusFixtureTestCase):
+    """has_session (item 3, "empty projects don't render"): True only when
+    the repo has a live orchestrator session or at least one feature; False
+    for a repo whose bus is empty (nothing renderable), which the renderer's
+    flatten() then skips."""
+
+    def test_no_orchestrator_and_no_features_is_false(self):
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(len(fleet.repos), 1)
+        self.assertFalse(fleet.repos[0].has_session)
+
+    def test_orchestrator_session_alone_is_true(self):
+        self._put("orch-only", "orch-only-id", "orch-only",
+                  identity_body("orch-only", agent_type="orchestrator"),
+                  ts="2026-01-01T00:00:00.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertTrue(fleet.repos[0].has_session)
+
+    def test_feature_alone_is_true(self):
+        self._architect("arch-hassession", "feat-hassession")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertTrue(fleet.repos[0].has_session)
+
+
 class FeatureNameTests(_BusFixtureTestCase):
     def test_announced_name_is_used_over_derived_form(self):
         self._architect("arch-namedfeat", "custom-feature", name="Custom Label")
@@ -688,6 +762,545 @@ class ResolveReposEnvOverrideTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"ORCHIDS_SIDEBAR_REPOS": str(missing)}):
             resolved = sidebar_model.resolve_repos()
         self.assertEqual(resolved, [])
+
+
+# --------------------------------------------------------------------------
+# WIRE GRAMMAR v1 (bus-message-specifying B3)
+# --------------------------------------------------------------------------
+
+class StatusWordTests(_BusFixtureTestCase):
+    def test_status_prefix_sets_status_word_and_mirrors_activity(self):
+        self._architect("arch-sw1", "feat-sw1")
+        self._put("arch-sw1", "arch-sw1-sw", "arch-sw1", "orchid:status:building",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status_word, "building")
+        # feature.activity is the pre-existing renderer-facing field (sidebar.py
+        # reads it directly) — it must keep mirroring the live doing-word so
+        # the renderer needs no change in this step.
+        self.assertEqual(feature.activity, "building")
+
+    def test_deprecated_orchid_activity_prefix_still_falls_back_to_status_word(self):
+        # one-transition-release fallback: a sender still on the old grammar
+        # must not go blank in the sidebar.
+        self._architect("arch-sw2", "feat-sw2")
+        self._put("arch-sw2", "arch-sw2-legacy", "arch-sw2",
+                  "orchid:activity:doing legacy work",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status_word, "doing legacy work")
+        self.assertEqual(feature.activity, "doing legacy work")
+
+
+class UpdateTextTests(_BusFixtureTestCase):
+    def test_update_sets_update_text(self):
+        self._architect("arch-upd1", "feat-upd1")
+        self._put("arch-upd1", "arch-upd1-u", "arch-upd1",
+                  "orchid:update:shipped the migration",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.update_text, "shipped the migration")
+
+    def test_update_never_drives_status_derivation(self):
+        self._architect("arch-upd2", "feat-upd2")
+        self._put("arch-upd2", "arch-upd2-u", "arch-upd2",
+                  "orchid:update:a long narrative sentence",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status, "idle")
+
+    def test_update_never_sets_notify_even_if_flagged(self):
+        # defensive: the grammar says update never notifies, but the
+        # aggregator must not trust an envelope that claims otherwise.
+        self._architect("arch-upd3", "feat-upd3")
+        self._put("arch-upd3", "arch-upd3-u", "arch-upd3",
+                  "orchid:update:need review", ts="2026-01-01T00:00:01.000000+00:00",
+                  notify_user=True)
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertFalse(feature.waiting_on_operator)
+        self.assertEqual(feature.status, "idle")
+
+
+class PhaseProgressTests(_BusFixtureTestCase):
+    def test_phase_without_tick_uses_base_pct(self):
+        self._architect("arch-ph1", "feat-ph1")
+        self._put("arch-ph1", "arch-ph1-p", "arch-ph1", "orchid:phase:designing",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.phase, "designing")
+        self.assertIsNone(feature.phase_tick)
+        self.assertEqual(feature.progress_pct, 25)
+
+    def test_phase_with_tick_computes_pct(self):
+        self._architect("arch-ph2", "feat-ph2")
+        self._put("arch-ph2", "arch-ph2-p", "arch-ph2", "orchid:phase:building:2/3",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.phase, "building")
+        self.assertEqual(feature.phase_tick, (2, 3))
+        # base 40 + span 45 * 2/3 = 40 + 30 = 70
+        self.assertEqual(feature.progress_pct, 70)
+
+    def test_finished_lifecycle_overrides_pct_to_100(self):
+        self._architect("arch-ph3", "feat-ph3")
+        self._put("arch-ph3", "arch-ph3-p", "arch-ph3", "orchid:phase:scoping",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        self._put("arch-ph3", "arch-ph3-lc", "arch-ph3",
+                  lifecycle_body("finished", feature_id="feat-ph3"),
+                  ts="2026-01-01T00:00:02.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.progress_pct, 100)
+
+    def test_invalid_phase_string_is_ignored(self):
+        self._architect("arch-ph4", "feat-ph4")
+        self._put("arch-ph4", "arch-ph4-p", "arch-ph4", "orchid:phase:bogus",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertIsNone(feature.phase)
+        self.assertIsNone(feature.progress_pct)
+
+
+class SubagentQueueTests(_BusFixtureTestCase):
+    def test_queue_then_start_moves_from_queued_to_running(self):
+        self._architect("arch-q1", "feat-q1")
+        self._put("arch-q1", "arch-q1-1", "arch-q1", "orchid:subagent:queue:build-1",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        self._put("arch-q1", "arch-q1-2", "arch-q1", "orchid:subagent:start:build-1",
+                  ts="2026-01-01T00:00:02.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.subagents_queued, 0)
+        self.assertEqual(feature.subagents_running, 1)
+
+    def test_start_without_prior_queue_adds_directly_to_running(self):
+        self._architect("arch-q2", "feat-q2")
+        self._put("arch-q2", "arch-q2-1", "arch-q2", "orchid:subagent:start:build-2",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.subagents_queued, 0)
+        self.assertEqual(feature.subagents_running, 1)
+
+    def test_queue_only_counted_until_started(self):
+        self._architect("arch-q3", "feat-q3")
+        self._put("arch-q3", "arch-q3-1", "arch-q3", "orchid:subagent:queue:build-3",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.subagents_queued, 1)
+        self.assertEqual(feature.subagents_running, 0)
+
+    def test_done_removes_from_both_queued_and_running(self):
+        self._architect("arch-q4", "feat-q4")
+        self._put("arch-q4", "arch-q4-1", "arch-q4", "orchid:subagent:queue:build-4",
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        self._put("arch-q4", "arch-q4-2", "arch-q4", "orchid:subagent:start:build-4",
+                  ts="2026-01-01T00:00:02.000000+00:00")
+        self._put("arch-q4", "arch-q4-3", "arch-q4", "orchid:subagent:done:build-4",
+                  ts="2026-01-01T00:00:03.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.subagents_queued, 0)
+        self.assertEqual(feature.subagents_running, 0)
+
+
+class OpenQuestionsTests(_BusFixtureTestCase):
+    def test_ask_opens_a_question(self):
+        self._architect("arch-oq1", "feat-oq1")
+        self._put_ask("arch-oq1", "arch-oq1-ask", "arch-oq1", "q-1",
+                      "Proceed with deploy?", ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.question_count, 1)
+        self.assertEqual(feature.first_question_subject, "Proceed with deploy?")
+        self.assertEqual(
+            [(q.question_id, q.subject) for q in feature.open_questions],
+            [("q-1", "Proceed with deploy?")],
+        )
+        self.assertEqual(feature.interrupt, "question")
+
+    def test_matching_reply_clears_the_question(self):
+        self._architect("arch-oq2", "feat-oq2")
+        self._put_ask("arch-oq2", "arch-oq2-ask", "arch-oq2", "q-2",
+                      "Ship it?", ts="2026-01-01T00:00:01.000000+00:00")
+        self._put_reply("arch-oq2", "arch-oq2-reply", "operator-1", "q-2",
+                        ts="2026-01-01T00:00:02.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.question_count, 0)
+        self.assertEqual(feature.open_questions, [])
+        self.assertNotEqual(feature.interrupt, "question")
+
+    def test_askers_next_status_clears_the_question(self):
+        # mirrors how last_notify_user clears today: a fresh, non-notify
+        # status/activity signal from the SAME sender supersedes the wait.
+        self._architect("arch-oq3", "feat-oq3")
+        self._put_ask("arch-oq3", "arch-oq3-ask", "arch-oq3", "q-3",
+                      "Continue?", ts="2026-01-01T00:00:01.000000+00:00")
+        self._put("arch-oq3", "arch-oq3-status", "arch-oq3", "orchid:status:building",
+                  ts="2026-01-01T00:00:02.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.question_count, 0)
+        self.assertEqual(feature.status_word, "building")
+
+
+class InterruptDerivationTests(_BusFixtureTestCase):
+    def test_none_by_default(self):
+        self._architect("arch-int1", "feat-int1")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "none")
+
+    def test_question_when_open_questions_present(self):
+        self._architect("arch-int2", "feat-int2")
+        self._put_ask("arch-int2", "arch-int2-ask", "arch-int2", "q-int2",
+                      "Deploy?", ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "question")
+
+    def test_succeeded_on_pre_terminal_done_lifecycle(self):
+        self._architect("arch-int3", "feat-int3")
+        self._put("arch-int3", "arch-int3-lc", "arch-int3",
+                  lifecycle_body("done", feature_id="feat-int3"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "succeeded")
+
+    def test_succeeded_on_finished_lifecycle(self):
+        self._architect("arch-int4", "feat-int4")
+        self._put("arch-int4", "arch-int4-lc", "arch-int4",
+                  lifecycle_body("finished", feature_id="feat-int4"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "succeeded")
+
+    def test_failed_on_abandoned(self):
+        self._architect("arch-int5", "feat-int5")
+        self._put("arch-int5", "arch-int5-lc", "arch-int5",
+                  lifecycle_body("abandoned", feature_id="feat-int5"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "failed")
+
+    def test_failed_on_blocked_with_notify(self):
+        self._architect("arch-int6", "feat-int6")
+        self._put("arch-int6", "arch-int6-lc", "arch-int6",
+                  lifecycle_body("blocked", feature_id="feat-int6"),
+                  ts="2026-01-01T00:00:01.000000+00:00", notify_user=True)
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "failed")
+
+    def test_none_on_blocked_without_notify(self):
+        self._architect("arch-int7", "feat-int7")
+        self._put("arch-int7", "arch-int7-lc", "arch-int7",
+                  lifecycle_body("blocked", feature_id="feat-int7"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].interrupt, "none")
+
+
+class DuplicateMessageDedupTests(_BusFixtureTestCase):
+    """Item 7: a message identical in body+notify_user to the SENDER's
+    previous one changes nothing and re-raises no notify."""
+
+    def test_identical_consecutive_status_messages_stay_idempotent(self):
+        self._architect("arch-dd1", "feat-dd1")
+        self._put("arch-dd1", "arch-dd1-1", "arch-dd1", "orchid:status:waiting for input",
+                  ts="2026-01-01T00:00:01.000000+00:00", notify_user=True)
+        self._put("arch-dd1", "arch-dd1-2", "arch-dd1", "orchid:status:waiting for input",
+                  ts="2026-01-01T00:00:02.000000+00:00", notify_user=True)
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status_word, "waiting for input")
+        self.assertTrue(feature.waiting_on_operator)
+
+    def test_resent_duplicate_ask_after_reply_does_not_reopen_question(self):
+        # the duplicate-summons defect: a stale, at-least-once-delivered
+        # resend of the SAME ask (identical body+notify, same sender)
+        # arriving after the question was already answered must not reopen it.
+        self._architect("arch-dd2", "feat-dd2")
+        self._put_ask("arch-dd2", "ask-1", "arch-dd2", "q-dd2", "Ship now?",
+                      ts="2026-01-01T00:00:01.000000+00:00")
+        self._put_reply("arch-dd2", "reply-1", "operator-x", "q-dd2",
+                        ts="2026-01-01T00:00:02.000000+00:00")
+        self._put_ask("arch-dd2", "ask-1-retry", "arch-dd2", "q-dd2", "Ship now?",
+                      ts="2026-01-01T00:00:03.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.question_count, 0)
+        self.assertEqual(feature.interrupt, "none")
+
+
+class FormattingHelperTests(unittest.TestCase):
+    """bus-message-specifying B5b: the compact human-string formatters shared
+    by age/worked (duration) and tokens/dollars."""
+
+    def test_format_duration_hours_and_zero_padded_minutes(self):
+        self.assertEqual(sidebar_model._format_duration(3 * 3600 + 12 * 60), "3h12")
+        self.assertEqual(sidebar_model._format_duration(6 * 3600 + 2 * 60), "6h02")
+        self.assertEqual(sidebar_model._format_duration(1 * 3600 + 47 * 60), "1h47")
+
+    def test_format_duration_minutes_only_under_an_hour(self):
+        self.assertEqual(sidebar_model._format_duration(18 * 60), "18m")
+        self.assertEqual(sidebar_model._format_duration(0), "0m")
+
+    def test_format_tokens_compacts_thousands_and_millions(self):
+        self.assertEqual(sidebar_model._format_tokens(212_000), "212k")
+        self.assertEqual(sidebar_model._format_tokens(384_000), "384k")
+        self.assertEqual(sidebar_model._format_tokens(1_200_000), "1.2M")
+        self.assertEqual(sidebar_model._format_tokens(500), "500")
+
+    def test_format_dollars_always_two_decimals(self):
+        self.assertEqual(sidebar_model._format_dollars(7.9), "7.90")
+        self.assertEqual(sidebar_model._format_dollars(4.123), "4.12")
+
+
+class WorkedSecondsTests(unittest.TestCase):
+    """The worked-time gap math on synthetic commit-epoch lists, factored out
+    of any git subprocess so it is testable without git (bus-message-
+    specifying B5b): gaps <= 30 minutes count at face value, longer gaps
+    count as zero, floored at 10 minutes once the branch has any commit."""
+
+    def test_no_commits_is_zero(self):
+        self.assertEqual(sidebar_model._worked_seconds([]), 0.0)
+
+    def test_single_commit_is_floored_at_ten_minutes(self):
+        self.assertEqual(sidebar_model._worked_seconds([1_000]), 600.0)
+
+    def test_gaps_at_or_under_thirty_minutes_count_at_face_value(self):
+        epochs = [0, 900, 1800]  # two 900s (15m) gaps
+        self.assertEqual(sidebar_model._worked_seconds(epochs), 1800.0)
+
+    def test_gaps_over_thirty_minutes_count_as_zero(self):
+        epochs = [0, 3600]  # one 60m gap, over the cap -> floored
+        self.assertEqual(sidebar_model._worked_seconds(epochs), 600.0)
+
+    def test_mixed_gaps_only_sum_the_short_ones(self):
+        epochs = [0, 600, 600 + 3600]  # 10m gap counted, 60m gap dropped
+        self.assertEqual(sidebar_model._worked_seconds(epochs), 600.0)
+
+    def test_unsorted_input_is_sorted_before_gap_math(self):
+        self.assertEqual(
+            sidebar_model._worked_seconds([1800, 0, 900]),
+            sidebar_model._worked_seconds([0, 900, 1800]),
+        )
+
+
+class TTLCacheTests(unittest.TestCase):
+    """The refresh-throttling cache shared by tokens/dollars and age/worked —
+    exercised with an injected fake clock, never a real sleep."""
+
+    def _cache(self, ttl=30):
+        clock_state = {"now": 0.0}
+        cache = sidebar_model._TTLCache(ttl, clock=lambda: clock_state["now"])
+        return cache, clock_state
+
+    def test_second_get_within_ttl_does_not_recompute(self):
+        cache, clock_state = self._cache()
+        calls = []
+
+        def compute():
+            calls.append(1)
+            return "value"
+
+        self.assertEqual(cache.get("k", compute), "value")
+        clock_state["now"] = 10.0
+        self.assertEqual(cache.get("k", compute), "value")
+        self.assertEqual(len(calls), 1)
+
+    def test_get_recomputes_once_ttl_has_elapsed(self):
+        cache, clock_state = self._cache()
+        calls = []
+
+        def compute():
+            calls.append(1)
+            return "value"
+
+        cache.get("k", compute)
+        clock_state["now"] = 31.0
+        cache.get("k", compute)
+        self.assertEqual(len(calls), 2)
+
+    def test_different_keys_cache_independently(self):
+        cache, _clock_state = self._cache()
+        self.assertEqual(cache.get("a", lambda: "A"), "A")
+        self.assertEqual(cache.get("b", lambda: "B"), "B")
+
+
+class ReadStatusTests(unittest.TestCase):
+    """tokens/dollars via a direct, zero-bus-traffic read of the session's
+    own transcript, reusing bus.py's TOKEN_CLASSES/usage_entries/
+    estimates_for over that transcript rather than any bus message."""
+
+    def _write_transcript(self, tmp, model, usage):
+        path = Path(tmp) / "session.jsonl"
+        path.write_text(
+            json.dumps({"message": {"model": model, "usage": usage}}) + "\n",
+            encoding="utf-8",
+        )
+        return path
+
+    def test_reads_tokens_and_dollars_from_a_synthetic_transcript(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_transcript(
+                tmp, "claude-sonnet-5-20260101",
+                {"input_tokens": 100_000, "output_tokens": 50_000,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+            )
+            with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=path):
+                tokens, dollars, model = sidebar_model._read_status("some-session")
+        self.assertEqual(tokens, "150k")
+        expected_cost = (100_000 * 3.0 + 50_000 * 15.0) / 1_000_000
+        self.assertEqual(dollars, sidebar_model._format_dollars(expected_cost))
+        self.assertEqual(model, "claude-sonnet-5-20260101")
+
+    def test_no_transcript_yields_none_none(self):
+        with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=None):
+            self.assertEqual(sidebar_model._read_status("missing"), (None, None, None))
+
+    def test_unknown_model_yields_tokens_but_no_dollars(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_transcript(
+                tmp, "some-unknown-model",
+                {"input_tokens": 1_000, "output_tokens": 0,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+            )
+            with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=path):
+                tokens, dollars, model = sidebar_model._read_status("s")
+        self.assertEqual(tokens, "1k")
+        self.assertIsNone(dollars)
+        self.assertEqual(model, "some-unknown-model")
+
+    def test_transcript_model_backfills_identity_when_identity_lacks_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_transcript(
+                tmp, "claude-opus-5-20260101",
+                {"input_tokens": 1_000, "output_tokens": 0,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+            )
+            with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=path):
+                state = sidebar_model._SessionState(session_id="s1")
+                state.agent_type = "architect"
+                row = sidebar_model.Feature(
+                    feature_id="f1", name="f one", activity="",
+                    status="working", waiting_on_operator=False,
+                )
+                sidebar_model._apply_row_extension(
+                    row, state, sidebar_model._TTLCache(ttl_seconds=30),
+                )
+        self.assertEqual(row.model, "claude-opus-5-20260101")
+
+
+class ReadGitStatsTests(unittest.TestCase):
+    """age/worked's git-facing half — a real (throwaway) git repo, since
+    _read_git_stats' own branch-lookup/subprocess plumbing needs exercising
+    once; the gap MATH itself is covered git-free by WorkedSecondsTests."""
+
+    def _repo_with_main(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        repo_dir = tmp.name
+        subprocess.run(["git", "init", "--quiet", "-b", "main"], cwd=repo_dir,
+                       check=True, capture_output=True)
+        (Path(repo_dir) / "README.md").write_text("x", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init"],
+            cwd=repo_dir, check=True, capture_output=True,
+        )
+        return repo_dir
+
+    def test_missing_branch_falls_back_to_first_seen(self):
+        repo_dir = self._repo_with_main()
+        age, worked = sidebar_model._read_git_stats(
+            repo_dir, "no-such-feature", first_seen=100.0, now=700.0,
+        )
+        self.assertEqual(age, "10m")
+        self.assertIsNone(worked)
+
+    def test_existing_branch_derives_age_and_worked_from_its_commits(self):
+        repo_dir = self._repo_with_main()
+        subprocess.run(["git", "checkout", "--quiet", "-b", "f/my-feature"],
+                       cwd=repo_dir, check=True, capture_output=True)
+        (Path(repo_dir) / "a.txt").write_text("a", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=repo_dir, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "work"],
+            cwd=repo_dir, check=True, capture_output=True,
+        )
+        age, worked = sidebar_model._read_git_stats(
+            repo_dir, "my-feature", first_seen=0.0, now=time.time(),
+        )
+        self.assertIsNotNone(age)
+        self.assertEqual(worked, "10m")  # one commit -> floor
+
+
+class RoleModelExposureTests(_BusFixtureTestCase):
+    """bus-message-specifying B5b: role comes straight off the announced
+    agent_type; model only ever appears if the identity body happens to
+    carry one — bus.py's identity_of() does not today (see deviations), so
+    this exercises the mechanism defensively rather than assuming a value
+    that doesn't currently exist."""
+
+    def test_feature_role_is_the_announced_agent_type(self):
+        self._architect("arch-role1", "feat-role1")
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].role, "architect")
+
+    def test_feature_model_is_none_when_identity_body_omits_it(self):
+        self._architect("arch-role2", "feat-role2")
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertIsNone(fleet.repos[0].features[0].model)
+
+    def test_feature_model_is_exposed_when_identity_body_carries_one(self):
+        body = identity_body("arch-role3", agent_type="architect",
+                             feature_id="feat-role3", name="feat role3")
+        body["model"] = "claude-sonnet-5-20260101"
+        self._put("arch-role3", "arch-role3-id", "arch-role3", body,
+                  ts="2026-01-01T00:00:00.000000+00:00")
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].features[0].model, "claude-sonnet-5-20260101")
+
+    def test_repo_role_is_the_announced_orchestrator_agent_type(self):
+        self._put("orch-role1", "orch-role1-id", "orch-role1",
+                  identity_body("orch-role1", agent_type="orchestrator"),
+                  ts="2026-01-01T00:00:00.000000+00:00")
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(fleet.repos[0].role, "orchestrator")
 
 
 if __name__ == "__main__":

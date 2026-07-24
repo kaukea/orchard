@@ -71,10 +71,19 @@ Usage:
                                                 --title/--summary: optional short framing shown
                                                 prominently above the question in the popup.
   bus.py root                                  print the bus root
+  bus.py validate [PATH]                       audit recorded traffic against
+                                                WIRE GRAMMAR v1; PATH is a
+                                                bus-root directory read
+                                                recursively, else envelopes
+                                                come JSON-lines from stdin;
+                                                prints one line per violation/
+                                                warning + a summary count,
+                                                exit 1 if any violation
 """
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -155,6 +164,98 @@ LIFECYCLE_STATES = ("started", "building", "testing", "done", "finished", "block
 # a peer agent" (🪷); absent (older callers, or any state other than
 # "blocked") the sidebar defaults to "component".
 BLOCKED_ON_STATES = ("component", "agent")
+
+# WIRE GRAMMAR v1 (docs/TODO.md.d/bus-message-specifying.md): the closed set of
+# orchid:* body classes a hand-sent send/broadcast may use. orchid:interrupt:*
+# is deliberately absent — bus.py ask is its only emitter.
+NOTIFY_FORBIDDEN_ORCHID_CLASSES = ("status", "update", "phase", "subagent")
+SIGNAL_NOTIFY_STATES = ("done", "blocked", "abandoned")
+
+ORCHID_STATUS_DENYLIST = frozenset({
+    "started", "building", "testing", "done", "finished", "blocked",
+    "abandoned", "closing", "releasing", "departing", "announcing",
+})
+ORCHID_PHASES = ("ideation", "scoping", "designing", "building", "releasing")
+_STATUS_WORD_RE = re.compile(r"[a-z]+(-[a-z]+)*")
+
+
+def _validate_status_body(rest: str) -> str | None:
+    words = rest.split()
+    if not words or len(words) > 2:
+        return "orchid:status:<word> takes 1 or 2 lowercase words"
+    for word in words:
+        if not _STATUS_WORD_RE.fullmatch(word):
+            return f"orchid:status word {word!r} must be lowercase letters/hyphens only"
+        if word in ORCHID_STATUS_DENYLIST:
+            return f"orchid:status word {word!r} collides with a lifecycle state"
+    return None
+
+
+def _validate_update_body(rest: str) -> str | None:
+    return None if rest.strip() else "orchid:update:<sentence> needs non-empty text"
+
+
+def _validate_phase_tick(tick: str) -> str | None:
+    k, sep, n = tick.partition("/")
+    if not sep or not k.isdigit() or not n.isdigit():
+        return "orchid:phase tick must be k/n positive integers"
+    if int(k) <= 0 or int(n) <= 0 or int(k) > int(n):
+        return "orchid:phase tick must satisfy 1 <= k <= n"
+    return None
+
+
+def _validate_phase_body(rest: str) -> str | None:
+    parts = rest.split(":")
+    if len(parts) not in (1, 2):
+        return "orchid:phase:<phase>[:<k>/<n>] malformed"
+    phase = parts[0]
+    if phase not in ORCHID_PHASES:
+        return f"orchid:phase {phase!r} not one of {'/'.join(ORCHID_PHASES)}"
+    return _validate_phase_tick(parts[1]) if len(parts) == 2 else None
+
+
+def _validate_subagent_body(rest: str) -> str | None:
+    action, sep, label = rest.partition(":")
+    if not sep:
+        return "orchid:subagent:(queue|start|done):<label> malformed"
+    if action not in ("queue", "start", "done"):
+        return f"orchid:subagent action {action!r} must be queue, start, or done"
+    return None if label else "orchid:subagent label must be non-empty"
+
+
+ORCHID_BODY_VALIDATORS = {
+    "status": _validate_status_body,
+    "update": _validate_update_body,
+    "phase": _validate_phase_body,
+    "subagent": _validate_subagent_body,
+}
+ORCHID_ALLOWED_CLASSES_TEXT = "status, update, phase, subagent, interrupt:question (ask-only)"
+
+
+def _orchid_body_error(body: str) -> str | None:
+    cls, _, rest = body[len("orchid:"):].partition(":")
+    if cls == "interrupt":
+        return "orchid:interrupt:* may only be emitted by bus.py ask, never send/broadcast"
+    validator = ORCHID_BODY_VALIDATORS.get(cls)
+    if validator is None:
+        return f"unknown orchid:* class {cls!r}"
+    return validator(rest)
+
+
+def _orchid_class(body: str) -> str:
+    return body[len("orchid:"):].partition(":")[0]
+
+
+def enforce_orchid_grammar(args) -> None:
+    body = getattr(args, "body", None)
+    if not body or not body.startswith("orchid:"):
+        return
+    reason = _orchid_body_error(body)
+    if reason:
+        args.parser.error(f"bus: {reason} — allowed orchid:* classes: {ORCHID_ALLOWED_CLASSES_TEXT}")
+    cls = _orchid_class(body)
+    if cls in NOTIFY_FORBIDDEN_ORCHID_CLASSES and getattr(args, "notify_user", False):
+        args.parser.error(f"bus: --notify-user is not legal on orchid:{cls}:* bodies")
 
 
 def git(*args: str) -> str:
@@ -356,6 +457,7 @@ def fan_out(sender: str, envelope_for) -> int:
 
 
 def cmd_send(args) -> None:
+    enforce_orchid_grammar(args)
     target = inbox(args.to)
     if not target.is_dir():
         sys.exit(f"bus: no such agent {args.to!r} (no inbox) — it has finished or never started")
@@ -363,6 +465,7 @@ def cmd_send(args) -> None:
 
 
 def cmd_broadcast(args) -> None:
+    enforce_orchid_grammar(args)
     if not bus_root().is_dir():
         sys.exit("bus: no bus root — nothing to broadcast to")
     # every copy is addressed to `*`, though each lands in a specific peer's folder
@@ -444,6 +547,10 @@ def cmd_signal(args) -> None:
     the sidebar's evict-on-observed-terminal-signal logic still fires on that
     agent's own row (attribution there is strictly by envelope `from`).
     """
+    if args.notify_user and args.state not in SIGNAL_NOTIFY_STATES:
+        args.parser.error(
+            f"bus: --notify-user is only legal with --state {'|'.join(SIGNAL_NOTIFY_STATES)}"
+        )
     sender = args.on_behalf_of or whoami()
     feature = args.feature or identity_of()["feature_id"]
     body = {"kind": "lifecycle", "state": args.state, "feature_id": feature}
@@ -463,13 +570,14 @@ def _question_envelope(sender: str, to: str, question_id: str, question: str,
                         options: list[str], *, title: str | None = None,
                         summary: str | None = None, multi: bool = False) -> dict:
     """The envelope a `bus.py ask` broadcast puts in every peer's inbox
-    (sidebar-polish item 12c; title/summary/multi added round 2, item 12g).
+    (sidebar-polish item 12c; title/summary/multi added round 2, item 12g;
+    body switched to WIRE GRAMMAR v1's orchid:interrupt:question in the
+    bus-message-specifying feature).
 
-    `body` stays the existing `orchid:activity:<text>` string with
-    `notify_user=True` — the SAME signal tools/sidebar_model.py's
-    _apply_message already turns into `last_notify_user` (and so the ❓
-    marker), rather than a parallel one. question_id/question/options are
-    additional envelope-level fields a plain activity broadcast never
+    `body` is `orchid:interrupt:question:<subject>` with `notify_user=True`
+    — the one interrupt class `ask` alone may emit (send/broadcast reject a
+    hand-sent orchid:interrupt:* outright). question_id/question/options are
+    additional envelope-level fields a plain interrupt broadcast never
     carries; sidebar_model.py only reads `body`/`notify_user` and ignores
     them, so this is the SAME message doing double duty, not two messages.
     A reply is matched purely on the existing `in_reply_to` field (see
@@ -479,13 +587,13 @@ def _question_envelope(sender: str, to: str, question_id: str, question: str,
     only when set, so a plain single-select ask (the unchanged default) adds
     no new fields to the wire format at all.
 
-    The activity text itself is the exact wording pinned by the operator for
-    item 12(e)'s passive deferral notice — "I have a question: <subject>…" —
-    using `title` as the subject when one was given, else the raw question
-    text, always followed by a single literal ellipsis and nothing else.
+    The subject is `title` when one was given, else the raw question text —
+    the same choice logic as before the wire-grammar change, minus the
+    trailing ellipsis: the orchid:interrupt:question prefix now carries the
+    meaning the prose used to.
     """
     subject = title or question
-    body = f"orchid:activity:I have a question: {subject}…"
+    body = f"orchid:interrupt:question:{subject}"
     env = make_envelope(sender, to, body=body, notify_user=True)
     env["question_id"] = question_id
     env["question"] = question
@@ -554,6 +662,135 @@ def cmd_ask(args) -> None:
     print(answer)
 
 
+def _orchid_interrupt_violation(body: str, env: dict) -> str | None:
+    """orchid:interrupt:* is illegal everywhere except as the well-formed
+    question shape `bus.py ask` itself emits (_question_envelope): unlike
+    enforce_orchid_grammar (which bans interrupt outright for hand-sent
+    send/broadcast), recorded traffic legitimately contains these, so
+    validate checks the shape instead of rejecting the class."""
+    rest = body[len("orchid:interrupt:"):]
+    subclass, sep, subject = rest.partition(":")
+    if subclass != "question" or not sep or not subject:
+        return "orchid:interrupt:* must be orchid:interrupt:question:<subject>"
+    if not env.get("question_id"):
+        return "orchid:interrupt:question message missing question_id"
+    return None
+
+
+def _orchid_traffic_violation(env: dict, body: str) -> str | None:
+    cls = _orchid_class(body)
+    if cls == "interrupt":
+        return _orchid_interrupt_violation(body, env)
+    validator = ORCHID_BODY_VALIDATORS.get(cls)
+    if validator is None:
+        return f"unknown orchid:* class {cls!r}"
+    rest = body[len("orchid:"):].partition(":")[2]
+    reason = validator(rest)
+    if reason:
+        return reason
+    if cls in NOTIFY_FORBIDDEN_ORCHID_CLASSES and env.get("notify_user"):
+        return f"--notify-user is not legal on orchid:{cls}:* bodies"
+    return None
+
+
+def _lifecycle_traffic_violation(env: dict, body: dict) -> str | None:
+    state = body.get("state")
+    if state not in LIFECYCLE_STATES:
+        return f"lifecycle state {state!r} not one of {LIFECYCLE_STATES}"
+    if env.get("notify_user") and state not in SIGNAL_NOTIFY_STATES:
+        return f"notify_user is not legal on lifecycle state {state!r}"
+    return None
+
+
+def _free_prose_traffic_flag(env: dict) -> tuple[str, str] | None:
+    """Free prose (no wire-grammar class, no fixed request, no reply) is only
+    legal directed — a broadcast is, at best, legal peer prose flagged for
+    the operator's send-path redesign (WARNING), and at worst an unspecified
+    summons (VIOLATION) when it carries notify_user: nothing outside
+    ask/lifecycle may summon the operator."""
+    if env.get("to") != "*":
+        return None
+    if env.get("notify_user"):
+        return "violation", "free-prose broadcast carries notify_user — only ask/lifecycle may summon"
+    return "warning", "undirected free-prose broadcast (legal peer prose; send-path redesign candidate)"
+
+
+def _classify_traffic(env: dict) -> tuple[str, str] | None:
+    """None means the envelope is fine. Otherwise (severity, reason), where
+    severity is "violation" or "warning". Checked in the order WIRE GRAMMAR v1
+    defines the traffic: orchid:* classes, lifecycle pushes, identity/depart
+    pushes, fixed requests and replies, then whatever free prose remains."""
+    if not isinstance(env, dict):
+        return "violation", "envelope is not a JSON object"
+    body = env.get("body")
+    if isinstance(body, str) and body.startswith("orchid:"):
+        reason = _orchid_traffic_violation(env, body)
+        return ("violation", reason) if reason else None
+    if isinstance(body, dict) and body.get("kind") == "lifecycle":
+        reason = _lifecycle_traffic_violation(env, body)
+        return ("violation", reason) if reason else None
+    if isinstance(body, dict) and "session_id" in body:
+        return None
+    if isinstance(body, str) and body in FIXED:
+        return None
+    if env.get("in_reply_to"):
+        return None
+    return _free_prose_traffic_flag(env)
+
+
+def _path_envelope_sources(root: Path):
+    for f in sorted(root.rglob("*.json")):
+        if not f.name.startswith("."):
+            yield str(f.relative_to(root)), f.read_text(encoding="utf-8")
+
+
+def _stdin_envelope_sources():
+    for lineno, line in enumerate(sys.stdin, start=1):
+        line = line.strip()
+        if line:
+            yield f"<stdin>:{lineno}", line
+
+
+def _report(label: str, severity: str, frm: str, reason: str) -> None:
+    print(f"{severity.upper()} {label} from={frm}: {reason}")
+
+
+def cmd_validate(args) -> None:
+    """Audit recorded bus traffic against WIRE GRAMMAR v1 (the feature's
+    agreed test method: a role's traffic must validate with no unspecified
+    message). PATH is a bus-root directory, read recursively; with no PATH,
+    envelopes come JSON-lines from stdin."""
+    if args.path:
+        root = Path(args.path)
+        if not root.is_dir():
+            sys.exit(f"bus: validate — no such path {args.path!r}")
+        sources = _path_envelope_sources(root)
+    else:
+        sources = _stdin_envelope_sources()
+
+    total = violations = warnings = 0
+    for label, text in sources:
+        total += 1
+        try:
+            env = json.loads(text)
+        except json.JSONDecodeError as exc:
+            violations += 1
+            _report(label, "violation", "?", f"malformed JSON ({exc})")
+            continue
+        outcome = _classify_traffic(env)
+        if outcome is None:
+            continue
+        severity, reason = outcome
+        _report(label, severity, env.get("from", "?"), reason)
+        if severity == "violation":
+            violations += 1
+        else:
+            warnings += 1
+
+    print(f"{violations} violation(s), {warnings} warning(s) across {total} envelope(s)")
+    sys.exit(1 if violations else 0)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="repo-scoped agent message bus")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -592,10 +829,10 @@ def main() -> None:
     s = msg_args(sub.add_parser("send"))
     s.add_argument("--to", required=True)
     s.add_argument("--in-reply-to", dest="in_reply_to")
-    s.set_defaults(func=cmd_send)
+    s.set_defaults(func=cmd_send, parser=s)
 
     s = msg_args(sub.add_parser("broadcast"))
-    s.set_defaults(func=cmd_broadcast, to=None, in_reply_to=None)
+    s.set_defaults(func=cmd_broadcast, to=None, in_reply_to=None, parser=s)
 
     s = sub.add_parser("signal")
     s.add_argument("--state", required=True, choices=LIFECYCLE_STATES)
@@ -612,7 +849,7 @@ def main() -> None:
                         "orchestrator's escape hatch to broadcast an `abandoned` "
                         "terminal signal for an agent it just killed after its "
                         "exit-grace period ran out, so the sidebar still evicts it")
-    s.set_defaults(func=cmd_signal)
+    s.set_defaults(func=cmd_signal, parser=s)
 
     s = sub.add_parser("ask")
     s.add_argument("--question", required=True)
@@ -635,6 +872,12 @@ def main() -> None:
                         "(default 1.0) — polling cadence only, not a timeout: "
                         "ask never gives up on its own")
     s.set_defaults(func=cmd_ask)
+
+    s = sub.add_parser("validate")
+    s.add_argument("path", nargs="?", default=None,
+                    help="bus-root directory to audit recursively; omit to "
+                         "read JSON-lines envelopes from stdin")
+    s.set_defaults(func=cmd_validate)
 
     args = p.parse_args()
     if getattr(args, "agent_id", "sentinel") is None:

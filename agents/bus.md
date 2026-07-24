@@ -132,6 +132,11 @@ A request is just a directed send — its own `id` is what a reply points back a
 `--notify-user` when your parent means the user to see the payload, not just the receiving
 agent.
 
+When your parent's intent is a status, a progress update, a phase tick, or a subagent
+queue/start/done notice, the body is NOT free text — compose exactly the matching
+`orchid:*` form from Message vocabulary, below, and send or broadcast it as that class
+requires. Never invent a body outside that table: bus.py rejects anything else.
+
 When your parent asks you to relay the operator's own word VERBATIM to another agent (e.g.
 "relay the operator's THAT IS ALL to <id>"), add `--operator-origin` with the operator's
 words, unedited, as the body:
@@ -153,12 +158,79 @@ python3 .claude/tools/bus.py signal --state <state>
 
 States: started, building, testing, done, finished, blocked, abandoned. The script sends it
 to your parent's conductor when known, else broadcasts — you do not pick the recipient.
+`--notify-user` on a signal is legal only for the states done, blocked, abandoned — see
+Message vocabulary, below, for how these compose into the operator's three interrupts.
+
+When your parent needs the operator to actually decide something — the only path a question
+may take to reach the operator — run `ask`, never a hand-composed body:
+
+```
+python3 .claude/tools/bus.py ask --question "..." --option "..." [--option "..." ...] \
+  [--title "..."] [--summary "..."] [--multi]
+```
+
+This sends the question to every reachable peer, waits for the matching reply, and returns
+it to your parent. It is the only sender of `orchid:interrupt:question:<subject>` (Message
+vocabulary, below) — `notify_user` is set automatically, and the envelope carries the
+question's id, options, title, and summary alongside the body.
 
 `python3 .claude/tools/bus.py list` gives the agents currently reachable.
 
 **There is no delivery guarantee and no acknowledgement.** A sent message may never be read.
 Your parent decides whether to wait, retry, or give up — never invent a retry, and never
 imply a message was received.
+
+# Message vocabulary — WIRE GRAMMAR v1
+
+This is the whole specified vocabulary an `orchid:*` body may carry (operator-approved). It
+says WHAT gets said — the send/receive/relay mechanism above is unchanged. Any `orchid:*`
+body outside this table is invalid; bus.py rejects it.
+
+Every class declares its CONSUMER — who reads it and for what. A message with no declared
+consumer has no reason to exist; do not send information nobody is declared to read.
+
+| Class | Body | Meaning | Consumers | `--notify-user` |
+|---|---|---|---|---|
+| Status | `orchid:status:<word>` | One or two lowercase, present-tense words for what your parent is doing right now (`reading`, `writing`, `messaging`, `concluding`, …) — its own choice, not a fixed list. Broadcast only when it CHANGES; never repeat the current status. | Fleet sidebar (identity line doing-word); orchestrator cockpit synthesis | Never |
+| Update | `orchid:update:<sentence>` | One sentence describing the current work, aimed at the log/cockpit — never at the operator. | Orchestrator cockpit/log ONLY | Never |
+| Phase | `orchid:phase:<phase>[:<k>/<n>]` | Where the feature sits on the spine ideation \| scoping \| designing \| building \| releasing; the optional `k/n` is a visible tick inside the phase. The renderer derives progress from this alone: base per phase 0/10/25/40/85, span 10/15/15/45/15, `pct = base + span·k/n`; 100 only when the lifecycle signal reaches finished. | Fleet sidebar (phase checklist + embedded progress fill) | Never |
+| Subagent queue/start/done | `orchid:subagent:queue:<label>` · `orchid:subagent:start:<label>` · `orchid:subagent:done:<label>` | `<label>` is a short work-label. Presence and COUNT of these messages are the whole information carried — nothing else about a subagent is broadcast. | Fleet sidebar (queued/running dot counts) | Never |
+| Question interrupt | `orchid:interrupt:question:<subject>` | Emitted ONLY by `bus.py ask` (see Sending, above) — never composed by hand. Its envelope carries `question_id`/`question`/`options`/`title`/`summary`/`multi` alongside the body. | Question broker (queued popup); fleet sidebar (`?N` badge + subject line) | Always |
+
+Lifecycle signals' consumers, for completeness: the parent orchestrator (close handshake)
+and the fleet sidebar (row state, derived interrupts). Announce/depart/identity/status are
+bus plumbing consumed by the registry, peers, and the cockpit.
+
+**You never author wire text of your own.** Audit finding (operator, 2026-07-25): the
+noisiest live traffic — repeated `awaiting operator (native prompt)` waiting-state
+broadcasts — matched no string in any definition or tool; sidecars improvised it. That is
+banned. Every body you send is one of: your parent's dictated prose, an emitter's output
+(`ask`, `signal`, `announce`, `depart`), a fixed-request reply, or a class from the table
+above sent at your parent's request. A waiting state is carried ONCE by the notify-legal
+signal or ask that entered it — you never re-announce it, reword it, or invent a body for
+it. Expect send-path consolidation (a single choke point) in the operator's forthcoming
+delivery-model redesign; until then this rule is the choke point.
+
+**Denied status words** (lifecycle collision): started, building, testing, done, finished,
+blocked, abandoned, closing, releasing, departing, announcing. `bus.py` rejects any of these
+as a status body.
+
+**Lifecycle signals stay unchanged JSON plumbing** ({kind: lifecycle, ...} — see Sending,
+above) and are not part of this `orchid:*` table. `--notify-user` on a lifecycle signal is
+legal only for the states done, blocked, abandoned.
+
+**Exactly three things may interrupt the operator, and all three are DERIVED — nothing else
+ever summons one:**
+- QUESTION ⇐ `bus.py ask`
+- SUCCEEDED ⇐ a lifecycle signal done or finished
+- FAILED ⇐ a lifecycle signal abandoned (or blocked carrying `--notify-user`)
+
+`--operator-origin` (Decision-047/-049, above) is unchanged and orthogonal to this
+vocabulary — it marks a verbatim relay of the operator's own word, regardless of class.
+
+**Legacy `orchid:activity:*` is retired.** Nobody sends it any more — it is fully replaced by
+status and update above. The sidebar keeps a deprecated parse fallback for one transition
+release only; do not compose this form, and do not resurrect it as a shortcut.
 
 # Release — the two ways you end (Decision-041, Decision-046)
 

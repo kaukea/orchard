@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Cross-repo bus reader/aggregator for the fleet sidebar.
 
-READ-ONLY observer over the on-disk bus (see tools/bus.py, message.schema.json):
+READ-ONLY observer over the on-disk bus (see tools/bus.py, message.schema.json).
+Parses WIRE GRAMMAR v1: orchid:status (+ deprecated orchid:activity fallback),
+orchid:update, orchid:phase, orchid:subagent:queue/start/done,
+orchid:interrupt:question, lifecycle JSON, notify_user.
 
     <git-common-dir>/the-works/bus/<session-id>/<datetime>.json
 
@@ -53,6 +56,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from feature_name import feature_name as _feature_name  # noqa: E402
+import bus  # noqa: E402
 import orchard_registry  # noqa: E402
 
 # Sidecar sessions surface as agent_type "bus"; their subagent label is
@@ -118,6 +122,15 @@ class Bus:
 
 
 @dataclass
+class Question:
+    """One still-open ask, surfaced on a row's `open_questions` (WIRE GRAMMAR
+    v1, bus-message-specifying B3). Cleared by a matching reply or by the
+    asker's next status-clearing signal — see _clear_open_questions()."""
+    question_id: str
+    subject: str
+
+
+@dataclass
 class Feature:
     feature_id: str
     name: str
@@ -126,6 +139,28 @@ class Feature:
     waiting_on_operator: bool
     subagents: list[Subagent] = field(default_factory=list)
     bus: Bus | None = None
+    status_word: str = ""
+    update_text: str = ""
+    phase: str | None = None
+    phase_tick: tuple[int, int] | None = None
+    progress_pct: int | None = None
+    subagents_running: int = 0
+    subagents_queued: int = 0
+    open_questions: list[Question] = field(default_factory=list)
+    question_count: int = 0
+    first_question_subject: str | None = None
+    interrupt: str = "none"
+    # Display-grammar stats (bus-message-specifying B5b) — role/model come
+    # straight off the announce identity envelope; tokens/dollars off a
+    # cached local status_of()-equivalent read; age/worked off a cached
+    # local git read of the feature's branch. Every one of these stays None
+    # until its source can actually supply it — never guessed.
+    role: str | None = None
+    model: str | None = None
+    tokens: str | None = None
+    dollars: str | None = None
+    age: str | None = None
+    worked: str | None = None
 
 
 @dataclass
@@ -136,8 +171,31 @@ class Repo:
     status: str
     waiting_on_operator: bool
     paused: bool = False
+    # True when the repo has at least one live session (an orchestrator session
+    # or any feature). A repo with no live session is not rendered (the sidebar's
+    # flatten() skips it). Defaults True so hand-built Repo() test fixtures render
+    # as before unless a test opts out; _assemble_repo() sets the real value.
+    has_session: bool = True
     features: list[Feature] = field(default_factory=list)
     bus: Bus | None = None
+    status_word: str = ""
+    update_text: str = ""
+    phase: str | None = None
+    phase_tick: tuple[int, int] | None = None
+    progress_pct: int | None = None
+    subagents_running: int = 0
+    subagents_queued: int = 0
+    open_questions: list[Question] = field(default_factory=list)
+    question_count: int = 0
+    first_question_subject: str | None = None
+    interrupt: str = "none"
+    # See Feature's matching fields — a repo has no branch of its own, so it
+    # never gets age/worked, only role/model/tokens/dollars off its
+    # orchestrator session.
+    role: str | None = None
+    model: str | None = None
+    tokens: str | None = None
+    dollars: str | None = None
 
 
 @dataclass
@@ -256,11 +314,139 @@ class _SessionState:
     feature_id: str | None = None
     name: str | None = None
     parent_session: str | None = None
-    activity: str = ""
+    # Carried on the identity envelope only if the sender's identity_of()
+    # ever grows a model field — as of this step it does not (model is
+    # deliberately excluded from bus.py's identity_of() because it can
+    # change mid-session), so this stays None in practice; see role/model on
+    # Feature/Repo (bus-message-specifying B5b).
+    model: str | None = None
+    # Wall-clock instant this session's first message was processed by this
+    # process (aggregator-assigned, see _BusAggregator.scan) — the fallback
+    # age baseline when the feature's branch doesn't exist yet.
+    first_seen: float = 0.0
+    status_word: str = ""
+    update_text: str = ""
+    phase: str | None = None
+    phase_tick: tuple[int, int] | None = None
     lifecycle_state: str | None = None
     blocked_on: str | None = None  # BLOCKED_ON_COMPONENT / BLOCKED_ON_AGENT
-    active_subagents: set = field(default_factory=set)
+    # notify_user carried on the CURRENT lifecycle signal itself — kept apart
+    # from last_notify_user (which only an activity/status broadcast may set
+    # or clear, see _apply_status_word) so a blocked+notify interrupt read
+    # doesn't depend on the sticky flash flag.
+    blocked_notify: bool = False
+    active_subagents: set = field(default_factory=set)  # running
+    subagents_queued: set = field(default_factory=set)
+    open_questions: dict = field(default_factory=dict)  # question_id -> subject
     last_notify_user: bool = False  # notify_user flag of the latest message seen
+    last_signature: tuple | None = None  # (body, notify_user) of the previous message
+
+
+# WIRE GRAMMAR v1 body prefixes (bus-message-specifying B3).
+_STATUS_PREFIX = "orchid:status:"
+_ACTIVITY_PREFIX = "orchid:activity:"  # deprecated fallback, one transition release
+_UPDATE_PREFIX = "orchid:update:"
+_PHASE_PREFIX = "orchid:phase:"
+_QUESTION_PREFIX = "orchid:interrupt:question:"
+_SUBAGENT_QUEUE_PREFIX = "orchid:subagent:queue:"
+_SUBAGENT_START_PREFIX = "orchid:subagent:start:"
+_SUBAGENT_DONE_PREFIX = "orchid:subagent:done:"
+
+# progress_pct phase table (bus-message-specifying B3 task item 3): base %
+# a phase starts at, and the % span it covers before the next phase begins.
+_PHASE_BASES = {
+    "ideation": 0, "scoping": 10, "designing": 25, "building": 40, "releasing": 85,
+}
+_PHASE_SPANS = {
+    "ideation": 10, "scoping": 15, "designing": 15, "building": 45, "releasing": 15,
+}
+
+
+def _clear_open_questions(state: _SessionState) -> None:
+    state.open_questions.clear()
+
+
+def _apply_status_word(state: _SessionState, msg: dict, text: str) -> None:
+    state.status_word = text
+    # only a status/activity broadcast may set or clear the waiting flash —
+    # identity/announce/lifecycle messages must leave it untouched, or a
+    # later re-announce/lifecycle signal would silently clear a still-open
+    # "waiting on operator" flash (last-write-wins per field, ts order).
+    state.last_notify_user = msg.get("notify_user") is True
+    _clear_open_questions(state)
+
+
+def _apply_update_text(state: _SessionState, msg: dict, text: str) -> None:
+    # update never derives status and never notifies — no other field touched
+    state.update_text = text
+
+
+def _parse_phase(remainder: str) -> tuple[str | None, tuple[int, int] | None]:
+    phase, _, tick_text = remainder.partition(":")
+    if phase not in _PHASE_BASES:
+        return None, None
+    if not tick_text:
+        return phase, None
+    k_text, sep, n_text = tick_text.partition("/")
+    if not sep:
+        return None, None
+    try:
+        k, n = int(k_text), int(n_text)
+    except ValueError:
+        return None, None
+    if k < 0 or n <= 0:
+        return None, None
+    return phase, (k, n)
+
+
+def _apply_phase(state: _SessionState, msg: dict, remainder: str) -> None:
+    phase, tick = _parse_phase(remainder)
+    if phase is None:
+        return  # invalid phase string — defensive, bus.py validates at send
+    state.phase = phase
+    state.phase_tick = tick
+
+
+def _apply_question(state: _SessionState, msg: dict, subject: str) -> None:
+    question_id = msg.get("question_id")
+    if question_id:
+        state.open_questions[question_id] = subject
+    state.last_notify_user = msg.get("notify_user") is True
+
+
+def _is_bus_subagent(state: _SessionState, label: str) -> bool:
+    return state.agent_type == BUS_AGENT_TYPE or label == BUS_LABEL
+
+
+def _apply_subagent_queue(state: _SessionState, msg: dict, label: str) -> None:
+    if not _is_bus_subagent(state, label):
+        state.subagents_queued.add(label)
+
+
+def _apply_subagent_start(state: _SessionState, msg: dict, label: str) -> None:
+    state.subagents_queued.discard(label)
+    if not _is_bus_subagent(state, label):
+        state.active_subagents.add(label)
+
+
+def _apply_subagent_done(state: _SessionState, msg: dict, label: str) -> None:
+    state.subagents_queued.discard(label)
+    state.active_subagents.discard(label)
+
+
+# Tried in order against a string body; the first matching prefix's handler
+# runs with the text after that prefix. Composition over an elif chain, so a
+# new WIRE GRAMMAR verb is one more row, not a deeper branch.
+_STRING_BODY_HANDLERS = [
+    (_STATUS_PREFIX, _apply_status_word),
+    (_ACTIVITY_PREFIX, _apply_status_word),  # deprecated fallback — same field
+    (_UPDATE_PREFIX, _apply_update_text),
+    (_PHASE_PREFIX, _apply_phase),
+    (_QUESTION_PREFIX, _apply_question),
+    (_SUBAGENT_QUEUE_PREFIX, _apply_subagent_queue),
+    (_SUBAGENT_START_PREFIX, _apply_subagent_start),
+    (_SUBAGENT_DONE_PREFIX, _apply_subagent_done),
+]
 
 
 def _apply_message(state: _SessionState, msg: dict) -> None:
@@ -275,28 +461,45 @@ def _apply_message(state: _SessionState, msg: dict) -> None:
         state.feature_id = body.get("feature_id")
         state.name = body.get("name")
         state.parent_session = body.get("parent_session")
+        state.model = body.get("model")
 
     elif isinstance(body, dict) and body.get("kind") == "lifecycle":
         state.lifecycle_state = body.get("state")
         state.blocked_on = body.get("blocked_on")
+        state.blocked_notify = msg.get("notify_user") is True
+        if state.lifecycle_state in _TERMINAL_LIFECYCLE:
+            _clear_open_questions(state)
 
     elif isinstance(body, str):
-        if body.startswith("orchid:activity:"):
-            # text after the 2nd colon; may itself contain colons/spaces
-            state.activity = body.split(":", 2)[2]
-            # only an activity broadcast may set or clear the waiting flash —
-            # identity/announce/lifecycle messages must leave it untouched, or
-            # a later re-announce/lifecycle signal would silently clear a
-            # still-open "waiting on operator" flash (last-write-wins per
-            # field, applied in ts order).
-            state.last_notify_user = msg.get("notify_user") is True
-        elif body.startswith("orchid:subagent:start:"):
-            label = body[len("orchid:subagent:start:"):]
-            if not (state.agent_type == BUS_AGENT_TYPE or label == BUS_LABEL):
-                state.active_subagents.add(label)
-        elif body.startswith("orchid:subagent:done:"):
-            label = body[len("orchid:subagent:done:"):]
-            state.active_subagents.discard(label)
+        for prefix, handler in _STRING_BODY_HANDLERS:
+            if body.startswith(prefix):
+                handler(state, msg, body[len(prefix):])
+                break
+
+
+def _is_repeat_of_previous(state: _SessionState, msg: dict) -> bool:
+    """Dedup rule (bus-message-specifying B3 item 7): a message identical in
+    body+notify_user to the SENDER's previous one changes nothing and
+    re-raises no notify — kills the duplicate-summons defect where a resent
+    ask could reopen a question already answered."""
+    signature = (msg.get("body"), msg.get("notify_user") is True)
+    is_repeat = signature == state.last_signature
+    state.last_signature = signature
+    return is_repeat
+
+
+def _clear_replied_question(states: dict, msg: dict) -> None:
+    """A reply's `from` is the ANSWERER, not the asker — the open question it
+    resolves lives on whichever sender's state still holds that question_id,
+    found by matching envelope in_reply_to, independent of the normal
+    per-sender attribution the rest of _apply_message uses."""
+    in_reply_to = msg.get("in_reply_to")
+    if not in_reply_to:
+        return
+    for state in states.values():
+        if in_reply_to in state.open_questions:
+            del state.open_questions[in_reply_to]
+            return
 
 
 # a finished/abandoned session is resolved — it must never keep flashing a
@@ -334,6 +537,203 @@ def _status_for(state: _SessionState) -> str:
     return "idle"
 
 
+def _progress_pct_for(state: _SessionState) -> int | None:
+    if state.lifecycle_state == "finished":
+        return 100
+    if state.phase is None:
+        return None
+    base = _PHASE_BASES[state.phase]
+    if state.phase_tick is None:
+        return base
+    span = _PHASE_SPANS[state.phase]
+    k, n = state.phase_tick
+    return base + (span * k) // n
+
+
+def _interrupt_for(state: _SessionState) -> str:
+    """The renderer's badge signal, derived from state already tracked for
+    other purposes (bus-message-specifying B3 item 6) — additional to, never
+    a replacement for, the working/waiting/idle status derivation above."""
+    if state.open_questions:
+        return "question"
+    if state.lifecycle_state in ("done", "finished"):
+        return "succeeded"
+    if state.lifecycle_state == "abandoned":
+        return "failed"
+    if state.lifecycle_state == "blocked" and state.blocked_notify:
+        return "failed"
+    return "none"
+
+
+# --------------------------------------------------------------------------
+# Display-grammar stats (bus-message-specifying B5b) — role/model straight
+# off the identity envelope; tokens/dollars and age/worked need a local
+# subprocess/filesystem read apiece, so both are gated behind a small
+# refresh-throttling cache (ZERO bus traffic and ZERO extra agent turns —
+# operator constraint: this data is deterministic and locally-emitted only).
+# --------------------------------------------------------------------------
+
+_STATUS_CACHE_TTL_SECONDS = 30
+_GIT_STATS_CACHE_TTL_SECONDS = 30
+_WORKED_GAP_CAP_SECONDS = 30 * 60
+_WORKED_FLOOR_SECONDS = 10 * 60
+
+
+class _TTLCache:
+    """Generic per-key memo, refreshed at most once every `ttl_seconds` — one
+    mechanism shared by the status (tokens/dollars) and git-stats (age/
+    worked) caches below rather than two near-identical classes. `clock` is
+    injectable (defaults to `time.time`) so tests can control refresh timing
+    without sleeping."""
+
+    def __init__(self, ttl_seconds: float, clock=time.time) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._clock = clock
+        self._entries: dict[object, tuple[float, object]] = {}
+
+    def get(self, key, compute):
+        now = self._clock()
+        cached = self._entries.get(key)
+        if cached is not None and now - cached[0] < self._ttl_seconds:
+            return cached[1]
+        value = compute()
+        self._entries[key] = (now, value)
+        return value
+
+
+def _format_duration(seconds: float) -> str:
+    total_minutes = int(seconds // 60)
+    hours, minutes = divmod(total_minutes, 60)
+    return f"{hours}h{minutes:02d}" if hours > 0 else f"{minutes}m"
+
+
+def _format_tokens(count: int) -> str:
+    if count >= 1_000_000:
+        return f"{count / 1_000_000:.1f}M"
+    if count >= 1_000:
+        return f"{round(count / 1_000)}k"
+    return str(count)
+
+
+def _format_dollars(amount: float) -> str:
+    return f"{amount:.2f}"
+
+
+def _transcript_for_session(session_id: str) -> Path | None:
+    """Mirrors bus.py's own `transcript()`, parameterised by session id
+    instead of always resolving the CALLING process's own session — bus.py
+    has no such lookup (its status_of() only ever answers for `whoami()`),
+    so this reads the same on-disk convention directly rather than adding
+    one to bus.py outside this step's edit scope. Zero bus traffic: a plain
+    filesystem glob, exactly like bus.py's own version."""
+    projects = Path.home() / ".claude" / "projects"
+    matches = sorted(projects.glob(f"*/{session_id}.jsonl"))
+    return matches[-1] if matches else None
+
+
+def _read_status(session_id: str) -> tuple[str | None, str | None, str | None]:
+    """(tokens, dollars, model) for `session_id`, reusing bus.py's own
+    token-class and cost-estimate machinery (bus.TOKEN_CLASSES,
+    bus.usage_entries, bus.estimates_for) over that session's transcript.
+    The model id is the transcript's most recent entry — a mutable session
+    fact the identity broadcast deliberately excludes. Any failure — no
+    transcript, malformed lines, unknown model — yields (None, None, None),
+    never a raised exception."""
+    try:
+        path = _transcript_for_session(session_id)
+        if path is None:
+            return None, None, None
+        spend = dict.fromkeys(bus.TOKEN_CLASSES, 0)
+        model = None
+        for usage, entry_model in bus.usage_entries(path):
+            if entry_model:
+                model = entry_model
+            for token_class in bus.TOKEN_CLASSES:
+                spend[token_class] += usage.get(token_class, 0) or 0
+        total_tokens = sum(spend.values())
+        if total_tokens == 0:
+            return None, None, model
+        cost = bus.estimates_for(model, spend, 0).get("cost_usd")
+        dollars = _format_dollars(cost) if cost is not None else None
+        return _format_tokens(total_tokens), dollars, model
+    except Exception:
+        return None, None, None
+
+
+def _branch_commit_epochs(repo_path: str, feature_id: str) -> list[int] | None:
+    """Ascending commit epochs unique to `f/<feature_id>` (merge-base with
+    main .. tip), or None if that branch doesn't exist in `repo_path`. `_git`
+    never raises (see its own try/except), so a missing branch and a git
+    failure both read as "" here and are treated alike — the fleet
+    convention (branch = f/<feature-id>) is the only lookup, never a guess."""
+    branch = f"f/{feature_id}"
+    if not _git("rev-parse", "--verify", branch, cwd=repo_path):
+        return None
+    out = _git("log", "--format=%at", f"main..{branch}", cwd=repo_path)
+    if not out:
+        return []
+    return sorted(int(line) for line in out.splitlines() if line.strip())
+
+
+def _worked_seconds(commit_epochs: list[int]) -> float:
+    """Sum of consecutive commit gaps at face value up to
+    `_WORKED_GAP_CAP_SECONDS` (a longer gap counts as zero — the agent was
+    presumably not actively working across it), floored at
+    `_WORKED_FLOOR_SECONDS` once the branch has at least one commit."""
+    if not commit_epochs:
+        return 0.0
+    ordered = sorted(commit_epochs)
+    gaps = (b - a for a, b in zip(ordered, ordered[1:]))
+    total = sum(gap for gap in gaps if gap <= _WORKED_GAP_CAP_SECONDS)
+    return float(max(total, _WORKED_FLOOR_SECONDS))
+
+
+def _read_git_stats(
+    repo_path: str, feature_id: str, first_seen: float, now: float,
+) -> tuple[str | None, str | None]:
+    """(age, worked) for one feature. No branch yet -> age falls back to
+    `first_seen` (this process's own first observation of the sender) and
+    worked stays None (no commits to derive a work span from); a branch with
+    zero commits unique to it also yields (None, None) — nothing to report
+    yet, not a failure."""
+    try:
+        epochs = _branch_commit_epochs(repo_path, feature_id)
+        if epochs is None:
+            return _format_duration(max(now - first_seen, 0.0)), None
+        if not epochs:
+            return None, None
+        age = _format_duration(max(now - min(epochs), 0.0))
+        worked = _format_duration(_worked_seconds(epochs))
+        return age, worked
+    except Exception:
+        return None, None
+
+
+def _apply_row_extension(row, state: _SessionState, status_cache: _TTLCache) -> None:
+    """Copy the WIRE GRAMMAR v1 fields from an aggregated sender state onto a
+    public Feature or Repo row — both dataclasses share this exact field set,
+    so one function serves either (duck-typed on purpose, see _assemble_repo)."""
+    row.status_word = state.status_word
+    row.update_text = state.update_text
+    row.phase = state.phase
+    row.phase_tick = state.phase_tick
+    row.progress_pct = _progress_pct_for(state)
+    row.subagents_running = len(state.active_subagents)
+    row.subagents_queued = len(state.subagents_queued)
+    row.open_questions = [
+        Question(question_id=qid, subject=subject)
+        for qid, subject in state.open_questions.items()
+    ]
+    row.question_count = len(state.open_questions)
+    row.first_question_subject = next(iter(state.open_questions.values()), None)
+    row.interrupt = _interrupt_for(state)
+    row.role = state.agent_type
+    row.tokens, row.dollars, transcript_model = status_cache.get(
+        state.session_id, lambda: _read_status(state.session_id),
+    )
+    row.model = state.model or transcript_model
+
+
 class _BusAggregator:
     """Accumulates per-sender state for one repo's bus across repeated scans.
 
@@ -355,18 +755,25 @@ class _BusAggregator:
     used to survive forever, even past its own terminal lifecycle signal
     (only the waiting flag got cleared, per _TERMINAL_LIFECYCLE) — this is
     why a long-closed feature ("app-identifying") kept rendering as a
-    permanent stale row. Once a sender's lifecycle reaches a terminal signal
-    (finished/abandoned), its state is shown for exactly one more scan (so a
-    "done"/"failed" row is still visible right after the signal — no
-    documented grace window exists beyond that, so one scan is the deliberate
-    minimum), then evicted in full on the NEXT scan, before that scan's own
-    row assembly — never lingering indefinitely.
+    permanent stale row. Once a sender's lifecycle reaches a terminal signal,
+    eviction now depends on WHICH terminal state it reached (operator
+    decision, 2026-07-24, sidebar-titling item 7): a `finished` (done) sender
+    is retained deliberately for the life of the current sidebar's view — a
+    done feature's row never leaves — it keeps rendering (green, "done") and
+    is never scheduled for eviction. An `abandoned` sender keeps the prior
+    one-scan-grace behaviour: shown for exactly one more scan (so a "failed"
+    row is still visible right after the signal), then evicted in full on the
+    NEXT scan, before that scan's own row assembly — never lingering
+    indefinitely.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, clock=time.time) -> None:
         self.states: dict[str, _SessionState] = {}
         self._seen_ids: set[str] = set()
         self._pending_eviction: set[str] = set()
+        self._clock = clock
+        self._status_cache = _TTLCache(_STATUS_CACHE_TTL_SECONDS, clock)
+        self._git_stats_cache = _TTLCache(_GIT_STATS_CACHE_TTL_SECONDS, clock)
 
     def scan(self, bus_root: Path) -> None:
         # evict senders whose terminal signal was already observed on a
@@ -404,7 +811,13 @@ class _BusAggregator:
         new_messages.sort(key=lambda m: m.get("ts") or "")
         for msg in new_messages:
             sender = msg["from"]
-            state = self.states.setdefault(sender, _SessionState(session_id=sender))
+            state = self.states.get(sender)
+            if state is None:
+                state = _SessionState(session_id=sender, first_seen=self._clock())
+                self.states[sender] = state
+            if _is_repeat_of_previous(state, msg):
+                continue
+            _clear_replied_question(self.states, msg)
             _apply_message(state, msg)
 
         # bound to messages still on disk this scan — the underlying files
@@ -412,14 +825,18 @@ class _BusAggregator:
         # not seen this scan can never recur and its id is safe to drop
         self._seen_ids = current_ids
 
-        # anyone now resolved gets exactly one more scan's visibility, then
-        # eviction at the top of the NEXT scan (see class docstring)
+        # only "abandoned" senders get exactly one more scan's visibility
+        # then eviction at the top of the NEXT scan; "finished" (done)
+        # senders are retained deliberately and never scheduled for eviction
+        # (see class docstring)
         for sender, state in self.states.items():
-            if state.lifecycle_state in _TERMINAL_LIFECYCLE:
+            if state.lifecycle_state == "abandoned":
                 self._pending_eviction.add(sender)
 
     def repo(self, repo_path: str) -> Repo:
-        return _assemble_repo(repo_path, self.states)
+        return _assemble_repo(
+            repo_path, self.states, self._status_cache, self._git_stats_cache, self._clock,
+        )
 
 
 # --------------------------------------------------------------------------
@@ -442,7 +859,13 @@ def _pick_bus(sessions: dict[str, _SessionState], parent_session_id: str) -> Bus
     return Bus() if candidates else None
 
 
-def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
+def _assemble_repo(
+    repo_path: str,
+    sessions: dict[str, _SessionState],
+    status_cache: _TTLCache,
+    git_stats_cache: _TTLCache,
+    clock=time.time,
+) -> Repo:
     name = Path(repo_path).name
     repo = Repo(path=repo_path, name=name, activity="", status="idle",
                 waiting_on_operator=False)
@@ -451,10 +874,11 @@ def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
         (s for s in sessions.values() if s.agent_type == "orchestrator"), None,
     )
     if orchestrator is not None:
-        repo.activity = orchestrator.activity
+        repo.activity = orchestrator.status_word
         repo.status = _status_for(orchestrator)
         repo.waiting_on_operator = _waiting_on_operator_of(orchestrator)
         repo.bus = _pick_bus(sessions, orchestrator.session_id)
+        _apply_row_extension(repo, orchestrator, status_cache)
 
     architects = [s for s in sessions.values() if s.agent_type == "architect"]
     for arch in architects:
@@ -476,10 +900,17 @@ def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
         feature = Feature(
             feature_id=feature_id,
             name=feature_name,
-            activity=arch.activity,
+            activity=arch.status_word,
             status=_status_for(arch),
             waiting_on_operator=_waiting_on_operator_of(arch),
             bus=_pick_bus(sessions, arch.session_id),
+        )
+        _apply_row_extension(feature, arch, status_cache)
+        feature.age, feature.worked = git_stats_cache.get(
+            (repo_path, feature_id),
+            lambda arch=arch, feature_id=feature_id: _read_git_stats(
+                repo_path, feature_id, arch.first_seen, clock(),
+            ),
         )
         # subagents surfaced directly by the architect's own orchid:subagent traffic
         for label in sorted(arch.active_subagents):
@@ -496,6 +927,11 @@ def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
                 continue  # bare session-UUID row: never operator-facing
             feature.subagents.append(Subagent(label=s.name or s.session_id))
         repo.features.append(feature)
+
+    # a repo with no orchestrator session AND no features has nothing live to
+    # show — the renderer's flatten() reads this flag and skips the repo
+    # entirely (item 3, "empty projects don't render").
+    repo.has_session = orchestrator is not None or bool(repo.features)
 
     return repo
 

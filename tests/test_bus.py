@@ -200,20 +200,20 @@ class SignalOnBehalfOfTests(unittest.TestCase):
 class QuestionEnvelopeUnitTests(unittest.TestCase):
     """Unit-level: _question_envelope() itself, no subprocess involved."""
 
-    def test_carries_notify_user_and_activity_body_for_the_existing_sidebar_signal(self):
+    def test_carries_notify_user_and_interrupt_question_body_for_the_existing_sidebar_signal(self):
         env = bus._question_envelope("askerX", "peerA", "q1", "Proceed?", ["Yes", "No"])
         self.assertTrue(env["notify_user"])
-        self.assertEqual(env["body"], "orchid:activity:I have a question: Proceed?…")
+        self.assertEqual(env["body"], "orchid:interrupt:question:Proceed?")
 
-    def test_activity_body_uses_title_as_subject_when_given(self):
+    def test_interrupt_question_body_uses_title_as_subject_when_given(self):
         env = bus._question_envelope(
             "askerX", "peerA", "q1", "Proceed?", ["Yes", "No"], title="Deploy gate",
         )
-        self.assertEqual(env["body"], "orchid:activity:I have a question: Deploy gate…")
+        self.assertEqual(env["body"], "orchid:interrupt:question:Deploy gate")
 
-    def test_activity_body_falls_back_to_question_text_without_a_title(self):
+    def test_interrupt_question_body_falls_back_to_question_text_without_a_title(self):
         env = bus._question_envelope("askerX", "peerA", "q1", "Ship it?", ["Yes", "No"])
-        self.assertEqual(env["body"], "orchid:activity:I have a question: Ship it?…")
+        self.assertEqual(env["body"], "orchid:interrupt:question:Ship it?")
 
     def test_carries_question_fields(self):
         env = bus._question_envelope("askerX", "peerA", "q1", "Proceed?", ["Yes", "No"])
@@ -328,7 +328,7 @@ class AskCliRoundTripTests(unittest.TestCase):
             self.assertTrue(received["notify_user"])
             self.assertEqual(received["question"], "Proceed?")
             self.assertEqual(received["options"], ["Yes", "No"])
-            self.assertEqual(received["body"], "orchid:activity:I have a question: Proceed?…")
+            self.assertEqual(received["body"], "orchid:interrupt:question:Proceed?")
 
             # the "broker" (standing in for tools/orchard-question-broker.py)
             # answers directly over the bus, exactly like it would after a
@@ -427,6 +427,223 @@ class AskCliRoundTripTests(unittest.TestCase):
             [], '{"gate": "MAKE IT SO"}', "askerGate",
         )
         self.assertEqual(answer, {"gate": "MAKE IT SO"})
+
+
+class OrchidGrammarCliTests(unittest.TestCase):
+    """CLI-level: WIRE GRAMMAR v1 enforcement in `send` and `broadcast`
+    (docs/TODO.md.d/bus-message-specifying.md) — valid orchid:* bodies pass,
+    malformed/unknown ones argparse-error out naming the allowed classes."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = make_repo(self._tmp.name)
+        self._bus("init", "peerA")
+
+    def _bus(self, *args):
+        return subprocess.run(
+            [sys.executable, _BUS_PY, *args],
+            cwd=self.repo, capture_output=True, text=True,
+        )
+
+    def _send(self, body, *extra):
+        return self._bus("send", "--from", "senderX", "--to", "peerA",
+                          "--body", body, *extra)
+
+    def assertRejected(self, proc, *fragments):
+        self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        for fragment in fragments:
+            self.assertIn(fragment, proc.stderr)
+
+    def test_non_orchid_body_stays_free(self):
+        proc = self._send("just some peer prose")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_json_reply_body_stays_free(self):
+        proc = self._send('{"index": 0, "option": "Yes"}')
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_status_single_word_is_valid(self):
+        proc = self._send("orchid:status:reading")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_status_two_words_is_valid(self):
+        proc = self._send("orchid:status:reading logs")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_status_three_words_is_rejected(self):
+        self.assertRejected(self._send("orchid:status:reading old logs"), "allowed orchid:* classes")
+
+    def test_status_uppercase_word_is_rejected(self):
+        self.assertRejected(self._send("orchid:status:Reading"), "lowercase")
+
+    def test_status_word_with_digits_is_rejected(self):
+        self.assertRejected(self._send("orchid:status:reading2"), "lowercase")
+
+    def test_status_denylisted_word_is_rejected(self):
+        self.assertRejected(self._send("orchid:status:building"), "lifecycle state")
+
+    def test_status_denylisted_second_word_is_rejected(self):
+        self.assertRejected(self._send("orchid:status:currently testing"), "lifecycle state")
+
+    def test_status_hyphenated_word_is_valid(self):
+        proc = self._send("orchid:status:re-reading")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_update_with_text_is_valid(self):
+        proc = self._send("orchid:update:wrote the missing test cases")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_update_with_empty_text_is_rejected(self):
+        self.assertRejected(self._send("orchid:update:"), "non-empty")
+
+    def test_phase_alone_is_valid(self):
+        proc = self._send("orchid:phase:building")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_phase_with_tick_is_valid(self):
+        proc = self._send("orchid:phase:building:3/5")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_phase_unknown_name_is_rejected(self):
+        self.assertRejected(self._send("orchid:phase:coding"), "not one of")
+
+    def test_phase_tick_k_greater_than_n_is_rejected(self):
+        self.assertRejected(self._send("orchid:phase:building:5/3"), "k <= n")
+
+    def test_phase_tick_zero_is_rejected(self):
+        self.assertRejected(self._send("orchid:phase:building:0/5"), "k <= n")
+
+    def test_phase_tick_non_numeric_is_rejected(self):
+        self.assertRejected(self._send("orchid:phase:building:a/b"), "positive integers")
+
+    def test_subagent_queue_is_valid(self):
+        proc = self._send("orchid:subagent:queue:builder-1")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_subagent_start_is_valid(self):
+        proc = self._send("orchid:subagent:start:builder-1")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_subagent_done_is_valid(self):
+        proc = self._send("orchid:subagent:done:builder-1")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_subagent_unknown_verb_is_rejected(self):
+        self.assertRejected(self._send("orchid:subagent:pause:builder-1"), "queue, start, or done")
+
+    def test_subagent_empty_label_is_rejected(self):
+        self.assertRejected(self._send("orchid:subagent:start:"), "non-empty")
+
+    def test_hand_sent_interrupt_question_is_rejected(self):
+        self.assertRejected(
+            self._send("orchid:interrupt:question:Proceed?"), "bus.py ask",
+        )
+
+    def test_unknown_orchid_class_is_rejected(self):
+        self.assertRejected(
+            self._send("orchid:bogus:hi"), "unknown orchid:* class", "allowed orchid:* classes",
+        )
+
+    def test_legacy_activity_body_is_rejected(self):
+        self.assertRejected(
+            self._send("orchid:activity:working on it"), "unknown orchid:* class",
+        )
+
+    def test_malformed_body_names_allowed_classes(self):
+        proc = self._send("orchid:bogus:hi")
+        self.assertIn("status, update, phase, subagent", proc.stderr)
+
+    def test_notify_user_rejected_on_status(self):
+        self.assertRejected(
+            self._send("orchid:status:reading", "--notify-user"), "--notify-user",
+        )
+
+    def test_notify_user_rejected_on_update(self):
+        self.assertRejected(
+            self._send("orchid:update:wrote tests", "--notify-user"), "--notify-user",
+        )
+
+    def test_notify_user_rejected_on_phase(self):
+        self.assertRejected(
+            self._send("orchid:phase:building", "--notify-user"), "--notify-user",
+        )
+
+    def test_notify_user_rejected_on_subagent(self):
+        self.assertRejected(
+            self._send("orchid:subagent:start:builder-1", "--notify-user"), "--notify-user",
+        )
+
+    def test_notify_user_stays_legal_on_free_bodies(self):
+        proc = self._send("please look at this", "--notify-user")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_broadcast_enforces_the_same_grammar(self):
+        self._bus("init", "senderX")
+        proc = self._bus("broadcast", "--from", "senderX", "--body", "orchid:status:building")
+        self.assertRejected(proc, "lifecycle state")
+
+    def test_broadcast_accepts_valid_orchid_body(self):
+        self._bus("init", "senderX")
+        proc = self._bus("broadcast", "--from", "senderX", "--body", "orchid:phase:building")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_broadcast_rejects_hand_sent_interrupt(self):
+        self._bus("init", "senderX")
+        proc = self._bus(
+            "broadcast", "--from", "senderX", "--body", "orchid:interrupt:question:hi",
+        )
+        self.assertRejected(proc, "bus.py ask")
+
+
+class SignalNotifyLegalityCliTests(unittest.TestCase):
+    """CLI-level: `signal --notify-user` is legal only with
+    --state done|blocked|abandoned (docs/TODO.md.d/bus-message-specifying.md)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = make_repo(self._tmp.name)
+
+    def _bus(self, *args, session_id="s1"):
+        env = dict(os.environ, CLAUDE_CODE_SESSION_ID=session_id)
+        return subprocess.run(
+            [sys.executable, _BUS_PY, *args],
+            cwd=self.repo, capture_output=True, text=True, env=env,
+        )
+
+    def test_notify_user_legal_with_done(self):
+        proc = self._bus("signal", "--state", "done", "--notify-user")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_notify_user_legal_with_blocked(self):
+        proc = self._bus("signal", "--state", "blocked", "--notify-user")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_notify_user_legal_with_abandoned(self):
+        proc = self._bus("signal", "--state", "abandoned", "--notify-user")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_notify_user_rejected_with_started(self):
+        proc = self._bus("signal", "--state", "started", "--notify-user")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("--notify-user", proc.stderr)
+
+    def test_notify_user_rejected_with_building(self):
+        proc = self._bus("signal", "--state", "building", "--notify-user")
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_notify_user_rejected_with_testing(self):
+        proc = self._bus("signal", "--state", "testing", "--notify-user")
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_notify_user_rejected_with_finished(self):
+        proc = self._bus("signal", "--state", "finished", "--notify-user")
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_signal_without_notify_user_is_unrestricted(self):
+        proc = self._bus("signal", "--state", "building")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
 if __name__ == "__main__":
