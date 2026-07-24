@@ -1,0 +1,9 @@
+session: 4375995e-159f-4018-bb90-5eff93139818 · agent: architect · date: 2026-07-24 · feature: bus-message-specifying
+deviations:
+  - rule: build steps above trivial size go to builders · what: one ~15-line model-id backfill built inline · why: remainder on a function a builder had just returned; re-context cost exceeded the step
+    change: set an explicit size floor below which inline is the default, so the justification burden inverts
+  - rule: UserPromptSubmit hook orders ingesting _closed streams before responding · what: declined for another feature's stream · why: child sessions may not write board or decisions (Decision-069); the hook fires for every session indiscriminately
+    change: scope the hook nudge to the stream's owning parent or a top-level session
+  - rule: one bus sidecar, loaded at start, released at close · what: three instances across the session — first self-released unbidden leaving a deaf registered inbox, second stopped by the operator at the gate · why: sidecar liveness gap, live exhibit of the defect this feature audited
+    change: none for the architect rule; the delivery-model redesign owns liveness
+token_saver: duplicate unchanged peer waiting-state relays dominated wasted turns; making duplicate suppression the bus sidecar default (now specified in the wire grammar) would have cut the most tokens
