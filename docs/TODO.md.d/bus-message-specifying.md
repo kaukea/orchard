@@ -329,6 +329,10 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   replace unconditional broadcast: direct addressing for peer talk,
   constrained topics for the live picture. Dictation open — more to come;
   do not shape options around it.
+- TRANSPORT DICTATION round 2 (operator, 2026-07-25): four requirement
+  axes for the redesign — (1) reduce traffic, (2) enforce conformance,
+  (3) encrypt, (4) support cloud agents. Discussion round opened with the
+  orchestrator; axes are his, mechanisms under discussion.
 
 DESIGN-FIRST RULE (operator, 2026-07-24): the VISUAL is agreed before any
 build — a rendered mock the operator adjusts until it is right; the approved
