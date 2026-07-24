@@ -119,6 +119,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 ## Skills
 
 - `feature · todo · · blocked-on-answers · skills · gh#17` [Web account signup: create account, store password + OTP in Bitwarden](TODO.md.d/web-account-signup-skill.md) ~role-delivery
+- `feature · todo · · queued · skills ·` [Operator voice: bilingual style, rhythm and vocabulary for anything under his name](TODO.md.d/operator-voice.md) ~writing-emails ~corpus-indexing
 
 ## Future (dot.ai features, design only)
 
