@@ -118,6 +118,24 @@ charter's wake mechanics, not the transport grammar. Same self-message wake is
 what assures the cross-agent-notify scenario ([[bus-message-specifying]]
 round 18): a live listener is one a message can reach and turn.
 
+## Live reproduction (2026-07-25, the bus-message-specifying close)
+
+The grammar feature's own close reproduced the bug end to end, on the
+current (unfixed) machinery:
+- The architect signalled `finished`; its teardown ran but found NO
+  `.return-window` marker for its pane, so it could not return focus —
+  it handed the window to the orchestrator's reaper (a focus-return
+  defect, [[focus-returning]]).
+- The bus did NOT self-clean: its inbox folder survived with 3 undrained
+  messages — all of them the orchestrator's OWN `awaiting operator
+  (native prompt)` broadcasts from 2026-07-24, fanned in and never
+  consumed, then orphaned at close. The litter is the fan-out + dead-inbox
+  mechanism caught in the act.
+- The orchestrator reaped by hand: `bus.py teardown` on the dead session's
+  inbox + `tmux kill-window`. That manual reap is exactly the self-clean
+  the fix must make the bus do for itself, in the `closing` phase, before
+  any reaper touches it.
+
 ## Testing
 
 To agree at dispatch — expected shape: drive a real feature close and observe
