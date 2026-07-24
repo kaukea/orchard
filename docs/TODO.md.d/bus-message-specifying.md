@@ -147,6 +147,13 @@
   multiple windows for one feature — within a feature is sequential,
   parallelism is cross-feature; the exception is non-displaying subagents
   running in parallel, which is encouraged. No change to current practice.
+- Operator dictation, message 13: the PROGRESS BAR is EMBEDDED in the
+  feature's name line itself — one line only (name drawn over an advancing
+  fill or equivalent). Draft subphase map delivered (five phases, visible
+  ticks vs hidden plumbing, spans 10/15/15/45/15 → 100). Plus a general
+  working rule, saved to operator memory: ALWAYS reformulate what he said
+  in your own words BEFORE starting work on it — that is what makes the
+  result acceptable.
 
 ## Proposal
 
