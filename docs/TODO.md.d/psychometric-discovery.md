@@ -113,6 +113,41 @@ SE-threshold stopping (arXiv:2511.04689, arXiv:2508.07279), underspecification
 detection (arXiv:2502.13069, ClarifyGPT, arXiv:2406.00922), person-fit
 consistency checks.
 
+### Frozen plan (architect, 2026-07-24, MAKE IT SO after two amendment rounds)
+
+Components, landing ALONGSIDE the untouched `groomer` (no deletion, no
+repoints in this branch — operator ruling at the plan gate):
+
+- `agents/bloomer.md` — claude-fable-5 · xhigh; the charter implemented IN the
+  definition (bloomer-forensics guardrail), serving pass mode and the
+  Decision-050 handoff round; single-writer on its task's sidecar; asks via
+  native single/multiple-choice prompts in its own pane.
+- `tools/bloom_engine.py` — stdlib-only python3; owns selection and stopping:
+  blueprint-§8 composition in full — EIG/BED question selection over the
+  latent feature hypothesis space PLUS IRT item modelling with
+  Fisher-information selection and SE-threshold stopping (operator override
+  of the Opus-review drop; item parameters LLM-assumed, flagged uncalibrated
+  in the report), funnel broad→narrow, forced-choice item support, person-fit
+  consistency checks. Emits the explicit convergence number, the graduated
+  band, and a Decision-019 launch-sizing recommendation.
+- Priors stub: engine-level interface defaulting to uninformative priors; its
+  contract documents the future corpus feed — all repos under ~/src/serialseb
+  and ~/src/SafeKeepIt are recent agentic work and form the corpus (operator,
+  2026-07-24).
+- Pane surface: launch + teardown scripts in `tools/` — bloomer pane split
+  inside the orchestrator's window (3/4 height, orchestrator keeps 1/4),
+  ORCHID_PARENT_SESSION wired for direct bus signalling, focus returned on
+  teardown. The orchestrator adopts these at the deferred repoint; until
+  then dispatch is manual/scripted.
+
+Graduated outcome mechanics: the bloomer REPORTS its band over the bus; the
+ORCHESTRATOR executes any launch (very-high band auto-launch stays TEMPORARY,
+removed when the autonomy ladder/metronome lands).
+
+Additional deferral (operator, plan gate): groomer analysis/retirement and
+the orchestrator + `bloom-tasks` repoints happen in a follow-up after the
+bloomer is judged ready — not in this branch.
+
 ## Testing
 
 Agreed (operator, 2026-07-24): a live run — take [[writing-emails]] (gh#15,
@@ -121,3 +156,51 @@ the instrument. Pass = the run produces a converged WHAT with its convergence
 number, the operator judges the resulting sidecar passes the WHAT-bar, and the
 graduated outcome fires per its confidence band (on a first calibration run the
 expected band is ask-to-confirm, not silent auto-kick).
+
+## Operator requests
+
+- 2026-07-24 12:28 (mid-discovery): "you are missing the discussion from last
+  night; all repos under serialseb and SafeKeepIt are recent agentic work" —
+  IMPLEMENTED: 20260724-session.md + both blueprint reviews folded into the
+  plan; the corpus fact is recorded in the priors-stub contract.
+- 2026-07-24 plan gate: include IRT/Fisher machinery in the v1 engine —
+  IMPLEMENTED in the frozen plan.
+- 2026-07-24 plan gate: leave `groomer` untouched under its name until the
+  bloomer is ready, then analyze what is worth keeping — IMPLEMENTED as an
+  explicit deferral; follow-up returned to the orchestrator at close.
+- 2026-07-24 plan gate: launch sizing is already part of the pipeline
+  (Decision-019); dropping it would be a regression — IMPLEMENTED: the
+  convergence report carries a launch-sizing recommendation.
+
+## Decision entries
+
+## [2026-07-24 13:05 CEST] Decision-NNN: Bloomer v1 engine includes IRT/Fisher despite uncalibrated items
+#bloomer #psychometrics #irt #eig #engine #convergence
+
+Operator ruling (2026-07-24, plan gate): the v1 statistical engine implements
+the full blueprint-§8 composition — EIG/BED question selection AND IRT item
+modelling with Fisher-information selection and SE-threshold stopping —
+overriding the Opus blueprint review's recommendation to drop the IRT/Fisher
+formalism at n=1. Mitigation recorded with the ruling: item parameters are
+LLM-assumed at generation and every convergence report flags them as
+uncalibrated; accumulated live runs are the future calibration path.
+
+## [2026-07-24 13:05 CEST] Decision-NNN: Groomer stays under its name until the bloomer is judged ready
+#bloomer #groomer #retirement #pipeline #bloom-tasks
+
+Operator ruling (2026-07-24, plan gate): the demoted `groomer` definition and
+every pipeline reference to it (orchestrator bloom round, `bloom-tasks` skill)
+stay UNTOUCHED while bloomer v1 is built and proven. Once the bloomer is
+judged ready, a separate analysis decides what in the groomer is worth keeping
+before any retirement or repoint. Supersedes this task's earlier
+delete-at-landing intent; the repoint work is an explicit follow-up.
+
+## [2026-07-24 13:05 CEST] Decision-NNN: Launch sizing stays in the pipeline; the bloomer feeds it
+#bloomer #launch-sizing #model-effort #pipeline
+
+Operator ruling (2026-07-24, plan gate): the existing launch-sizing round
+(Decision-019 model/effort scaling) remains part of the handoff pipeline —
+removing it would be a regression. Bloomer v1's convergence report carries a
+launch-sizing recommendation (size class + suggested tier) feeding that round.
+Only MEASURED/statistical launch sizing remains future work (the recorded
+future ruling on removing per-role defaults is unchanged).
