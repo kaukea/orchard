@@ -7,7 +7,10 @@
       "Edit(.ai/repositories/*/*/skills/**)",
       "Write(.ai/repositories/*/*/skills/**)",
       "Edit(.ai/repositories/*/*/files/**)",
-      "Write(.ai/repositories/*/*/files/**)"
+      "Write(.ai/repositories/*/*/files/**)",
+      "Bash(aws route53 change-resource-record-sets:*)",
+      "Bash(aws route53 list-resource-record-sets:*)",
+      "Bash(aws route53 get-change:*)"
     ]
   },
   "hooks": {
