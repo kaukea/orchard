@@ -62,6 +62,20 @@ forward. The transport is the layer ABOVE v1's vocabulary: v1 is what a
 message SAYS; v2 is who it reaches, on what topic, sealed how, admitted by
 whom. Nothing here is built until the operator rules a build.
 
+TOMORROW (operator, 2026-07-25 end-of-day — pulled forward, this is next
+session's first work): "refine and implement vocab v2 and make sure cross-repo
+works." So this task IS built next, not left for metronome — refine the schema,
+implement it, and prove cross-repo messaging end to end.
+- CROSS-REPO TARGET: the working stack is panopticon, seb.throwy, and SignMc —
+  get messaging working ACROSS these repos first. ("panopticon, seb.throwy on
+  top of SignMc — that's the first.")
+- TRACKER FILE (operator didn't know where it is): `~/.config/orchids/
+  sidebar-registry.json` — the cross-repo list the sidebar reads. Today it
+  holds only orchids + SignMc; add panopticon and seb.throwy to exercise
+  cross-repo. (Override: `ORCHIDS_SIDEBAR_REPOS`.)
+- Current bus is PER-REPO (spool under each repo's git dir) — cross-repo
+  addressing has NO substrate yet; that substrate is the core of this work.
+
 ## Testing
 
 To agree at dispatch. The assured-scenario gate carried from

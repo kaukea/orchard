@@ -95,9 +95,37 @@ on attention; keyboard navigation deferred to its own later round. The
 operator has begun dictating the interaction spec into
 [[bus-message-specifying]] — do not preempt it here.
 
+## Post-merge state (2026-07-25) — FUNCTIONAL, title tail NOT done
+
+- The RENDERER items (1 gradients/hues, 3 empty-repo-hidden via has_session,
+  4 truthful icons, 7 done-retention, 2 repo/name composition) shipped to main
+  via the bus-message-specifying rewrite of tools/sidebar.py (verified present
+  in main). That half is delivered.
+- The TITLE/NAMING items (2 window titles, 5 stable pane titles) are NOT
+  fixed. Operator live report (2026-07-25): "the titles of the panes in this
+  session are still completely wrong" — confirmed: this session's window is
+  named `claude` (not the repo) and pane_titles read `⠂ Claude Code` /
+  `design mock`, clobbered.
+- ROOT CAUSE found: the branch's fix (`allow-rename off` / `automatic-rename
+  off`) governs the WINDOW NAME only; the PANE TITLE is set by the OSC 2
+  escape and is NOT governed by those options — so the fix cannot stop
+  pane_title clobbering. Live-tested 2026-07-25: with both options off, an
+  OSC 2 write still overwrote pane_title. The salvage was therefore REVERTED
+  (it would not fix the operator's actual complaint).
+- FOLDS INTO tomorrow's naming rework (operator: "your branch and feature
+  naming skills are pretty horrible, try a better approach"). The correct
+  pane-title mechanism (persist/re-assert pane_title, or a title hook) is
+  designed there, not here. f/sidebar-titling stays parked pending that
+  rework; its renderer contribution is already in main.
+- Custom question tmux dialogs (the queued-question broker UI) are "nowhere
+  to be seen" (operator) — that is the [[operator-interacting]] surface, not
+  built; the bus grammar defined the question CLASS only.
+
 ## Testing
 
 Live verification, operator eyeball only (his stated gate): the running
 sidebar is refreshed after the build; he confirms headers, row format,
 hidden empty projects, truthful icons, the renamed session, and stable
-titles in one look.
+titles in one look. RENDERER half passed (in main); the TITLE half is
+UNVERIFIED/failing (pane titles still clobbered) and moves to the naming
+rework.
