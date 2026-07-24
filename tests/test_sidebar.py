@@ -44,11 +44,12 @@ class FlattenTests(unittest.TestCase):
         self.assertEqual((repo_row.depth, repo_row.kind, repo_row.target),
                          (0, "repo", "repoA"))
         self.assertEqual((feature_row.depth, feature_row.kind, feature_row.target),
-                         (1, "feature", "repoA ▸ feat one"))
+                         (1, "feature", "repoA/feat one"))
+        self.assertEqual(feature_row.repo_name, "repoA")
         # a subagent row's target is its OWNING feature's target, not its own
         # label -- navigation from a subagent row targets the feature window.
         self.assertEqual((sub_row.depth, sub_row.kind, sub_row.target),
-                         (2, "subagent", "repoA ▸ feat one"))
+                         (2, "subagent", "repoA/feat one"))
         self.assertTrue(sub_row.is_subagent)
         self.assertFalse(feature_row.is_subagent)
         self.assertFalse(repo_row.is_subagent)
@@ -67,36 +68,87 @@ class FlattenTests(unittest.TestCase):
         # the feature's bus comes right after the feature row (before its
         # subagent)
         self.assertEqual(rows[1].target, "repoA")
-        self.assertEqual(rows[3].target, "repoA ▸ feat one")
+        self.assertEqual(rows[3].target, "repoA/feat one")
 
     def test_no_bus_row_when_absent(self):
         rows = sidebar.flatten(_fleet())
         self.assertNotIn("bus", [r.kind for r in rows])
 
+    def test_repo_without_session_is_skipped_entirely(self):
+        # sidebar-titling item 3: an empty project (no live session) has
+        # nothing to show -- header AND group both disappear.
+        fleet = sm.Fleet(repos=[
+            sm.Repo(path="/tmp/empty", name="empty-repo", activity="",
+                     status="idle", waiting_on_operator=False, has_session=False),
+        ])
+        self.assertEqual(sidebar.flatten(fleet), [])
+
+    def test_only_repos_with_a_session_render(self):
+        fleet = sm.Fleet(repos=[
+            sm.Repo(path="/tmp/a", name="a", activity="", status="idle",
+                     waiting_on_operator=False, has_session=False),
+            sm.Repo(path="/tmp/b", name="b", activity="", status="idle",
+                     waiting_on_operator=False, has_session=True),
+        ])
+        rows = sidebar.flatten(fleet)
+        self.assertEqual([r.target for r in rows], ["b"])
+
+    def test_done_features_sort_first_within_their_repo_group(self):
+        # sidebar-titling item 7: done-first, stable sort -- relative order
+        # among the still-live features (and among the done ones) is kept.
+        fleet = sm.Fleet(repos=[
+            sm.Repo(path="/tmp/r", name="r", activity="", status="idle",
+                     waiting_on_operator=False, features=[
+                sm.Feature(feature_id="a", name="a-working", activity="",
+                           status="working", waiting_on_operator=False),
+                sm.Feature(feature_id="b", name="b-done", activity="",
+                           status="done", waiting_on_operator=False),
+                sm.Feature(feature_id="c", name="c-idle", activity="",
+                           status="idle", waiting_on_operator=False),
+                sm.Feature(feature_id="d", name="d-done", activity="",
+                           status="done", waiting_on_operator=False),
+            ]),
+        ])
+        feature_rows = [r for r in sidebar.flatten(fleet) if r.kind == "feature"]
+        self.assertEqual(
+            [r.label for r in feature_rows],
+            ["b-done", "d-done", "a-working", "c-idle"],
+        )
+
 
 class RenderLinesTests(unittest.TestCase):
-    def test_status_emoji_per_row(self):
+    def test_status_emoji_per_feature_row(self):
+        # status glyphs now live on FEATURE rows -- a repo header carries
+        # none (sidebar-titling item 4). Looked up by which line contains the
+        # feature's name rather than by position, since done-first sorting
+        # (item 7) reorders the "done" row ahead of the others.
+        statuses = ["working", "waiting", "idle", "awaiting_agent", "done", "failed"]
         fleet = sm.Fleet(repos=[
-            sm.Repo(path="/r", name="r-working", activity="", status="working",
-                    waiting_on_operator=False),
-            sm.Repo(path="/r", name="r-waiting", activity="", status="waiting",
-                    waiting_on_operator=False),
-            sm.Repo(path="/r", name="r-idle", activity="", status="idle",
-                    waiting_on_operator=False),
-            sm.Repo(path="/r", name="r-awaiting-agent", activity="", status="awaiting_agent",
-                    waiting_on_operator=False),
-            sm.Repo(path="/r", name="r-done", activity="", status="done",
-                    waiting_on_operator=False),
-            sm.Repo(path="/r", name="r-failed", activity="", status="failed",
-                    waiting_on_operator=False),
+            sm.Repo(path="/r", name="r", activity="", status="idle",
+                    waiting_on_operator=False, features=[
+                sm.Feature(feature_id=s, name=s, activity="", status=s,
+                           waiting_on_operator=False)
+                for s in statuses
+            ]),
         ])
         lines = sidebar.render_lines(fleet, width=64)
-        self.assertIn("🚧", lines[0])
-        self.assertIn("⌚", lines[1])
-        self.assertIn("⚪", lines[2])
-        self.assertIn("🪷", lines[3])
-        self.assertIn("✅", lines[4])
-        self.assertIn("❌", lines[5])
+        for status in statuses:
+            line = next(l for l in lines if f"/{status}" in l)
+            self.assertIn(sidebar.STATUS_EMOJI[status], line)
+
+    def test_repo_header_has_no_leading_status_glyph(self):
+        # sidebar-titling item 4: --dump used to prepend a status glyph to
+        # the repo header row via _row_text; curses never drew one (it uses
+        # _draw_header instead) -- the pure path now matches curses.
+        fleet = _fleet()  # repo status="working"
+        lines = sidebar.render_lines(fleet, width=64)
+        for glyph in sidebar.STATUS_EMOJI.values():
+            self.assertNotIn(glyph, lines[0])
+
+    def test_feature_row_renders_repo_slash_name(self):
+        # sidebar-titling item 2: "<repo>/<name>" composition.
+        lines = sidebar.render_lines(_fleet(), width=64)
+        self.assertIn("repoA/feat one", lines[1])
 
     def test_done_and_failed_glyphs_are_distinct(self):
         # explicit operator correction: never the same encoding for done vs
@@ -104,10 +156,19 @@ class RenderLinesTests(unittest.TestCase):
         # and green at a traffic light")
         self.assertNotEqual(sidebar.STATUS_EMOJI["done"], sidebar.STATUS_EMOJI["failed"])
 
-    def test_all_six_status_glyphs_are_distinct(self):
-        glyphs = list(sidebar.STATUS_EMOJI.values())
-        self.assertEqual(len(glyphs), len(set(glyphs)))
-        self.assertEqual(len(glyphs), 6)
+    def test_idle_waiting_and_awaiting_agent_intentionally_share_the_hollow_circle(self):
+        # visual contract (sidebar-titling OVERRIDE 2): one circle family --
+        # idle/component-wait/awaiting-agent collapse to the same glyph.
+        self.assertEqual(sidebar.STATUS_EMOJI["idle"], "○")
+        self.assertEqual(sidebar.STATUS_EMOJI["waiting"], "○")
+        self.assertEqual(sidebar.STATUS_EMOJI["awaiting_agent"], "○")
+
+    def test_working_done_and_failed_glyphs_stay_distinct_from_each_other_and_the_circle(self):
+        distinguishable = {
+            sidebar.STATUS_EMOJI["working"], sidebar.STATUS_EMOJI["done"],
+            sidebar.STATUS_EMOJI["failed"], sidebar.STATUS_EMOJI["idle"],
+        }
+        self.assertEqual(len(distinguishable), 4)
 
     def test_waiting_on_operator_shows_question_mark_variant(self):
         fleet = _fleet()
@@ -117,7 +178,7 @@ class RenderLinesTests(unittest.TestCase):
         self.assertIn(sidebar.WAITING_ON_OPERATOR_EMOJI, lines[1])
         self.assertNotIn(sidebar.STATUS_EMOJI["waiting"], lines[1])
 
-    def test_waiting_without_operator_flag_shows_watch_glyph(self):
+    def test_waiting_without_operator_flag_shows_hollow_circle(self):
         fleet = _fleet()
         fleet.repos[0].features[0].status = "waiting"
         fleet.repos[0].features[0].waiting_on_operator = False
@@ -136,10 +197,14 @@ class RenderLinesTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(second, third)
 
-    def test_subagent_row_shows_fixed_working_glyph(self):
+    def test_subagent_row_shows_presence_glyph(self):
+        # sidebar-titling item 4: presence in the model is the only
+        # verifiable subagent state -- a filled circle, never the "working"
+        # glyph (an unverifiable claim) and never an "idle" counterpart.
         lines = sidebar.render_lines(_fleet(), width=64)
-        self.assertIn(sidebar.STATUS_EMOJI["working"], lines[2])
-        # identical on a second call -- no spinner advance
+        self.assertIn(sidebar.SUBAGENT_GLYPH, lines[2])
+        self.assertNotIn(sidebar.STATUS_EMOJI["working"], lines[2])
+        # identical on a second call -- no spinner advance in the pure path
         lines_again = sidebar.render_lines(_fleet(), width=64)
         self.assertEqual(lines[2], lines_again[2])
 
@@ -262,31 +327,126 @@ class TruncateEllipsisTests(unittest.TestCase):
         self.assertTrue(truncated.endswith(sidebar.ELLIPSIS))
 
 
-class HeaderGradientTests(unittest.TestCase):
-    def test_paused_is_flat_light_gray(self):
-        colours = sidebar.header_gradient(8, paused=True)
-        self.assertEqual(len(colours), 8)
-        self.assertTrue(all(c == sidebar.PAUSED_HEADER_GRAY for c in colours))
+class TruncateKeepNameTests(unittest.TestCase):
+    """sidebar-titling item 2: the name side of a "<repo>/<name>" feature row
+    must always survive truncation -- only the repo side is ever elided, and
+    always from the LEFT with a leading ellipsis."""
 
-    def test_active_project_gradient_varies_across_width(self):
-        colours = sidebar.header_gradient(8, paused=False)
-        self.assertEqual(len(colours), 8)
-        self.assertGreater(len(set(colours)), 1)  # not flat -- a real gradient
-        self.assertEqual(colours[0], sidebar.ORCHID_GRADIENT_DARK)
-        self.assertEqual(colours[-1], sidebar.ORCHID_GRADIENT_LIGHT)
+    def test_short_composition_is_unaffected(self):
+        self.assertEqual(
+            sidebar._truncate_keep_name("orchids", "fleet sidebar", 100),
+            "orchids/fleet sidebar",
+        )
 
-    def test_gradient_is_static_across_repeated_calls(self):
-        # no tick/frame parameter exists -- same input always yields the
-        # same output (sidebar-polish item 10: STATIC, not animated)
-        first = sidebar.header_gradient(8, paused=False)
-        second = sidebar.header_gradient(8, paused=False)
+    def test_no_repo_name_is_just_the_name(self):
+        self.assertEqual(
+            sidebar._truncate_keep_name("", "fleet sidebar", 100), "fleet sidebar",
+        )
+
+    def test_repo_side_elided_with_leading_ellipsis_name_survives(self):
+        result = sidebar._truncate_keep_name("orchids", "fleet sidebar", 19)
+        self.assertEqual(len(result), 19)
+        self.assertTrue(result.startswith(sidebar.ELLIPSIS))
+        self.assertTrue(result.endswith("fleet sidebar"))
+
+    def test_name_alone_too_long_falls_back_to_right_truncate(self):
+        long_name = "a very very long feature name indeed"
+        result = sidebar._truncate_keep_name("orchids", long_name, 10)
+        # matches _truncate's own right-cut-with-trailing-ellipsis exactly --
+        # nothing left of the repo side to elide once the name alone overflows
+        self.assertEqual(result, sidebar._truncate(long_name, 10))
+        self.assertEqual(len(result), 10)
+        self.assertTrue(result.endswith(sidebar.ELLIPSIS))
+
+
+class FeatureRowSegmentsTests(unittest.TestCase):
+    """sidebar-titling item 2: the <repo>/<name> gets first claim on the row
+    width; the activity is secondary and fills only what is left, so a long
+    activity never starves the name."""
+
+    def _feature(self, repo_name, label, activity):
+        return sidebar.Row(
+            depth=1, kind="feature", target=f"{repo_name}/{label}", label=label,
+            status="working", waiting_on_operator=False, is_subagent=False,
+            activity=activity, repo_name=repo_name,
+        )
+
+    def test_long_activity_does_not_starve_the_name(self):
+        row = self._feature("orchids", "fleet sidebar", "a" * 200)
+        indent, glyph, repo_part, name_part, suffix = sidebar._feature_row_segments(row, 40)
+        # the whole "<repo>/<name>" survives intact no matter how long the
+        # activity is; the activity only fills the leftover space, truncated,
+        # and never pushes the total past the width budget
+        self.assertEqual(repo_part, "orchids/")
+        self.assertEqual(name_part, "fleet sidebar")
+        self.assertLessEqual(len(indent + glyph + " " + repo_part + name_part + suffix), 40)
+
+    def test_activity_fills_only_the_remainder(self):
+        row = self._feature("orchids", "x", "building the thing")
+        indent, glyph, repo_part, name_part, suffix = sidebar._feature_row_segments(row, 40)
+        self.assertEqual(repo_part + name_part, "orchids/x")
+        self.assertTrue(suffix.startswith(" "))
+        # nothing overflows the width budget
+        self.assertLessEqual(len(indent + glyph + " " + repo_part + name_part + suffix), 40)
+
+    def test_narrow_width_keeps_name_over_repo_and_activity(self):
+        row = self._feature("orchids", "fleet sidebar", "building")
+        _, _, repo_part, name_part, suffix = sidebar._feature_row_segments(row, 20)
+        # the name side always survives; repo may be elided, activity dropped
+        self.assertTrue(name_part.endswith("sidebar") or name_part.endswith(sidebar.ELLIPSIS))
+        self.assertEqual(suffix, "")
+
+
+class Xterm256Tests(unittest.TestCase):
+    """sidebar-titling item 1: the RGB -> nearest-xterm256-index helper that
+    lets the solid header hue block render on a 256-colour terminal without
+    can_change_color() support."""
+
+    def test_black_maps_to_cube_origin(self):
+        self.assertEqual(sidebar._rgb_to_xterm256((0, 0, 0)), 16)
+
+    def test_white_maps_to_cube_far_corner(self):
+        self.assertEqual(sidebar._rgb_to_xterm256((255, 255, 255)), 231)
+
+    def test_saturated_colour_maps_into_the_colour_cube_range(self):
+        for rgb in (sidebar.HEADER_HUES["orchids"], sidebar.HEADER_HUES["signmc"]):
+            index = sidebar._rgb_to_xterm256(rgb)
+            self.assertGreaterEqual(index, 16)
+            self.assertLessEqual(index, 231)
+
+    def test_neutral_gray_maps_into_the_grayscale_ramp(self):
+        index = sidebar._rgb_to_xterm256((128, 128, 128))
+        self.assertGreaterEqual(index, 232)
+        self.assertLessEqual(index, 255)
+
+
+class RepoHueTests(unittest.TestCase):
+    """sidebar-titling OVERRIDE 1: each repo gets a fixed SOLID hue, not a
+    gradient. `orchids`/`signmc` get their named hue (case-insensitive);
+    everything else gets a stable, repeatable hue from the fallback palette."""
+
+    def test_orchids_maps_to_dark_violet(self):
+        self.assertEqual(sidebar._repo_hue("orchids"), sidebar.HEADER_HUES["orchids"])
+
+    def test_signmc_maps_to_dark_teal(self):
+        self.assertEqual(sidebar._repo_hue("signmc"), sidebar.HEADER_HUES["signmc"])
+
+    def test_named_hue_match_is_case_insensitive(self):
+        self.assertEqual(sidebar._repo_hue("Orchids"), sidebar.HEADER_HUES["orchids"])
+        self.assertEqual(sidebar._repo_hue("SIGNMC"), sidebar.HEADER_HUES["signmc"])
+
+    def test_unknown_repo_gets_a_stable_repeatable_fallback_hue(self):
+        first = sidebar._repo_hue("some-other-repo")
+        second = sidebar._repo_hue("some-other-repo")
         self.assertEqual(first, second)
+        self.assertIn(first, sidebar.FALLBACK_HEADER_HUES)
 
-    def test_paused_and_active_never_share_colours(self):
-        active = set(sidebar.header_gradient(8, paused=False))
-        paused = set(sidebar.header_gradient(8, paused=True))
-        self.assertTrue(active.isdisjoint(paused))
+    def test_unknown_repo_never_collides_with_a_named_hue(self):
+        hue = sidebar._repo_hue("some-other-repo")
+        self.assertNotIn(hue, sidebar.HEADER_HUES.values())
 
+
+class HeaderLineTests(unittest.TestCase):
     def test_header_line_centres_title(self):
         line = sidebar.render_header_line("orchids", 15)
         self.assertEqual(len(line), 15)

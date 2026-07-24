@@ -326,6 +326,112 @@ bend the visual to match what they want to build. Mock round in progress —
 the approved frame's exact rendering (glyphs, ANSI codes, layout) is to be
 captured here as the design when the operator signs it off.
 
+## Frozen build plan (architect, 2026-07-24, under the FULL-GO mandate)
+
+WIRE GRAMMAR v1 — the specified vocabulary (canonical spec text ships in
+agents/bus.md; bus.py enforces mechanically; any other `orchid:*` body is
+rejected):
+
+- `orchid:status:<word>` — one/two lowercase plain words, agent-chosen,
+  present-tense doing (reading, writing, messaging, concluding). Sent on
+  CHANGE only. Never notify-user. Denied (lifecycle collision): started,
+  building, testing, done, finished, blocked, abandoned, closing, releasing,
+  departing, announcing.
+- `orchid:update:<sentence>` — the log/cockpit-targeted sentence, never
+  operator-targeted. Never notify-user.
+- `orchid:phase:<phase>[:<k>/<n>]` — phase ∈ ideation|scoping|designing|
+  building|releasing; optional visible tick k of n inside the phase.
+  Progress: bases 0/10/25/40/85, spans 10/15/15/45/15; pct = base + span·k/n;
+  100 on finished. Never notify-user.
+- `orchid:subagent:queue:<label>` · `:start:<label>` · `:done:<label>` —
+  presence and COUNT are the whole message. Never notify-user.
+- `orchid:interrupt:question:<subject>` — emitted ONLY by `bus.py ask`
+  (envelope keeps question_id/question/options/title/summary/multi,
+  notify_user true). Replaces `orchid:activity:I have a question: …`.
+- Lifecycle signals: unchanged JSON plumbing; notify_user legal only on
+  done, blocked, abandoned.
+- The three operator interrupts are DERIVED, nothing else may summon:
+  QUESTION ⇐ ask · SUCCEEDED ⇐ signal done/finished · FAILED ⇐ signal
+  abandoned (and blocked carrying notify).
+- operator_origin: verbatim operator relays only (Decision-047/-049
+  unchanged). Legacy `orchid:activity:*`: all senders purged this branch;
+  sidebar_model keeps a deprecated status fallback for one transition
+  release.
+
+NUMBERED STEPS (deps in brackets):
+0. Absorb f/sidebar-titling@9752aed states of tools/sidebar{,_model,_nav}.py,
+   sidebar-mount.sh, tests/test_sidebar{,_model}.py; anchor commit. [—] DONE
+1. Canonical vocabulary spec + bus sidecar send rules in agents/bus.md. [0]
+2. bus.py grammar enforcement, ask-body change, notify legality, denylist;
+   orchard-question-broker.py body-string follow-up; tests/test_bus.py. [0]
+3. sidebar_model.py consumption: status_word/phase/pct/queued+running/
+   question badge/interrupt derivation/dedup of identical consecutive
+   notifies/legacy fallback; tests/test_sidebar_model.py. [0]
+4. Send-audit rewrite of agents/{orchestrator,architect,groomer,bloomer}.md
+   + broadcasting skills to the vocabulary (per-role status words, change-
+   only rule, questions via ask never native popup, phase emissions). [0]
+5. Renderer per the blessed mock in tools/sidebar.py (+ data-driven hue/
+   role-emoji/location-badge maps, pending picks drop-in): fill+band line,
+   phase checklist, identity line, small-caps label, footers, dots, ?N
+   badge, done-green-top; unit tests. [0,3; re-check titling HEAD first]
+6. `bus.py validate` + emulated role-session traffic check (each role's
+   contract sequence through real bus.py, zero unspecified messages). [2]
+7. tmux capture-pane -e frame check against approved-frame.ans. [3,5]
+8. Integration: full suite, live-flip own session to the new grammar,
+   ARCHITECTURE.md update, staged docs, result. [1–7]
+
+Steps 1–4 parallel builders (wave 1); 5–6 wave 2; 7 wave 3; 0 and 8 inline.
+
+## Operator requests
+
+- (none received mid-build yet)
+
+## Decision entries
+
+Decision-NNN: The bus vocabulary is five wire classes; only three interrupts
+may summon the operator
+#bus #messaging #vocabulary #notify #interrupt #sidebar
+Operator dictation (2026-07-24) fixed the message model: STATUS (one/two
+plain words, agent-chosen) · STATUS UPDATE (log-targeted sentence) · exactly
+three operator interrupts — SUCCEEDED, FAILED, QUESTION. Wire form (full-go
+architect design): orchid:status / orchid:update / orchid:phase /
+orchid:subagent:{queue,start,done} / orchid:interrupt:question, validated by
+bus.py; any other orchid:* body is rejected; notify_user is legal only on
+ask-questions and lifecycle done/blocked/abandoned; the interrupts are
+derived (QUESTION ⇐ ask, SUCCEEDED ⇐ done/finished, FAILED ⇐ abandoned or
+blocked+notify). Status words colliding with lifecycle vocabulary are denied
+(the orchid:activity:Closing incident). Statuses broadcast on change only
+(the duplicate-notify incident). Supersedes Decision-044's free activity
+label as the status surface; amends Decision-058's display vocabulary with
+the derived-interrupt layer. Lifecycle signals stay internal plumbing.
+
+Decision-NNN: The phase spine broadcasts as a typed channel and maps to a
+live percentage
+#bus #phase #progress #sidebar
+Phases ideation → scoping → designing → building → releasing ride
+orchid:phase:<phase>[:<k>/<n>] with spans 10/15/15/45/15 (bases 0/10/25/40/
+85); visible ticks advance the number, hidden plumbing never does; 100 only
+at lifecycle finished. The renderer derives the embedded progress fill from
+this channel alone.
+
+Decision-NNN: The blessed mock is the renderer's fixed contract; identity
+maps are data-driven
+#sidebar #design #mock #emoji
+sidebar-mock.py + approved-frame.ans (archived with the feature stream) are
+the visual truth tools/sidebar.py implements: glyph set, RGB palette, hue
+families, model colour ramp, band animation, checklist, identity line,
+footers. Role-emoji, per-repo hue, and 💻/☁️ location-badge maps ship as
+data so pending picks (orchestrator, architect emojis) drop in without code
+changes. Known licensed debt: the KITT-scanner tail polish.
+
+Decision-NNN: bus-message-specifying based its renderer files on
+f/sidebar-titling explicitly
+#sidebar #branching #upstream
+The unmerged f/sidebar-titling@9752aed states of tools/sidebar.py,
+sidebar_model.py, sidebar_nav.py, sidebar-mount.sh and their tests were
+absorbed as the build base (operator-sanctioned upstream). Whichever branch
+folds second resolves the overlap trivially by content identity.
+
 ## Testing
 
 To agree when bloomed — expected shape: a session of each role runs and its

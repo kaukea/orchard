@@ -136,6 +136,11 @@ class Repo:
     status: str
     waiting_on_operator: bool
     paused: bool = False
+    # True when the repo has at least one live session (an orchestrator session
+    # or any feature). A repo with no live session is not rendered (the sidebar's
+    # flatten() skips it). Defaults True so hand-built Repo() test fixtures render
+    # as before unless a test opts out; _assemble_repo() sets the real value.
+    has_session: bool = True
     features: list[Feature] = field(default_factory=list)
     bus: Bus | None = None
 
@@ -355,12 +360,16 @@ class _BusAggregator:
     used to survive forever, even past its own terminal lifecycle signal
     (only the waiting flag got cleared, per _TERMINAL_LIFECYCLE) — this is
     why a long-closed feature ("app-identifying") kept rendering as a
-    permanent stale row. Once a sender's lifecycle reaches a terminal signal
-    (finished/abandoned), its state is shown for exactly one more scan (so a
-    "done"/"failed" row is still visible right after the signal — no
-    documented grace window exists beyond that, so one scan is the deliberate
-    minimum), then evicted in full on the NEXT scan, before that scan's own
-    row assembly — never lingering indefinitely.
+    permanent stale row. Once a sender's lifecycle reaches a terminal signal,
+    eviction now depends on WHICH terminal state it reached (operator
+    decision, 2026-07-24, sidebar-titling item 7): a `finished` (done) sender
+    is retained deliberately for the life of the current sidebar's view — a
+    done feature's row never leaves — it keeps rendering (green, "done") and
+    is never scheduled for eviction. An `abandoned` sender keeps the prior
+    one-scan-grace behaviour: shown for exactly one more scan (so a "failed"
+    row is still visible right after the signal), then evicted in full on the
+    NEXT scan, before that scan's own row assembly — never lingering
+    indefinitely.
     """
 
     def __init__(self) -> None:
@@ -412,10 +421,12 @@ class _BusAggregator:
         # not seen this scan can never recur and its id is safe to drop
         self._seen_ids = current_ids
 
-        # anyone now resolved gets exactly one more scan's visibility, then
-        # eviction at the top of the NEXT scan (see class docstring)
+        # only "abandoned" senders get exactly one more scan's visibility
+        # then eviction at the top of the NEXT scan; "finished" (done)
+        # senders are retained deliberately and never scheduled for eviction
+        # (see class docstring)
         for sender, state in self.states.items():
-            if state.lifecycle_state in _TERMINAL_LIFECYCLE:
+            if state.lifecycle_state == "abandoned":
                 self._pending_eviction.add(sender)
 
     def repo(self, repo_path: str) -> Repo:
@@ -496,6 +507,11 @@ def _assemble_repo(repo_path: str, sessions: dict[str, _SessionState]) -> Repo:
                 continue  # bare session-UUID row: never operator-facing
             feature.subagents.append(Subagent(label=s.name or s.session_id))
         repo.features.append(feature)
+
+    # a repo with no orchestrator session AND no features has nothing live to
+    # show — the renderer's flatten() reads this flag and skips the repo
+    # entirely (item 3, "empty projects don't render").
+    repo.has_session = orchestrator is not None or bool(repo.features)
 
     return repo
 

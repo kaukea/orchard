@@ -378,10 +378,15 @@ class InternalRowFilteringTests(_BusFixtureTestCase):
 
 
 class StaleRowEvictionTests(unittest.TestCase):
-    """Root-cause fix: a sender's ENTIRE state is evicted (not just its
-    waiting flag) a scan after its terminal lifecycle signal — exercised
-    directly against a long-lived _BusAggregator, the only way to observe
-    multi-scan behaviour (build_model() always starts a fresh one)."""
+    """Root-cause fix: a sender's ENTIRE state used to be evicted a scan
+    after its terminal lifecycle signal, for BOTH finished and abandoned —
+    exercised directly against a long-lived _BusAggregator, the only way to
+    observe multi-scan behaviour (build_model() always starts a fresh one).
+
+    Operator decision, 2026-07-24 (sidebar-titling item 7): a done feature's
+    row must never leave the current sidebar's view. `finished` senders are
+    now retained forever (never evicted); `abandoned` senders keep the prior
+    one-scan-grace-then-evict behaviour."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -392,7 +397,7 @@ class StaleRowEvictionTests(unittest.TestCase):
     def _put(self, folder, msg_id, sender, body, ts):
         write_message(self.bus_root, folder, envelope(msg_id, sender, body=body, ts=ts))
 
-    def test_terminal_state_evicted_one_scan_after_signal(self):
+    def test_finished_state_is_retained_across_many_scans(self):
         self._put("arch-stale", "arch-stale-id", "arch-stale",
                   identity_body("arch-stale", agent_type="architect",
                                 feature_id="feat-stale"),
@@ -406,8 +411,33 @@ class StaleRowEvictionTests(unittest.TestCase):
                   lifecycle_body("finished", feature_id="feat-stale"),
                   ts="2026-01-01T00:00:01.000000+00:00")
         agg.scan(self.bus_root)
-        # same scan the terminal signal arrived on: still visible as "done"
+        # same scan the terminal signal arrived on: visible as "done"
         self.assertEqual(agg.repo(self.repo).features[0].status, "done")
+
+        # a done feature's row never leaves — it must still be present (and
+        # still "done") across many further scans, not evicted after one
+        # scan's grace, and not requiring the message files to still exist
+        # on disk (both ids are already in _seen_ids so re-applying is moot).
+        for _ in range(5):
+            agg.scan(self.bus_root)
+            self.assertEqual(agg.repo(self.repo).features[0].status, "done")
+
+    def test_abandoned_state_evicted_one_scan_after_signal(self):
+        self._put("arch-fail", "arch-fail-id", "arch-fail",
+                  identity_body("arch-fail", agent_type="architect",
+                                feature_id="feat-fail"),
+                  ts="2026-01-01T00:00:00.000000+00:00")
+
+        agg = sidebar_model._BusAggregator()
+        agg.scan(self.bus_root)
+        self.assertEqual(agg.repo(self.repo).features[0].status, "idle")
+
+        self._put("arch-fail", "arch-fail-lc", "arch-fail",
+                  lifecycle_body("abandoned", feature_id="feat-fail"),
+                  ts="2026-01-01T00:00:01.000000+00:00")
+        agg.scan(self.bus_root)
+        # same scan the terminal signal arrived on: still visible as "failed"
+        self.assertEqual(agg.repo(self.repo).features[0].status, "failed")
 
         # neither message file needs to be removed for this: eviction is
         # driven by the terminal signal already observed, not by disk
@@ -563,6 +593,32 @@ class RepoStatusTests(_BusFixtureTestCase):
 
         fleet = sidebar_model.build_model([self.repo])
         self.assertEqual(fleet.repos[0].status, "idle")
+
+
+class HasSessionTests(_BusFixtureTestCase):
+    """has_session (item 3, "empty projects don't render"): True only when
+    the repo has a live orchestrator session or at least one feature; False
+    for a repo whose bus is empty (nothing renderable), which the renderer's
+    flatten() then skips."""
+
+    def test_no_orchestrator_and_no_features_is_false(self):
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertEqual(len(fleet.repos), 1)
+        self.assertFalse(fleet.repos[0].has_session)
+
+    def test_orchestrator_session_alone_is_true(self):
+        self._put("orch-only", "orch-only-id", "orch-only",
+                  identity_body("orch-only", agent_type="orchestrator"),
+                  ts="2026-01-01T00:00:00.000000+00:00")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertTrue(fleet.repos[0].has_session)
+
+    def test_feature_alone_is_true(self):
+        self._architect("arch-hassession", "feat-hassession")
+
+        fleet = sidebar_model.build_model([self.repo])
+        self.assertTrue(fleet.repos[0].has_session)
 
 
 class FeatureNameTests(_BusFixtureTestCase):
