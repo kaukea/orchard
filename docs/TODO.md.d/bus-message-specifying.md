@@ -369,6 +369,41 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   last-value dedup for status), sender identity gets STAMPED by the
   daemon rather than claimed, and attention (notify) becomes a property
   of the message CLASS — the three interrupts — never a sender flag.
+- ROUND 9 — OPERATOR SCHEMA DRAFT (2026-07-25), his design, verbatim
+  intent: fixed list of sendable messages; the bus SUBAGENT stays;
+  broadcast replaced by TOPICS (v1: `global` only). Addresses — From:
+  `:session:<session-id>`; To: `:session:<session-id>` (requires manual
+  auth) or `:topic:<topic-name>` (fixed list, needs daemon sig).
+  Envelope: `Subject: <type>`, payload in body. Types:
+  · status (project scope): `orchard:agent:status` (ONE free word) ·
+    `orchard:agent:outcome:success|fail`
+  · lifecycle (global, sidebar): `orchard:agent:lifecycle:
+    starting|started|stopping|stopped`
+  · delegation (global): `orchard:agent:delegation:begin|end:
+    <subagent-name / session-id>`
+  · operator unicast: `orchard:agent:operator:relay:todo|instructions`
+    (to + content in body)
+  · pubsub admin: `orchard:bus:subscribe|unsubscribe:<topic-name>`
+    (script creates the agent's topic folder + monitor / deletes all,
+    discards remaining content)
+  Prefix orchid:→orchard: (renaming alignment).
+- ROUND 9 GAP REVIEW (orchestrator answer to his "have I forgotten
+  things", UNRULED — checked against the audit inventory, the census,
+  and the approved display grammar):
+  1. QUESTION class absent — the third interrupt (succeeded/failed/
+     question) and the ask-broker's successor: no question type, no
+     reply correlation (in_reply_to), no structured answer shape.
+  2. IDENTITY payload has no seat — the sidebar needs project, feature,
+     role, exit-grace to place a row; `lifecycle:starting`'s body is
+     the natural carrier but is undefined.
+  3. PHASE + PROGRESS have no carrier — the approved grammar renders
+     the enumerated phase spine and the %; `status` is one free word.
+  4. PROJECT dimension vs global-only topics — status is marked
+     (project) but the topic list holds only `global`; the cross-repo
+     sidebar needs the project somewhere (topic family or body field).
+  5. Minor: `outcome` enum lacks blocked/abandoned (fail ⊇ them?);
+     identity/status request-reply dropped (replaced by published
+     state?); gate-reject feedback presumably the script's exit code.
 - MEASURED COST MODEL (round 8, 2026-07-25) — replaces the pre-compact
   README estimate; sources: dead-inbox census (registered from 00:10,
   consumed nothing, 243 files), the orchestrator transcript's
