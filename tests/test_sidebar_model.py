@@ -1182,14 +1182,15 @@ class ReadStatusTests(unittest.TestCase):
                  "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
             )
             with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=path):
-                tokens, dollars = sidebar_model._read_status("some-session")
+                tokens, dollars, model = sidebar_model._read_status("some-session")
         self.assertEqual(tokens, "150k")
         expected_cost = (100_000 * 3.0 + 50_000 * 15.0) / 1_000_000
         self.assertEqual(dollars, sidebar_model._format_dollars(expected_cost))
+        self.assertEqual(model, "claude-sonnet-5-20260101")
 
     def test_no_transcript_yields_none_none(self):
         with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=None):
-            self.assertEqual(sidebar_model._read_status("missing"), (None, None))
+            self.assertEqual(sidebar_model._read_status("missing"), (None, None, None))
 
     def test_unknown_model_yields_tokens_but_no_dollars(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1199,9 +1200,29 @@ class ReadStatusTests(unittest.TestCase):
                  "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
             )
             with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=path):
-                tokens, dollars = sidebar_model._read_status("s")
+                tokens, dollars, model = sidebar_model._read_status("s")
         self.assertEqual(tokens, "1k")
         self.assertIsNone(dollars)
+        self.assertEqual(model, "some-unknown-model")
+
+    def test_transcript_model_backfills_identity_when_identity_lacks_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_transcript(
+                tmp, "claude-opus-5-20260101",
+                {"input_tokens": 1_000, "output_tokens": 0,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+            )
+            with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=path):
+                state = sidebar_model._SessionState(session_id="s1")
+                state.agent_type = "architect"
+                row = sidebar_model.Feature(
+                    feature_id="f1", name="f one", activity="",
+                    status="working", waiting_on_operator=False,
+                )
+                sidebar_model._apply_row_extension(
+                    row, state, sidebar_model._TTLCache(ttl_seconds=30),
+                )
+        self.assertEqual(row.model, "claude-opus-5-20260101")
 
 
 class ReadGitStatsTests(unittest.TestCase):

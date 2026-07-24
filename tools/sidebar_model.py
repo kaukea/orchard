@@ -631,16 +631,18 @@ def _transcript_for_session(session_id: str) -> Path | None:
     return matches[-1] if matches else None
 
 
-def _read_status(session_id: str) -> tuple[str | None, str | None]:
-    """(tokens, dollars) for `session_id`, reusing bus.py's own token-class
-    and cost-estimate machinery (bus.TOKEN_CLASSES, bus.usage_entries,
-    bus.estimates_for) over that session's transcript. Any failure — no
-    transcript, malformed lines, unknown model — yields (None, None), never
-    a raised exception."""
+def _read_status(session_id: str) -> tuple[str | None, str | None, str | None]:
+    """(tokens, dollars, model) for `session_id`, reusing bus.py's own
+    token-class and cost-estimate machinery (bus.TOKEN_CLASSES,
+    bus.usage_entries, bus.estimates_for) over that session's transcript.
+    The model id is the transcript's most recent entry — a mutable session
+    fact the identity broadcast deliberately excludes. Any failure — no
+    transcript, malformed lines, unknown model — yields (None, None, None),
+    never a raised exception."""
     try:
         path = _transcript_for_session(session_id)
         if path is None:
-            return None, None
+            return None, None, None
         spend = dict.fromkeys(bus.TOKEN_CLASSES, 0)
         model = None
         for usage, entry_model in bus.usage_entries(path):
@@ -650,12 +652,12 @@ def _read_status(session_id: str) -> tuple[str | None, str | None]:
                 spend[token_class] += usage.get(token_class, 0) or 0
         total_tokens = sum(spend.values())
         if total_tokens == 0:
-            return None, None
+            return None, None, model
         cost = bus.estimates_for(model, spend, 0).get("cost_usd")
         dollars = _format_dollars(cost) if cost is not None else None
-        return _format_tokens(total_tokens), dollars
+        return _format_tokens(total_tokens), dollars, model
     except Exception:
-        return None, None
+        return None, None, None
 
 
 def _branch_commit_epochs(repo_path: str, feature_id: str) -> list[int] | None:
@@ -726,10 +728,10 @@ def _apply_row_extension(row, state: _SessionState, status_cache: _TTLCache) -> 
     row.first_question_subject = next(iter(state.open_questions.values()), None)
     row.interrupt = _interrupt_for(state)
     row.role = state.agent_type
-    row.model = state.model
-    row.tokens, row.dollars = status_cache.get(
+    row.tokens, row.dollars, transcript_model = status_cache.get(
         state.session_id, lambda: _read_status(state.session_id),
     )
+    row.model = state.model or transcript_model
 
 
 class _BusAggregator:
