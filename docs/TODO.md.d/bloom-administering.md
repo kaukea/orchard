@@ -13,8 +13,12 @@
   preference), or one composite form?
 - Do consistency probes stay disguised in the FINAL report too, or does the
   report reveal which items were cross-checks once the round is over?
-- Item-novelty threshold: minimum expected information gain per administered
-  item — engine parameter to agree at plan time.
+- Repeat-probe policy: deliberate re-probing is legitimate instrument
+  machinery (consistency checks, reliability triangulation) — so what
+  separates justified repeats from the wasteful kind seen in the live run,
+  and what bounds them? (Orchestrator's UNCONFIRMED suggestion, needing
+  operator confirmation at scope: an expected-information-gain floor per
+  administered item.)
 
 ## Findings
 
@@ -29,9 +33,16 @@
   largely independent dimensions, cross-axis adaptivity is weak — a block of
   one probe per open dimension per round loses almost nothing. The five
   repeats were the multi-select SE-floor defect re-probing an exhausted
-  dimension, which batching alone would not fix: the engine also needs an
-  item-novelty constraint (no probe below an information-gain threshold, no
-  near-duplicate items).
+  dimension — they were wasteful because they could no longer move the
+  posterior, not because repetition is wrong per se.
+- OPERATOR CORRECTION (2026-07-24, same evening): the five-probes complaint
+  was about wasted time, NOT a ruling banning duplicate probes — no such
+  decision was requested or confirmed. An earlier version of this sidecar
+  (and its boarding commit, ecacd5c) overstated it as a "no near-duplicate
+  probes" constraint; that constraint is WITHDRAWN and survives only as the
+  unconfirmed suggestion in Questions. Deliberate re-probing remains
+  available to the instrument — the blinding fix's disguised consistency
+  checks depend on it.
 - Operator critique 2 — BLINDING: a psychometric instrument must not
   announce the axis it is measuring; v1 printed the dimension topic on every
   probe. Naming the construct invites demand effects and defeats person-fit
@@ -43,12 +54,12 @@
 
 (to shape at bloom) Block-adaptive administration for the bloom engine: one
 probe per open dimension per block, answered sequentially from one pane
-pass; engine updates all posteriors between blocks; item-novelty constraint;
-blind items throughout, axes visible only in the convergence report.
+pass; engine updates all posteriors between blocks; blind items throughout,
+axes visible only in the convergence report. Repeat-probe policy per the
+open Question above.
 
 ## Testing
 
 To agree when scoped — expected: re-run a real bloom round; the operator
 confirms the round count collapses (target: ≤4 blocks for a
-writing-emails-sized task), no near-duplicate probes appear, and no probe
-names its axis.
+writing-emails-sized task) and no probe names its axis.
