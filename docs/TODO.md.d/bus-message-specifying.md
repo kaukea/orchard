@@ -404,6 +404,43 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   5. Minor: `outcome` enum lacks blocked/abandoned (fail ⊇ them?);
      identity/status request-reply dropped (replaced by published
      state?); gate-reject feedback presumably the script's exit code.
+- SECURITY REVIEW (round 15 close, 2026-07-25) — full text staged at
+  .git/the-works/bus-message-specifying/security-review.md; condensed:
+  ROOT FINDING (C1): within ONE Linux UID, filesystem permissions
+  enforce nothing between agents (all run as `sudoku`, spools 0664/0775
+  same owner) — so every secure/authorized/vetted/encrypted property is
+  COOPERATIVE (a convention bus.py implements for agents that route
+  through it), not ENFORCED. Real confidentiality/authz between agents
+  needs an OS boundary the design lacks (per-agent UIDs, or a socket
+  daemon under a distinct UID owning the store — the round-6 withdrawn
+  frame). Criticals: C2 key-in-folder protects nothing unless the folder
+  holds the subscriber's PUBLIC key (private key never in the shared
+  tree) and even then gives no integrity without signing; C3 unicast-
+  auth / topic-sig are bypassable by a direct `cp forged.json <folder>`
+  while no daemon owns the store; C4 operator_origin + gate phrases
+  (MAKE IT SO / THAT IS ALL) are forgeable plain fields → fleet
+  privilege escalation, need signing bound to the operator's session.
+  Highs: H1 first-agent anchor has no vetting act / crash story /
+  revocation / auditable chain; H2 transience-by-deletion ≠ erasure and
+  the 244-file dead inbox already falsifies "nothing accumulates" (needs
+  wall-clock reaper + encryption-at-rest); H3 transient+secure conflicts
+  with crash-survival — XDG_RUNTIME_DIR best for transient+other-UID and
+  survives a tmux SERVER death but not logout and nothing vs same-UID;
+  H4 unbounded subscriber + existence-based fan-out revives the flood.
+  Six operator questions batched in the review. v1 already mitigates
+  conformance/noise/question-routing — not re-litigated.
+- ROUND 16 RULINGS (operator, 2026-07-25), closing two functional holes
+  the orchestrator raised: (a) NO DELIVERY ACK — messaging is one-way by
+  design; an agent wanting confirmation sends a message and asks for a
+  reply (that IS the ack). Knowing the transport succeeded is neither the
+  agent's job nor the script's beyond the fact that the script wrote the
+  file and thus already knows it was written. (b) LIVENESS = DIRECTORY
+  mtime/ctime — the receiving folder's modified/created times are a good-
+  enough liveness indicator; if long-running agents sit idle, the script
+  touches the folder mtime from time to time. No heartbeat protocol, no
+  positive-liveness machinery beyond that. Dispatches review M4's premise
+  (folder-existence ≠ listening) with a folder-TIME test instead, and
+  removes ack from scope entirely.
 - DELIVERY MODEL v2 — INTEGRATED DESIGN (round 15, operator order:
   "integrate all that and ask for a security review", 2026-07-25).
   Consolidates rounds 1–14 with WIRE GRAMMAR v1; UNBUILT; security
