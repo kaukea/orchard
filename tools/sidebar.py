@@ -243,14 +243,21 @@ def _feature_row_segments(
     boundaries always match the plain-text composition exactly."""
     indent = "  " * row.depth
     glyph = _status_emoji(row, spinner_char)
-    suffix = f" {row.activity}" if row.activity else ""
-    fixed = len(indent) + len(glyph) + 1 + len(suffix)  # +1 for the space after glyph
-    composed = _truncate_keep_name(row.repo_name, row.label, width - fixed)
-    slash_idx = composed.rfind("/")
+    avail = width - len(indent) - len(glyph) - 1  # +1 for the space after glyph
+    if avail <= 0:
+        return indent, glyph, "", "", ""
+    # The name gets FIRST claim on the width (item 2: the name dominates, the
+    # repo recedes). The activity is strictly secondary — it only fills space
+    # left AFTER the composed <repo>/<name>, so a long activity can never
+    # starve the repo prefix or truncate the name.
+    composed = _truncate_keep_name(row.repo_name, row.label, avail)
+    slash_idx = composed.find("/") if row.repo_name else -1
     if slash_idx == -1:
         repo_part, name_part = "", composed
     else:
         repo_part, name_part = composed[:slash_idx + 1], composed[slash_idx + 1:]
+    remaining = avail - len(composed)
+    suffix = _truncate(f" {row.activity}", remaining) if row.activity and remaining > 1 else ""
     return indent, glyph, repo_part, name_part, suffix
 
 

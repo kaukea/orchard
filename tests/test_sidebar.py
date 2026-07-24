@@ -350,6 +350,44 @@ class TruncateKeepNameTests(unittest.TestCase):
         self.assertTrue(result.endswith(sidebar.ELLIPSIS))
 
 
+class FeatureRowSegmentsTests(unittest.TestCase):
+    """sidebar-titling item 2: the <repo>/<name> gets first claim on the row
+    width; the activity is secondary and fills only what is left, so a long
+    activity never starves the name."""
+
+    def _feature(self, repo_name, label, activity):
+        return sidebar.Row(
+            depth=1, kind="feature", target=f"{repo_name}/{label}", label=label,
+            status="working", waiting_on_operator=False, is_subagent=False,
+            activity=activity, repo_name=repo_name,
+        )
+
+    def test_long_activity_does_not_starve_the_name(self):
+        row = self._feature("orchids", "fleet sidebar", "a" * 200)
+        indent, glyph, repo_part, name_part, suffix = sidebar._feature_row_segments(row, 40)
+        # the whole "<repo>/<name>" survives intact no matter how long the
+        # activity is; the activity only fills the leftover space, truncated,
+        # and never pushes the total past the width budget
+        self.assertEqual(repo_part, "orchids/")
+        self.assertEqual(name_part, "fleet sidebar")
+        self.assertLessEqual(len(indent + glyph + " " + repo_part + name_part + suffix), 40)
+
+    def test_activity_fills_only_the_remainder(self):
+        row = self._feature("orchids", "x", "building the thing")
+        indent, glyph, repo_part, name_part, suffix = sidebar._feature_row_segments(row, 40)
+        self.assertEqual(repo_part + name_part, "orchids/x")
+        self.assertTrue(suffix.startswith(" "))
+        # nothing overflows the width budget
+        self.assertLessEqual(len(indent + glyph + " " + repo_part + name_part + suffix), 40)
+
+    def test_narrow_width_keeps_name_over_repo_and_activity(self):
+        row = self._feature("orchids", "fleet sidebar", "building")
+        _, _, repo_part, name_part, suffix = sidebar._feature_row_segments(row, 20)
+        # the name side always survives; repo may be elided, activity dropped
+        self.assertTrue(name_part.endswith("sidebar") or name_part.endswith(sidebar.ELLIPSIS))
+        self.assertEqual(suffix, "")
+
+
 class Xterm256Tests(unittest.TestCase):
     """sidebar-titling item 1: the RGB -> nearest-xterm256-index helper that
     lets the header gradient render on a 256-colour terminal without
