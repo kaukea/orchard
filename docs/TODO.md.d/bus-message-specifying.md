@@ -77,6 +77,20 @@
   work done — optional, later, blocked conceptually on EPICS (a grouping of
   smaller features toward a big feature, which the current sidebar/fleet
   cluster de facto is) — boarded as [[epic-grouping]].
+- Operator dictation, message 6 (musing, explicitly about to be superseded —
+  "however, I think I have a better idea"): perhaps the status word could be
+  followed by a discreet emphasized/italic name, purely for his orientation
+  in the flow. HELD — no action; awaiting the better idea.
+- DELIVERY FAILURE, live (2026-07-24 ~20:2x): the operator's row-split
+  clarification, relayed via the bus to the working sidebar-titling
+  architect, landed in a DEAD inbox (ac9f36c6, the crash-orphaned builder's
+  stale spool). The live architect (PID confirmed running) had NO reachable
+  bus registration at delivery time despite its own bus sidecar running — a
+  bootstrap/registration gap: an in-production agent the bus can neither
+  address nor track. Workaround: the orchestrator relayed the clarification
+  directly into the architect's pane (tmux send-keys) with provenance
+  stated. Third live exhibit for this task, and corroboration for
+  [[sidebar-witnessing]]'s observer gap from the sender's side.
 
 ## Proposal
 
