@@ -67,6 +67,52 @@
   comment rounds and checkbox task-lists only, a degraded shape (operator asked,
   confirmed 2026-07-24).
 
+- LIVE TEST (2026-07-24 14:0x, verified by observation): full round on
+  [[writing-emails]] (gh#15) through the bloomer pane, launched from this
+  worktree via `tools/bloomer-launch.sh`. Overall SE 0.461 → band "lower" →
+  task returned for replanning, no launch — the correct graduated outcome for
+  a first calibration run. 3/5 dimensions converged; one consistency check
+  fired and resolved to a rule; a launch-sizing recommendation was emitted
+  (l · fable-5 · high), not executed. The bloom commit (80f74d8) rides this
+  branch; pane teardown verified clean (return pane restored, `.return-pane`
+  removed, board lint 0 errors).
+- v1 CALIBRATION LIMITATION (measured in the live run): the ordinal-index
+  entropy SE proxy has a floor for multi-select/subset answers — both
+  multi-select dimensions EXHAUSTED their item budgets instead of converging
+  despite consistent answers (email-domain plateaued SE 0.901→0.888 over four
+  rounds), so the overall band is dragged to "lower" by construction whenever
+  multi-select dimensions dominate. Follow-up candidate: a subset-posterior
+  model for multi-select dimensions.
+
+Result: **done** · branch `f/psychometric-discovery` (🎉 anchor `045f16f`,
+`Base: 867d5e1`; implementation through `80f74d8`, close-out docs commit on
+top) · tested per `## Testing`: the agreed live run on writing-emails was
+executed and passed — a converged WHAT with its explicit convergence number
+written into the task's sidecar, and the graduated outcome fired per its
+confidence band (lower → returned for replanning, no launch). Fan-out:
+discovery 7 explorers; build 3 builders + 2 steps inline (sidecar staging in
+the architect's own words; a 3-symlink wiring); close-out docs staged inline
+by the successor session after a tmux crash killed the predecessor
+post-test. ARCHITECTURE: updated in-branch — the bloomer role-table row
+rewritten for the rebuilt instrument (component-repurposed trigger) and the
+cloud-surface blooming clause aligned with the v1 cloud deferral. MIGRATION:
+none — no managed artifact was moved, renamed, or reformatted (the
+predecessor prep definition is untouched; every shipped file is new).
+
+Follow-ups returned to the orchestrator (board placement is the
+orchestrator's, never written here):
+
+1. Predecessor-clerk analysis/retirement and the pipeline repoints
+   (orchestrator §Blooming/handoff round, `bloom-tasks` dispatch target)
+   once the bloomer is judged ready — operator ruling, staged as a Decision
+   entry below.
+2. Multi-select SE floor: a subset-posterior model for multi-select
+   dimensions, so consistent subset answers can converge instead of
+   exhausting (calibration limitation above).
+3. [[writing-emails]] came back at band "lower" and needs orchestrator
+   replanning; its bloomed sidecar and board move ride this branch
+   (80f74d8).
+
 ## Proposal
 
 V1 of the rebuilt bloomer — the Decision-027 intake measurement instrument, built
@@ -171,6 +217,68 @@ expected band is ask-to-confirm, not silent auto-kick).
 - 2026-07-24 plan gate: launch sizing is already part of the pipeline
   (Decision-019); dropping it would be a regression — IMPLEMENTED: the
   convergence report carries a launch-sizing recommendation.
+
+## Changelog entry
+
+Bloomer v1 — the rebuilt intake-measurement instrument (charter:
+Decision-027), landing alongside the untouched groomer.
+
+- `tools/bloom_engine.py` is the statistical engine behind the bloomer
+  intake-measurement agent: a stdlib-only Python 3 CLI
+  (`init`/`next`/`answer`/`report`/`selftest`) that holds a discrete
+  posterior per scope dimension, selects the next probe by
+  expected-information-gain composed with an IRT/Fisher-information layer
+  over LLM-assumed 2PL item parameters, enforces a broad-before-narrow
+  funnel, and stops each dimension once its posterior standard error crosses
+  a threshold or its item budget runs out. It flags contradictory answers
+  via an lz-like person-fit statistic, reports a graduated
+  very-high/medium-high/lower confidence band, and recommends a launch size
+  (s/m/l) mapped to the current per-role model/effort tiers
+  (Decision-018/019). Every report unconditionally flags its IRT parameters
+  as uncalibrated, per operator ruling, since v1 ships with LLM-guessed
+  rather than corpus-derived item statistics; `init --priors` accepts a
+  per-dimension hypothesis-weight JSON file today as a stub for the intended
+  future corpus-derived prior feed.
+- The bloomer agent (`agents/bloomer.md`) is rebuilt from scratch as the
+  Decision-027 intake-measurement instrument, replacing the demoted `groomer`
+  clerk that only cited its charter without implementing it — every charter
+  behaviour (adaptive dimension decomposition, engine-driven question
+  selection and SE-threshold stopping via `bloom_engine.py`, native
+  forced-choice prompts, misfit consistency checks, graduated launch outcomes
+  by confidence band) is now a concrete procedure in the definition body. It
+  runs in its own pane inside the orchestrator's window, gates every question
+  on the statistical engine's measured-low-confidence verdict rather than a
+  fixed count, and writes its converged WHAT — with an explicit
+  uncalibrated-items caveat, since v1's IRT item parameters are LLM-assumed
+  rather than corpus-calibrated — back into the task's sidecar. The existing
+  `groomer.md` was left untouched, per operator ruling, pending a separate
+  future retirement decision.
+- `tools/bloomer-launch.sh` and `tools/bloomer-teardown.sh` give the bloomer
+  its own tmux pane inside the orchestrator's existing window instead of a
+  whole window: launch splits the current window with the bloomer taking the
+  bottom 75% of height and the orchestrator's calling pane kept visible in
+  the top 25%, recording a `.return-pane` (pane id + socket) under
+  `.git/the-works/<task-id>/`; teardown, run by the bloomer as its last act,
+  reads that file, refuses to ever kill the return pane, and hands focus
+  back before closing its own pane. This is the pane-scoped counterpart to
+  the architect's window-scoped `architect-teardown.sh`, reusing its
+  socket-aware `tx()` wrapper and `%N`-pane-id return contract.
+
+## Readme delta
+
+Replace the bloomer paragraph in "Five agents, one assembly line" ("While
+you think, the **bloomer** keeps the backlog sharp …") with:
+
+> While you think, the **bloomer** measures what you actually want: point it
+> at a fuzzy task and it asks the fewest questions that most reduce
+> uncertainty — chosen by a statistical engine, not by feel — until the
+> scope converges with an explicit confidence number. High confidence can
+> launch the work; anything less comes back to you with the loose ends
+> named.
+
+(Ingest note, not README text: scheduled backlog-prep passes still run under
+the demoted predecessor definition until the repoint follow-up; the README
+describes the bloomer role as shipped.)
 
 ## Decision entries
 
