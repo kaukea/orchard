@@ -223,6 +223,51 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   surfaces — what users need is WHERE a thing executes: two location
   badges, one local-machine, one cloud, orthogonal to the role emoji, and
   available immediately. Mega-rename boarded as [[orchard-renaming]].
+- FOOTER dictation, part 1 (operator, 2026-07-25): each feature block ends
+  with a FOOTER whose data must be injectable WITHOUT spending tokens to
+  collect (deterministic, locally-emitted sources only). Wanted: (a) the
+  feature's lifetime/age displayed against the time actually WORKED on it
+  (the git-commit-flavoured stat he's fond of); (b) TOKEN usage per feature
+  — granularity open — animating/ticking upward live as work happens, as
+  the block's LAST section. Everything else he already has a plugin for —
+  do not duplicate. Orchestrator source note: both are already emitted
+  locally (bus agent-metadata token denominators; session/commit
+  timestamps) — zero-token injection is feasible. Dictation cut mid-
+  sentence at "the last two things that…" — continuation pending.
+- FOOTER dictation, part 2: also candidates — the BRANCH name with its ⎇
+  glyph, the DOLLARS spent, and the TURN count; he asked the orchestrator
+  to rank usefulness and propose the display. Orchestrator ranking given:
+  tokens and dollars in (one line, tokens tick live, dollars translate
+  them); age-vs-worked in (his "amazing" stat); BRANCH dropped from the
+  footer (fully derivable — in this fleet the branch IS f/<feature-id>, so
+  it restates the feature name for 19 columns of cost); TURNS dropped from
+  the cockpit (a telemetry number, not a driving instrument — lives in
+  the mined record instead). Footer = two dim guide lines closing the live
+  block; done features carry a one-line collapsed footer. Rendered as mock
+  round 7 for his visual verdict.
+- FOOTER APPROVED (operator, round 7 verdict: "sounds good to me") — age⏱
+  vs worked + tokens⚡/dollars, branch and turns out. Note: the footer's ⏱
+  coexists with the no-timer rule because that rule governs the
+  WAITING-STATE glyph semantics (waiting is not a countdown), not elapsed-
+  time stats; flagged, unobjected.
+- LIVE-ROW COLOUR RULE (operator, round 8): the live feature line carries
+  exactly TWO backgrounds — a uniform DARK shade of the repo hue across
+  the whole line, and a VERY LIGHT tint of the hue as the moving band; no
+  grey, no near-black cells on a feature line, no fill-extent split (the
+  percentage alone carries progress).
+- ROUND 9 corrections (operator, live read): (a) the sweep is a LIFT, not
+  a band — the base colour raised slightly as the motion passes, title
+  always legible (supersedes round 8's "very light" band); (b) the phase
+  is spoken ONCE — of his either/or, the orchestrator picked: the feature
+  row drops its inline phase word (row = glyph + name + %), the checklist's
+  active line is the single place the phase is named, the this-minute word
+  lives in the identity line; (c) the identity line "writing ⋮ architect ⋮
+  model" is glued with non-breaking spaces around the ⋮, wraps only
+  between whole segments, continuation at the SAME indent level; (d) the
+  standalone flock line under the model name "doesn't work" — orchestrator
+  placement pick, flagged for veto: the dots move inline onto the
+  checklist's active phase line ("⠧ building ●●●○○"), the workforce shown
+  inside the phase it works.
 
 DESIGN-FIRST RULE (operator, 2026-07-24): the VISUAL is agreed before any
 build — a rendered mock the operator adjusts until it is right; the approved

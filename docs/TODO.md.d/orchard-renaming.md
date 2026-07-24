@@ -12,7 +12,8 @@
   glance (it is the longest-watched row, so it earns the most visible
   emoji)?
 - Architect: which landscaper-family word and glyph?
-- Builder: planter or sower?
+- ~~Builder: planter or sower?~~ RULED (operator, 2026-07-25): SOWER —
+  provisional in his words ("if we find a better name, we will rename it").
 
 ## Findings
 
