@@ -404,6 +404,27 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   5. Minor: `outcome` enum lacks blocked/abandoned (fail ⊇ them?);
      identity/status request-reply dropped (replaced by published
      state?); gate-reject feedback presumably the script's exit code.
+- ROUND 17 — SCOPE RULING (operator, 2026-07-25), decisive, reframes the
+  whole redesign:
+  · THE SEAL IS THE ENVIRONMENT BOUNDARY, NOT THE LOCAL UID. The point of
+    the design is running multiple projects in parallel ACROSS
+    ENVIRONMENTS (local + cloud); that fleet membership IS the
+    permissioning seal. Encryption/authorization exist to keep anything
+    OUTSIDE the fleet from seeing its traffic — NOT to isolate one local
+    same-UID agent from another. The review's C1–C4 (hostile local peer)
+    are therefore OUT OF THREAT MODEL for this build; the crypto that
+    matters is the cross-environment leg (cloud/GitHub/API sealing).
+  · ENFORCEMENT MODEL = COOPERATIVE (option 1 chosen): "we'll do 1
+    anyway." bus.py stays the convention; no daemon, no per-agent UIDs.
+  · v2 IS INTERIM. The METRONOME project will need something much bigger
+    and stronger that REPLACES bus v2 wholesale — so the heavy security
+    architecture (admission PKI, signed gate phrases, real local
+    confidentiality) is METRONOME's, not this build's.
+  · SCOPE NOW = LIGHT FIXES ONLY: stop the chatter and the token spend,
+    while PREPARING for the rest. The full design record above is the
+    preparation; it is NOT all to be built now. Build the minimum that
+    kills the noise/cost; leave the rest designed-but-unbuilt for
+    metronome. See [[metronome]] / autonomy-ladder (Decision-075).
 - SECURITY REVIEW (round 15 close, 2026-07-25) — full text staged at
   .git/the-works/bus-message-specifying/security-review.md; condensed:
   ROOT FINDING (C1): within ONE Linux UID, filesystem permissions
@@ -429,6 +450,17 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   H4 unbounded subscriber + existence-based fan-out revives the flood.
   Six operator questions batched in the review. v1 already mitigates
   conformance/noise/question-routing — not re-litigated.
+- REVIEW MIS-SCOPED (operator, round 17): the audit imported a generic
+  same-host multi-tenant threat model (hostile local same-UID peer,
+  ptrace, permission bits) that does NOT apply — this is a single-user
+  machine and the ruled seal is the ENVIRONMENT boundary. C1–C4 are moot
+  under the actual threat model; the review buried the one relevant
+  thread (what crosses the machine boundary and who can read it on the
+  far side) as a single question. A correctly-scoped review would cover
+  ONLY: the cross-environment leg (payload leaving via GitHub/API/cloud,
+  its storage and readership there, key custody across the boundary) and
+  light-fix hygiene. That thread is METRONOME-scoped; the light-fix pass
+  needs no local-crypto and no heavy review. Do not re-run a broad audit.
 - ROUND 16 RULINGS (operator, 2026-07-25), closing two functional holes
   the orchestrator raised: (a) NO DELIVERY ACK — messaging is one-way by
   design; an agent wanting confirmation sends a message and asks for a
