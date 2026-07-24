@@ -10,9 +10,11 @@
 - Confirm the two languages (presumed French and English) and whether the
   voice differs per audience (personal mail vs disclosure mail vs PR/review
   prose) or is one voice everywhere.
-- Source material: which of the operator's real writing (sent mail, PRs,
+- ~~Source material: which of the operator's real writing (sent mail, PRs,
   comments, docs) may be mined to derive style, rhythm and vocabulary — and
-  does that wait for [[corpus-indexing]] or start from a hand-picked sample?
+  does that wait for [[corpus-indexing]] or start from a hand-picked sample?~~
+  Answered (operator, 2026-07-24): mine NOW — git history plus historical
+  email; do not wait for the corpus.
 - Enforcement shape: guidance the agent reads (extend `skills/writing`), a
   review pass over outbound text, or both?
 
@@ -33,6 +35,18 @@
   at ingest.
 - Same principle as the sent-AS-me identity ruling: identity covers what an
   agent may claim in his name; this task covers how it must SOUND.
+
+- Fingerprint derivation DISPATCHED (2026-07-24 evening, background
+  subagent, operator-ordered): sources are hand-written git commits across
+  the fleet (agent-authored commits excluded via the `Agent:` /
+  `Co-Authored-By` trailer filter) and a time-spread sample of sent mail via
+  the Gmail connector. Classification is derived from the data — expected
+  registers professional/formal/casual across his two languages — one
+  compact fingerprint per class, distilled once so later use costs almost
+  nothing. Outputs stage in the UNCOMMITTABLE channel
+  (`.git/the-works/operator-voice/`): email-derived exemplars are flagged
+  PRIVATE and never enter git; the operator gates what the eventual skill
+  ships.
 
 ## Proposal
 
