@@ -27,6 +27,33 @@
   watcher is dead, and depart. So the inbox folder and its accumulated
   messages are left behind — the 244-file `ac9f36c6` orphan and every "dead
   inbox" complaint since.
+- ROOT CAUSE SHARPENED (operator, 2026-07-25): this is an instance of a
+  broader PREMATURE-KILL pattern — the HOUSEKEEPER (and/or the teardown
+  scripts) kills components before those components have had time to clean up
+  after themselves. The window/panes are reaped — taking the bus's monitor
+  process with them — BEFORE the bus was woken to self-teardown. So the
+  ordering is inverted: reaping-the-live happens before the-live-finishes-
+  self-cleanup. This directly contradicts Decision-041's own rule ("the
+  closing agent kills itself; parents reap only the DEAD"). Suspect sites for
+  the fix to re-sequence: `tools/architect-teardown.sh` (window-granular
+  `@arch_id` kill, agent-closing D1) and the housekeeper/orchestrator reaping.
+  FIX ORDERING — this RESTORES Decision-041 (already ruled), it is not a new
+  design. Decision-041: components clean up after THEMSELVES; the closing
+  agent kills itself; the orchestrator reaps ONLY an agent that died first.
+  So the housekeeper does NOT kill live components at all — that was never
+  her job. The rule (operator 2026-07-25):
+  (1) each component closes its OWN — the bus, woken via the self-message
+      below, closes its monitor and tears its own folder; the architect runs
+      its own teardown (release bus → architect-teardown.sh);
+  (2) the housekeeper's only destructive touch is FILES (the git close:
+      docs, tag, squash-merge, push) and it happens LAST — after components
+      have self-closed;
+  (3) reaping a component is the ORCHESTRATOR's fallback for one that died
+      WITHOUT self-closing — never a routine kill of the live.
+  The current bug is exactly the violation: components are being killed
+  (by the housekeeper / teardown ordering) BEFORE they self-close, so the
+  bus never gets its turn. Restore the decision: self-close first, files
+  last, reap only the already-dead.
 - PRIOR ART — this was already ruled and only half-delivered:
   - Decision-041 (self-teardown at close; a bus is RELEASED by parent close or
     self-exits when ORPHANED) — charters only, no mechanical enforcement.
