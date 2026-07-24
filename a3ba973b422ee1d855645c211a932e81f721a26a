@@ -1,0 +1,11 @@
+session: 20260724-orchestrator · agent: orchestrator · date: 2026-07-24 · feature: none
+deviations:
+  - rule: AskUserQuestion for every question · what: tool popup used mid design conversation, operator ruled popups out of that mode · why: rule admits no conversation-mode exception
+    change: add a whiteboard-mode carve-out — prose questions in deliberate design conversations
+  - rule: handover dispatched-sub-agents ledger · what: dispatches logged in prose, reconciled only at close · why: conversation pace
+    change: none — compliance failure; a boot-time log template with empty fixed sections would help
+  - rule: verify before asserting · what: stated Sello had no implementation without checking, corrected after fetch · why: trusted a sweep summary
+    change: none — compliance failure, and an instance of the defect class the session was designing against
+  - rule: write-as-you-change · what: several log flushes were batched catch-ups · why: rapid multi-turn design flow
+    change: none — habit; consider an end-of-turn flush reminder
+token_saver: detect whiteboard mode at conversation start and defer all board-artifact prep (format loads, sidecar drafts) until boarding is ordered — the aborted boarding prep and its reversal were the largest avoidable spend
