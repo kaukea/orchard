@@ -191,6 +191,35 @@ accepted — full record in Findings above). The display-and-messaging grammar:
   waiting notifies, Closing/lifecycle collision, dead-inbox delivery,
   unreachable live agent) define the defect classes to close.
 
+Priority (operator, 2026-07-24): this outranks [[writing-emails]].
+
+MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
+- R1 verdict: grammar right, "lacks identity". R2: right-aligned %, per-repo
+  hue families (orchids violet / signmc teal), model name on a cost/size
+  colour ramp (haiku teal → sonnet steel → opus violet → fable gold),
+  subagent dots lose their numeric caption, question becomes a dim-amber
+  "?1" badge — NEVER red (red = danger, reserved). R3: live row wears its
+  status word inline; phases become an indented VERTICAL checklist (filled
+  done / hollow not-started / spinner active — one circle family unifies
+  features and steps); waiting glyph is the hollow circle, all
+  watch/timer glyphs banned; vertical breathing is deliberate. R4: repo
+  headers drop the gradient — solid hue block, name CENTERED (centering
+  was fine); the motion moves to the LIVE feature line as a KITT-style
+  bidirectional sweep across its fill extent — the frame's ONE animated
+  element.
+- HELD, operator's own markers: (a) he had TWO ideas for the percentage
+  and only dictated the first (the sweep) — the second is unspoken; (b)
+  after the emoji mapping: REMIND HIM of the last topic, the FOOTER of
+  each feature; (c) emoji↔agent mapping requested (roles had emojis once,
+  lost to "the wrong solution").
+
+DESIGN-FIRST RULE (operator, 2026-07-24): the VISUAL is agreed before any
+build — a rendered mock the operator adjusts until it is right; the approved
+look is then the fixed contract that implementations fit into. Agents never
+bend the visual to match what they want to build. Mock round in progress —
+the approved frame's exact rendering (glyphs, ANSI codes, layout) is to be
+captured here as the design when the operator signs it off.
+
 ## Testing
 
 To agree when bloomed — expected shape: a session of each role runs and its
