@@ -91,6 +91,62 @@
   directly into the architect's pane (tmux send-keys) with provenance
   stated. Third live exhibit for this task, and corroboration for
   [[sidebar-witnessing]]'s observer gap from the sender's side.
+- Operator dictation, message 7 (phase model, checked against the built
+  pipeline): features move through phases — his sketch: planning →
+  ideation → specification → architecture → testing → release, with
+  crash-rebuild as a special case. Orchestrator's faithful mapping given
+  back: (1) ideation/intake — boarded with a sidecar stub; (2)
+  specification — the bloom round converges the WHAT; (3) sizing &
+  dispatch; (4) architecture — architect discovery + frozen plan at the
+  gate; (5) build; (6) testing — the pre-agreed gate; (7) release — the
+  fold (tag, squash-merge, push); (8) ingest — promotions, mostly
+  invisible to him. Crash-resume is a lateral re-entry into whichever
+  phase died (successor protocol, proven live today).
+- Operator dictation, message 8 (phase list corrected to the OPERATOR-FACING
+  view): sizing & dispatch is the orchestrator's concern — none of his
+  business; ingest likewise (he cares as the system's designer, not as
+  operator — the hovering and file-writing is plumbing). Release INCLUDES
+  documentation as a logical grouping. The operator-facing spine is
+  therefore SIX phases: ideation → specification → architecture → build →
+  testing → release(+docs). Internal plumbing (sizing/dispatch, ingest)
+  never surfaces in his flow.
+- Operator dictation, message 9 (converging): phases are a SOFT SCALE, each
+  containing the previous — ideation and specification adjoin; architecture
+  spans the subagents that build; docs are written inside release. His
+  candidate spine, "becomes human": IDEATION → SPECIFICATION → ARCHITECTING
+  (word to improve) → BUILDING (testing folds in) → RELEASING. Ideation may
+  stay permanently for symmetry even when a feature isn't new. Orchestrator
+  opinion given: agree on five and on folding testing into building —
+  phases are for orientation, the three interrupts carry the summons, so
+  "failed" alarms regardless of phase; keep ideation always (it separates
+  "just boarded" from "being measured"); proposed word: DESIGNING for the
+  architect's discovery+plan span.
+- Operator dictation, message 10: the five stand, but "specification" is
+  the odd word form out — needs a replacement (orchestrator candidate:
+  SCOPING). The phase spine must MAP TO A 100% progress scale as it
+  happens. Each phase decomposes into subphases — some invisible
+  (internal), some user-visible — and that mapping must be agreed QUICKLY.
+  Row anatomy under each feature: line 1 = the current agent's one-word/
+  one-line doing-text; line 2, SUBDUED = the name of the actual agent being
+  run (the earlier italic-name musing, refined). More dictation coming.
+- Operator dictation, message 11 (row block anatomy completed): beneath the
+  agent line, SUBAGENT rows come and go — individually meaningless except
+  as evidence of motion and COUNT ("five or six queued" is itself the
+  information). This collapses the animation problem: while ANYTHING in the
+  phase group works, ONE spinner on the group says so; when nothing works —
+  waiting-to-start, not-my-turn (yesterday's conversation) — a subdued/
+  watch icon, never motion. When a step/phase inside the feature ends, only
+  its step line remains, marked COMPLETED or FAILED, and the block moves to
+  the next step. (Sentence ran on — likely more coming.)
+- Operator dictation, message 12: SCOPING approved — the spine is locked:
+  ideation → scoping → designing → building → releasing. Each agent ROLE
+  gets its own EMOJI again ("they used to, but were replaced by the wrong
+  solution" — revival, choose at build). Window/status-bar title = PROJECT
+  and FEATURE (self-corrected from "phase") — consistent with the quick
+  pass's repo/name composition. INVARIANT stated to be specific: never
+  multiple windows for one feature — within a feature is sequential,
+  parallelism is cross-feature; the exception is non-displaying subagents
+  running in parallel, which is encouraged. No change to current practice.
 
 ## Proposal
 
