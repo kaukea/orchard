@@ -106,6 +106,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `feature · todo · · blocked-on-answers · process ·` [Step recording: one authored record, scripted projections](TODO.md.d/step-recording.md) ~handover-contract
 - `feature · todo · nice-to-have · queued · process ·` [Keyword configuring: the gate-phrase table becomes configuration](TODO.md.d/keyword-configuring.md) ~operator-interacting
 - `feature · todo · idea · queued · process · gh#15` [Writing emails — scope to be defined by the operator](TODO.md.d/writing-emails.md)
+- `feature · todo · · queued · process ·` [Notify channel: fleet→operator email notifications, wanted, scope pending](TODO.md.d/notify-channel.md) ~writing-emails ~operator-interacting
 
 ## Role delivery
 
