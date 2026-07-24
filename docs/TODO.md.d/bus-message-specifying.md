@@ -404,6 +404,40 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   5. Minor: `outcome` enum lacks blocked/abandoned (fail ⊇ them?);
      identity/status request-reply dropped (replaced by published
      state?); gate-reject feedback presumably the script's exit code.
+- DELIVERY MODEL v2 — INTEGRATED DESIGN (round 15, operator order:
+  "integrate all that and ask for a security review", 2026-07-25).
+  Consolidates rounds 1–14 with WIRE GRAMMAR v1; UNBUILT; security
+  review commissioned before any build.
+  · LAYERS: v1 (built, parked on the branch) is the VOCABULARY — five
+    classes, derived interrupts, deny lists, `validate`. The orchard
+    model is the TRANSPORT above it: addresses, topics, subscription,
+    admission, crypto. Prefix orchid:→orchard: rides the rename.
+    LANGUAGE ADAPTATION (operator): the question path largely exists
+    from the build (ask broker, derived QUESTION interrupt) — the
+    schema's terms adapt to the built forms, not respecified.
+  · ADDRESSES: From `:session:<id>`. To `:session:<id>` (unicast,
+    authorized) | `:topic:<name>` (fixed-but-extensible, daemon-signed).
+  · TYPES (Subject = type, payload in body): status (word + optional
+    0–100 + text) · outcome success|fail · lifecycle (payload = the
+    display minimum: location + project) · delegation begin|end ·
+    operator relay (unicast) · bus subscribe|unsubscribe (folder +
+    monitor lifecycle).
+  · LOCAL-KNOWLEDGE PRINCIPLE (rounds 11/12/14): identity never rides
+    the bus; scripts derive project/location from their own worktree
+    and CLI; mechanical facts are boot context.
+  · GLOBAL STATE — the open core problem: cross-project topics need a
+    home OUTSIDE any repo; the content is sensitive inter-instance
+    back-and-forth with little protection today. Requirements:
+    TRANSIENT (nothing accumulates), SECURE, ENCRYPTED as far as
+    possible. Mechanism sketched as intent (his example, not spec):
+    subscribing creates the folder AND deposits a key in it, so the
+    publisher encrypts to that key before writing.
+  · ADMISSION: a new agent is let in only after VETTING. Trust
+    bootstraps at the FIRST agent in line: it obtains authorization
+    (the operator) and thereafter unlocks the doors for the rest — an
+    authorization chain, not per-agent operator ceremony.
+  · SEAM (unruled): v1 `phase:k/n` tick math vs round-11's optional
+    0–100 on status.
 - ROUND 14 RULING (operator, 2026-07-25): nothing ever REQUESTS its
   project or placement over the bus — the script derives it from its
   own execution context (the worktree it runs in, the CLI it already
