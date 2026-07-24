@@ -150,20 +150,24 @@ bus (per repo) ──observed──> sidebar_model ──Fleet──> sidebar.py
   compose `<dim repo>/<bright name>` so the name dominates and the repo recedes;
   truncation keeps the name side (eliding the repo from the left with a leading
   ellipsis) and the activity is secondary, filling only leftover width. Status
-  is STATE-DRIVEN: most glyphs are static across the settled states — waiting ⌚
-  (❓ variant while waiting on the operator), idle ⚪, awaiting-another-agent 🪷,
-  done ✅, failed ❌ (never done's glyph/color); a sub-agent row shows a presence
-  dot ● (its only verifiable state) and vanishes when done; a project header
-  carries no status glyph. Two states animate, curses-only: an actively-working
-  feature glyph spins and a waiting-on-operator row blinks (never triggered by a
-  message merely arriving); the pure text/`--dump` path stays fully static.
-  Done features sort to the top of their project group (green). A scroll offset
-  follows the selected row once the tree exceeds the pane's height. The project
-  header is a half-block colour-gradient bevel (the classic orchid family) that
-  renders on any 256-colour terminal — mapping each gradient step to the nearest
-  xterm-256 index when the terminal cannot redefine colours — flat light-gray
-  instead for a paused project. Each live agent gets a stable colour from an
-  8-entry orchid-species palette, degrading gracefully on a limited terminal.
+  glyphs are ONE CIRCLE FAMILY (operator visual contract): hollow ○ for the
+  subdued waits (idle, component-wait, awaiting-another-agent all share it),
+  filled ● for done (green, and shared by design with the sub-agent presence
+  dot — distinguished by colour/position), and a dim-amber `?` for a wait on the
+  operator (never red — red is reserved for danger/`failed` ❌). Watch/hourglass
+  glyphs are banned. A sub-agent row shows the presence dot ● (its only
+  verifiable state) and vanishes when done; a project header carries no status
+  glyph. Two states animate, curses-only: an actively-working feature glyph spins
+  (braille) and a waiting-on-operator row blinks (never triggered by a message
+  merely arriving); the pure text/`--dump` path stays fully static. Done features
+  sort to the top of their project group. A scroll offset follows the selected row
+  once the tree exceeds the pane's height. The project header is a SOLID dark
+  block in the project's own hue (a per-repo map — orchids violet, signmc teal —
+  with a stable hash-derived fallback for others), the repo name centered and
+  dim; it renders on any 256-colour terminal (nearest-xterm-256 mapping when the
+  terminal cannot redefine colours), flat light-gray instead for a paused
+  project. Each live agent gets a stable colour from an 8-entry orchid-species
+  palette, degrading gracefully on a limited terminal.
   Role names appear nowhere; structure carries the role.
 - **Navigates** by matching the tmux window name — the bare repository name for a
   repository's orchestrator, `<repo>/<human name>` for a feature (the
