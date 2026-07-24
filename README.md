@@ -52,7 +52,42 @@ is waiting on **you**, and arrow keys + Enter jump you straight to that work's
 tmux window. It shows the current repository by default; list more in
 `~/.config/orchids/sidebar-repos` (one path per line) or `ORCHIDS_SIDEBAR_REPOS`.
 
-## Skills: the knowledge that travels with you
+## Bus messages, as built (audit inventory, 2026-07-25)
+
+The complete set of pre-fixed / formatted messages that exist in the codebase
+today (`tools/bus.py` + the agent definitions), recorded here as the baseline
+for the redesign. Delivery is unconditional fan-out: every message is copied
+into every registered session's spool folder — dead inboxes included — and
+every live agent's bus sidecar wakes on every copy.
+
+| Format | Sent by | Defined in |
+|---|---|---|
+| `announce` — identity envelope (session id, feature, `exit_grace_seconds`) | bus sidecar at session start | `bus.py announce` |
+| `depart` — departure broadcast | bus sidecar at session end | `bus.py depart` |
+| `signal --state started·building·testing·done·finished·blocked·abandoned` | agent (to parent, else broadcast); `--on-behalf-of` is orchestrator-only | `bus.py signal` |
+| `orchid:activity:<free text>` | **agents directly** (`bus.py broadcast`, "never spend a bus-agent turn on it") | orchestrator/architect/bloomer/groomer definitions |
+| `orchid:subagent:start:<label>` / `orchid:subagent:done:<label>` | agent via its bus sidecar | orchestrator/architect definitions |
+| `ask --question --option… [--multi]` — blocking question broker; replies `{index}`, `{indices}`, or `{continue}` | agent | `bus.py ask` |
+| Fixed request bodies `identity`, `status` | any agent; answered by the recipient's sidecar without waking its parent | `bus.py` FIXED tuple |
+| Envelope flags: `notify_user`, `operator_origin`, `in_reply_to` | any sender | `make_envelope` |
+
+Two audit findings the redesign must correct:
+
+- **There is no single send path.** Agents are *instructed* to call `bus.py
+  broadcast` directly for activity; sidecars send announces, relays, and
+  subagent markers; nothing blocks any tool, so any agent can send anything
+  at any time. Single-choke-point sending does not exist today.
+- **The noisiest traffic is not in the codebase at all.** The repeated
+  `awaiting operator (native prompt)` waiting-state broadcasts match no
+  string in any definition or tool — sidecars improvise them, which is why
+  they duplicate freely.
+
+Measured cost of this design (2026-07-24, one heavy day, ~4 live agents):
+the sidecar layer alone consumed ≈150–200k subagent tokens (~1k per message
+per listener); the hand-ups re-invoked parent agents with full context
+≈45 times in the orchestrator alone — order of 7M cache-read tokens plus
+~0.3M fresh working tokens attributable to bus chatter, dominated by
+duplicate waiting-state rebroadcasts carrying zero information.
 
 Fix a lesson once, and every repo knows it on the next sync.
 
