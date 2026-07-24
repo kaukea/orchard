@@ -1336,3 +1336,16 @@ The unmerged f/sidebar-titling@9752aed states of tools/sidebar.py,
 sidebar_model.py, sidebar_nav.py, sidebar-mount.sh and their tests were
 absorbed as the build base (operator-sanctioned upstream). Whichever branch
 folds second resolves the overlap trivially by content identity.
+
+## [2026-07-25 CEST] Decision-080: Finished work is never left local — the push is a mandatory close step
+#workflow #close #push #package #consumers
+
+Operator standing rule (2026-07-25, "we never leave finished work local, I
+told you a million times"): for this repo a completed close is NOT complete
+until it is pushed to origin. orchids is a data package every consuming repo
+syncs from `github.com/kaukea/orchids` on its next session, so commit-only
+leaves every consumer on stale content — the work is invisible until the
+push. The push is a non-optional final step of every close here, whether the
+housekeeper runs it or the orchestrator drives the close directly; the same
+applies to any docs/board commit made after a close. Not a per-feature
+judgment — a fixed obligation.
