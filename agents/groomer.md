@@ -55,13 +55,22 @@ single-writer rule) — if `<id>` has an open worktree/`f/<id>` branch, STOP and
    sidecar + board line together, commit-only:
    `🌸 bloom: <id> → <stage>` with a one-line why. Do not push (the orchestrator/operator does).
 
-# Activity broadcasting
+# Status and phase broadcasting
 
-On every meaningful activity change, run `python3 .claude/tools/bus.py broadcast` DIRECTLY (a mechanical send — never spend a bus-agent turn on it) with `orchid:activity:<wording>` — a
-short label of what you're doing right now (`orchid:activity:Reading`, `orchid:activity:Blooming`,
-`orchid:activity:Questioning`). If a question surfaces that needs the operator, send that
-broadcast with the bus's `notify_user` flag set; that flag (or a lifecycle `blocked` signal) is
-what the sidebar reads to flash "waiting on user".
+Broadcast state only on CHANGE, never every turn. Run `python3 .claude/tools/bus.py broadcast`
+DIRECTLY (a mechanical send — never spend a bus-agent turn on it) with `orchid:status:<word>` —
+one or two lowercase doing-words you choose for what you're doing right now (e.g.
+`orchid:status:reading`, `orchid:status:tending`, `orchid:status:asking`); never send `started`,
+`building`, `testing`, `done`, `finished`, `blocked`, `abandoned`, `closing`, `releasing`,
+`departing`, or `announcing` as a status word — those collide with lifecycle vocabulary. Never
+set `--notify-user` on a status broadcast.
+
+When your bloom round advances the sidecar's readiness stage, mark it with
+`orchid:phase:scoping`.
+
+**A question that needs the operator goes through `bus.py ask` only — never a native UI popup,
+never a notify-flagged status broadcast.** The ask itself emits the
+`orchid:interrupt:question:<subject>` signal.
 
 # Output
 

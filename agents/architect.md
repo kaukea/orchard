@@ -139,17 +139,37 @@ easily fits in 10 seconds; if you know upfront that yours won't (an unusually he
 teardown), have your bus pass `--exit-grace-seconds N` on its very first `announce`, before
 this moment ever arrives — it cannot be renegotiated once you are mid-close.
 
-# Activity broadcasting
-On every meaningful activity change, run `python3 .claude/tools/bus.py broadcast` DIRECTLY (a mechanical send — never spend a bus-agent turn on it) with `orchid:activity:<wording>` — a
-short label of what you're doing right now (`orchid:activity:Discovering`,
-`orchid:activity:Questioning`, `orchid:activity:Planning`, `orchid:activity:Building`,
-`orchid:activity:Testing`). When the activity is a question to the operator or a gate (plan
-agreement, `MAKE IT SO`, `THAT IS ALL`) — you are now waiting on them — send that broadcast with
-the bus's `notify_user` flag set; that flag (or a lifecycle `blocked` signal) is what the sidebar
-reads to flash "waiting on user". While an explorer or `builder` sub-agent is in flight, ask your
-bus to broadcast `orchid:subagent:start:<label>` when you dispatch it and
-`orchid:subagent:done:<label>` when it returns, `<label>` being its short work-label — EXCEPT
-your own bus sidecar, which is never surfaced this way.
+# Status, phase, and subagent broadcasting
+Broadcast state only on CHANGE, never every turn — a repeated identical status is noise, not a
+heartbeat, and re-announcing an unchanged waiting state is exactly the duplicate notify this
+vocabulary exists to stop. Run `python3 .claude/tools/bus.py broadcast` DIRECTLY (a mechanical
+send — never spend a bus-agent turn on it) with `orchid:status:<word>` — one or two lowercase
+doing-words you choose for what you're doing right now (e.g. `orchid:status:discovering`,
+`orchid:status:planning`, `orchid:status:delegating`, `orchid:status:writing`,
+`orchid:status:reviewing`, `orchid:status:committing`, `orchid:status:verifying`,
+`orchid:status:concluding`); never send `started`, `building`, `testing`, `done`, `finished`,
+`blocked`, `abandoned`, `closing`, `releasing`, `departing`, or `announcing` as a status word —
+those collide with lifecycle vocabulary. Never set `--notify-user` on a status broadcast. For a
+log/cockpit-targeted note that is not a state change, send `orchid:update:<sentence>` instead —
+also never `--notify-user`.
+
+Mark phase transitions with `orchid:phase:<phase>` (`ideation | scoping | designing | building
+| releasing`): `orchid:phase:designing` when discovery starts, `orchid:phase:building:<k>/<n>`
+as each numbered build step completes (`<k>` of `<n>` read from your own step list), and
+`orchid:phase:releasing` when the close housework starts.
+
+On a planned parallel step, broadcast `orchid:subagent:queue:<label>` when you write it into
+the step list; when an explorer or `builder` sub-agent is actually in flight, ask your bus to
+broadcast `orchid:subagent:start:<label>` on dispatch and `orchid:subagent:done:<label>` on
+return — `<label>` being its short work-label — EXCEPT your own bus sidecar, which is never
+surfaced this way.
+
+**Questions to the operator go through `bus.py ask` only — never a native UI popup, never a
+notify-flagged status broadcast.** The ask itself emits the `orchid:interrupt:question:<subject>`
+signal. **The waiting-at-gate summons is unchanged and stays exactly `bus.py signal --state done
+--notify-user`** (Phase 4) — that signal IS the operator's SUCCEEDED interrupt; send no
+additional notify broadcast alongside it, and never repeat it while the same waiting state
+holds.
 
 # Branch + base mechanics
 - Your worktree (`.claude/worktrees/<id>`) is already on branch `f/<id>`, pre-created from local

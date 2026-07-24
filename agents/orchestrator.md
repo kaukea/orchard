@@ -304,17 +304,34 @@ This is orchestrator/bus process-supervision, not the bus-singleton task (which 
 BUS SIDECAR folders specifically, one-per-agent, not whole agent processes) — the two are
 adjacent but distinct; reconcile the overlap with bus-singleton at board close.
 
-# Activity broadcasting
-On every meaningful activity change, run `python3 .claude/tools/bus.py broadcast` DIRECTLY (a mechanical send — never spend a bus-agent turn on it) with `orchid:activity:<wording>` — a
-short label of what you're doing right now (`orchid:activity:Triaging`,
-`orchid:activity:Prioritising`, `orchid:activity:Questioning`, `orchid:activity:Dispatching`).
-When the activity is a question to the operator or an operator-gate — you are now waiting on
-them — send that broadcast with the bus's `notify_user` flag set; that flag (or a lifecycle
-`blocked` signal) is what the sidebar reads to flash "waiting on user". While a subagent (a
-dispatched `groomer`, the `housekeeper`, an architect spawn you're tracking) is in flight, ask
-your bus to broadcast `orchid:subagent:start:<label>` when you dispatch it and
-`orchid:subagent:done:<label>` when it returns, `<label>` being its short work-label — EXCEPT
+# Status, phase, and subagent broadcasting
+Broadcast state only on CHANGE, never every turn — a repeated identical status is noise, not a
+heartbeat. Run `python3 .claude/tools/bus.py broadcast` DIRECTLY (a mechanical send — never
+spend a bus-agent turn on it) with `orchid:status:<word>` — one or two lowercase doing-words
+you choose for what you're doing right now (e.g. `orchid:status:triaging`,
+`orchid:status:prioritising`, `orchid:status:reading`, `orchid:status:dispatching`); never send
+`started`, `building`, `testing`, `done`, `finished`, `blocked`, `abandoned`, `closing`,
+`releasing`, `departing`, or `announcing` as a status word — those collide with lifecycle
+vocabulary, and a misread `orchid:status:closing` has already been mistaken for a session
+departure. Never set `--notify-user` on a status broadcast. For a log/cockpit-targeted note
+that is not a state change, send `orchid:update:<sentence>` instead — also never
+`--notify-user`.
+
+Mark phase transitions with `orchid:phase:<phase>` (`ideation | scoping | designing | building
+| releasing`): `orchid:phase:ideation` when you board a feature, `orchid:phase:scoping` when a
+bloom round starts on it.
+
+While a subagent (a dispatched `groomer`, the `housekeeper`, an architect spawn you're
+tracking) is in flight, ask your bus to broadcast `orchid:subagent:queue:<label>` when the work
+is planned, `orchid:subagent:start:<label>` when you dispatch it, and
+`orchid:subagent:done:<label>` when it returns — `<label>` being its short work-label — EXCEPT
 your own bus sidecar, which is never surfaced this way.
+
+**Questions to the operator go through `bus.py ask` only — never a native UI popup, never a
+notify-flagged status broadcast.** The ask itself emits the `orchid:interrupt:question:<subject>`
+signal, so no separate "waiting on user" broadcast is needed alongside it. Waiting on the
+operator for a reason other than a question still uses the unchanged lifecycle `blocked` signal
+with `--notify-user` — never an activity broadcast.
 
 # Rules
 - The board is the FIRST point of call for any "what's next / where do things stand".

@@ -186,13 +186,30 @@ This is the whole specified vocabulary an `orchid:*` body may carry (operator-ap
 says WHAT gets said — the send/receive/relay mechanism above is unchanged. Any `orchid:*`
 body outside this table is invalid; bus.py rejects it.
 
-| Class | Body | Meaning | `--notify-user` |
-|---|---|---|---|
-| Status | `orchid:status:<word>` | One or two lowercase, present-tense words for what your parent is doing right now (`reading`, `writing`, `messaging`, `concluding`, …) — its own choice, not a fixed list. Broadcast only when it CHANGES; never repeat the current status. | Never |
-| Update | `orchid:update:<sentence>` | One sentence describing the current work, aimed at the log/cockpit — never at the operator. | Never |
-| Phase | `orchid:phase:<phase>[:<k>/<n>]` | Where the feature sits on the spine ideation \| scoping \| designing \| building \| releasing; the optional `k/n` is a visible tick inside the phase. The renderer derives progress from this alone: base per phase 0/10/25/40/85, span 10/15/15/45/15, `pct = base + span·k/n`; 100 only when the lifecycle signal reaches finished. | Never |
-| Subagent queue/start/done | `orchid:subagent:queue:<label>` · `orchid:subagent:start:<label>` · `orchid:subagent:done:<label>` | `<label>` is a short work-label. Presence and COUNT of these messages are the whole information carried — nothing else about a subagent is broadcast. | Never |
-| Question interrupt | `orchid:interrupt:question:<subject>` | Emitted ONLY by `bus.py ask` (see Sending, above) — never composed by hand. Its envelope carries `question_id`/`question`/`options`/`title`/`summary`/`multi` alongside the body. | Always |
+Every class declares its CONSUMER — who reads it and for what. A message with no declared
+consumer has no reason to exist; do not send information nobody is declared to read.
+
+| Class | Body | Meaning | Consumers | `--notify-user` |
+|---|---|---|---|---|
+| Status | `orchid:status:<word>` | One or two lowercase, present-tense words for what your parent is doing right now (`reading`, `writing`, `messaging`, `concluding`, …) — its own choice, not a fixed list. Broadcast only when it CHANGES; never repeat the current status. | Fleet sidebar (identity line doing-word); orchestrator cockpit synthesis | Never |
+| Update | `orchid:update:<sentence>` | One sentence describing the current work, aimed at the log/cockpit — never at the operator. | Orchestrator cockpit/log ONLY | Never |
+| Phase | `orchid:phase:<phase>[:<k>/<n>]` | Where the feature sits on the spine ideation \| scoping \| designing \| building \| releasing; the optional `k/n` is a visible tick inside the phase. The renderer derives progress from this alone: base per phase 0/10/25/40/85, span 10/15/15/45/15, `pct = base + span·k/n`; 100 only when the lifecycle signal reaches finished. | Fleet sidebar (phase checklist + embedded progress fill) | Never |
+| Subagent queue/start/done | `orchid:subagent:queue:<label>` · `orchid:subagent:start:<label>` · `orchid:subagent:done:<label>` | `<label>` is a short work-label. Presence and COUNT of these messages are the whole information carried — nothing else about a subagent is broadcast. | Fleet sidebar (queued/running dot counts) | Never |
+| Question interrupt | `orchid:interrupt:question:<subject>` | Emitted ONLY by `bus.py ask` (see Sending, above) — never composed by hand. Its envelope carries `question_id`/`question`/`options`/`title`/`summary`/`multi` alongside the body. | Question broker (queued popup); fleet sidebar (`?N` badge + subject line) | Always |
+
+Lifecycle signals' consumers, for completeness: the parent orchestrator (close handshake)
+and the fleet sidebar (row state, derived interrupts). Announce/depart/identity/status are
+bus plumbing consumed by the registry, peers, and the cockpit.
+
+**You never author wire text of your own.** Audit finding (operator, 2026-07-25): the
+noisiest live traffic — repeated `awaiting operator (native prompt)` waiting-state
+broadcasts — matched no string in any definition or tool; sidecars improvised it. That is
+banned. Every body you send is one of: your parent's dictated prose, an emitter's output
+(`ask`, `signal`, `announce`, `depart`), a fixed-request reply, or a class from the table
+above sent at your parent's request. A waiting state is carried ONCE by the notify-legal
+signal or ask that entered it — you never re-announce it, reword it, or invent a body for
+it. Expect send-path consolidation (a single choke point) in the operator's forthcoming
+delivery-model redesign; until then this rule is the choke point.
 
 **Denied status words** (lifecycle collision): started, building, testing, done, finished,
 blocked, abandoned, closing, releasing, departing, announcing. `bus.py` rejects any of these

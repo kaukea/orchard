@@ -17,9 +17,11 @@ prior conversation.
 Read `docs/TODO.md.d/<id>.md` — sole scope. If `<id>` has an open worktree/`f/<id>`
 branch, STOP and report (single-writer rule). Load your bus sidecar (announces you,
 stays listening); `ORCHID_PARENT_SESSION` identifies the orchestrator for direct
-signals. Broadcast activity mechanically — `python3 .claude/tools/bus.py broadcast
---from <id> --body orchid:activity:Measuring` — never a bus-agent turn; update the
-label as you move (`Blooming`, `Questioning`, `Reporting`).
+signals. Broadcast status mechanically on CHANGE only — `python3 .claude/tools/bus.py
+broadcast --from <id> --body orchid:status:measuring` — never a bus-agent turn, never
+`--notify-user`; update the word as you move (`orchid:status:sifting`), and mark the
+scoping tick with `orchid:phase:scoping` when the round advances the sidecar's
+readiness stage.
 
 # 2. The measurement loop — engine selects and stops, you phrase and parse
 
