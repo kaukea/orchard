@@ -7,16 +7,51 @@
 
 ## Questions
 
-- Which message classes make up the specified vocabulary — lifecycle signals
+- ~~Which message classes make up the specified vocabulary — lifecycle signals
   (announce/done/finished/abandoned), activity states, subagent start/done,
   notify-user flags, operator-origin relays — and are any missing or
-  superfluous?
-- Where does the specification live: the bus agent definition, a channel
+  superfluous?~~ Resolved by the dictated grammar (see Proposal): status ·
+  status update · three interrupts; lifecycle stays internal plumbing.
+- ~~Where does the specification live: the bus agent definition, a channel
   schema per [[fleet-documenting]] (which already envisions channels with
   JSON Schemas), or both — and does this task fold into fleet-documenting or
-  precede it as the tightening pass?
-- What does "more appropriate" rule out — free-form activity wording, ad-hoc
-  labels, duplicate waiting-state broadcasts?
+  precede it as the tightening pass?~~ Resolved: this task PRECEDES
+  fleet-documenting — the vocabulary ships in the bus definition and the
+  agents' contracts now; formal channel schemas remain fleet-documenting's.
+- ~~What does "more appropriate" rule out — free-form activity wording, ad-hoc
+  labels, duplicate waiting-state broadcasts?~~ Resolved: all three, plus
+  lifecycle-colliding activity words and native-UI popup questions.
+
+GO FOR IMPLEMENTATION (operator, 2026-07-25): visual contract approved
+("happy for now"); a REFINEMENT pass is scheduled after live testing —
+alongside the KITT-scanner debt above.
+
+FULL-GO MANDATE (operator, 2026-07-25, verbatim intent: "go for full
+implementation beginning to end, don't ask me questions"): the plan-gate
+question round and the MAKE IT SO prologue are WAIVED; the architect
+builds the entire agreed WHAT without operator rounds; testing per
+§Testing plus the design contract's emulator checks; the operator's
+remaining touch points are the scheduled post-test refinement pass and
+THAT IS ALL at the close.
+
+Build inputs and sequencing for the architect:
+- The FIXED VISUAL CONTRACT: `.git/the-works/bus-message-specifying/`
+  holds `sidebar-mock.py` (the approved renderer, emulator-verified) and
+  `approved-frame.ans` (the blessed frame). The mock is the truth for
+  glyphs, colours, spacing, animation behaviour; implementations fit INTO
+  it (design-first rule above). Known licensed deviation: the KITT-scanner
+  tail is DEBT, not scope.
+- UPSTREAM IN FLIGHT: `f/sidebar-titling` (quick pass) is amending on the
+  same renderer files and parks at the operator's one-look gate. Treat
+  that branch as upstream input — read it, do not duplicate or race it;
+  sequence renderer edits to fold AFTER it lands, or absorb its diff
+  explicitly if it folds mid-build.
+- Role emojis: four are settled (🌸 bloomer · 🌾 sower · 🍂 groundskeeper ·
+  📯 courier) plus 💻/☁️ location badges; gardener 🌻 and landscaper ⛲
+  are endorsed but await the operator's word — build the emoji map
+  data-driven so the two pending picks drop in without code changes
+  ([[orchard-renaming]] owns the actual renames; do NOT rename roles in
+  this build).
 
 ## Findings
 
