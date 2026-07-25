@@ -77,7 +77,7 @@ def _load(registry_path: Path | None = None) -> dict:
 
 
 def _save(data: dict, registry_path: Path | None = None) -> None:
-    """Write atomically (same idiom as tools/bus.py's deliver()) so a reader
+    """Write atomically (same idiom as tools/courier.py's deliver()) so a reader
     never observes a half-written registry."""
     registry_path = _resolve_path(registry_path)
     registry_path.parent.mkdir(parents=True, exist_ok=True)

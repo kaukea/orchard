@@ -17,7 +17,7 @@
 set -eu
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
-for candidate in "$root/.claude/tools/courier.py" "$root/tools/courier.py" "$root/.claude/tools/bus.py" "$root/tools/bus.py"; do
+for candidate in "$root/.claude/tools/courier.py" "$root/tools/courier.py"; do
   [ -f "$candidate" ] && courier="$candidate" && break
 done
 [ -n "${courier:-}" ] || exit 0
