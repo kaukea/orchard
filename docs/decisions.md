@@ -1366,3 +1366,67 @@ branch removal moves to the ABSOLUTE END of the housekeeper's close —
 nothing runs after it. Supersedes the reap half of the 2026-07-21
 pane-hygiene ruling and the kill-listener half of window-closing-owning's
 premise.
+
+## [2026-07-25] Decision-082: The project topic is DATA, not UI; identity and status are bus operations
+#bus #transport #sidebar
+
+**Context:** Agent-activity telemetry for the sidebar must carry enough state for
+render AND integrity enforcement, but display is a UI concern, separate from the
+data layer. Identity and status are operations the bus itself supplies; agents
+cannot author these fields.
+
+**Decision:**
+- Agent events carry raw state only: `lifecycle` (starting|started|stopping|stopped),
+  `status` (≤2 words), `delegation` (schedule|begin|end for subagents), `outcome`
+  (success|fail), and task `outcome` (completed|failed, orchestrator-only).
+- The two fixed operations — IDENTITY (immutable: session, agent, feature, name,
+  parent) and STATUS (mutable: model, tokens, spend) — are supplied by the bus and
+  never authored by agents.
+- The 5-phase display (queued/active/finishing/done/functional) is a UI-side
+  MAPPING of raw states, never a field on the bus.
+
+**Touched:** `orchard_topic.py` (posting validation), `sidebar_v3.py` (phase
+mapping), `test_orchard_topic.py` (validation edge cases).
+
+(Operator, 2026-07-25.)
+
+## [2026-07-25] Decision-083: Task completion is orchestrator-only; agent and task outcomes are separate
+#bus #transport
+
+**Context:** Feature completion ("done for the user") and task completion ("the
+orchestrator says so") are distinct. Agents report work outcomes; only the
+orchestrator marks a task complete.
+
+**Decision:**
+- Agent-level `outcome:success|fail` is separate from and orthogonal to task-level
+  `outcome:completed|failed`.
+- `orchard:task:outcome:completed|failed` is **orchestrator-only**, enforced at the
+  sender by identity check in `orchard_topic.py`.
+- Any other sender attempting `task:outcome:*` receives a rejection + telemetry
+  bounce.
+
+**Touched:** `orchard_topic.py` (sender identity gate), `test_orchard_topic.py`
+(rejection path).
+
+(Operator, 2026-07-25.)
+
+## [2026-07-25] Decision-084: A project is the git repo; every worktree posts to one topic directory
+#sidebar #topics
+
+**Context:** Projects can span worktrees (feature branches, parallel repairs) of
+the same repo. A project's topic directory must be shared — one per repo, not per
+worktree — so all worktrees see a unified session roster.
+
+**Decision:**
+- A "project" = the git repository (identified via `--git-common-dir`).
+- Every worktree of a repo posts to the same topic directory:
+  `$XDG_RUNTIME_DIR/orchard/topics/repository/<repo>/`.
+- The first poster becomes the project header; a project appears only when someone
+  posts to it.
+- Multiple worktrees of the same repo see each other's sessions; worktrees of
+  different repos are isolated.
+
+**Touched:** `orchard_topic.py` (git-common-dir lookup), `sidebar_v3.py` (project
+identity), `test_orchard_topic.py` (multi-worktree scenarios).
+
+(Operator, 2026-07-25.)
