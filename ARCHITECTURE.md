@@ -191,6 +191,26 @@ bus (per repo) ──observed──> sidebar_model ──Fleet──> sidebar.py
   name resolution), `orchard-question-broker.py` (the bus-ask popup broker,
   above). `/orchard show|hide` is a skill (`skills/orchard/`).
 
+## The topic transport (bus-transport-v2)
+
+Sanctioned agent-activity telemetry, decoupled from the inbox bus — no fan-out,
+no agent woken.
+
+```
+agents ──orchard_topic.py post──> $XDG_RUNTIME_DIR/orchard/topics/repository/<repo>/ ──read──> sidebar_v3.py
+```
+
+- **`tools/orchard_topic.py`** (event producer) — the only sanctioned writer of a
+  project topic: `post <lifecycle|status|delegation|outcome|task> …`, absolute
+  validation, violations refused + telemetry + a rejection bounced to the sender.
+  Every event carries the two bus-supplied operations (identity immutable, status
+  mutable); the project is the git repo via `--git-common-dir`, so all worktrees
+  post to one topic directory.
+- **`tools/sidebar_v3.py`** (topic consumer) — renders the active projects and
+  their sessions from the topic files alone; wakes no agent.
+- Coexists with the legacy inbox transport until the fan-out cut-over
+  ([[fanout-cutover]]).
+
 ## The sidecar contract
 
 Durable state lives in files; no role depends on chat history.
@@ -237,7 +257,7 @@ symlink, everyone), `template` (install-time copy, then project-owned),
 agents/            five pipeline roles + bus sidecar (→ .claude/agents/)
 skills/<name>/     SKILL.md packages (→ .claude/skills/, per role)
 hooks/             bus-init.sh · bus-end.sh (→ .claude/hooks/)
-tools/             board_lint.py · board_stale.py · bus.py · architect-teardown.sh · sidebar.py · sidebar_model.py · sidebar_nav.py · sidebar-mount.sh (→ .claude/tools/)
+tools/             board_lint.py · board_stale.py · bus.py · orchard_topic.py · architect-teardown.sh · sidebar.py · sidebar_model.py · sidebar_nav.py · sidebar_v3.py · sidebar-mount.sh (→ .claude/tools/)
 templates/         AGENTS.md (template) · CLAUDE.md (prefix block)
 migrations/        dated structural-upgrade instructions (YYYY-MM-DD-<slug>.md); applied
                    per clone against the .git/the-works/migrated watermark
