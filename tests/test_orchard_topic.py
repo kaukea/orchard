@@ -193,7 +193,7 @@ def test_status_three_words_is_rejected(repo, runtime_dir):
 
 # --- delegation ----------------------------------------------------------
 
-@pytest.mark.parametrize("action", ["begin", "end"])
+@pytest.mark.parametrize("action", ["schedule", "begin", "end"])
 def test_delegation_post_writes_expected_envelope(repo, runtime_dir, action):
     result = _run(repo, runtime_dir, ["delegation", action, "builder"])
     assert result.returncode == 0, result.stderr

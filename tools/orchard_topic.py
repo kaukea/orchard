@@ -228,8 +228,10 @@ def do_post(rest: list[str]) -> None:
         envelope = build_envelope(sid, repo, "orchard:agent:status",
                                   " ".join(words))
     elif family == "delegation":
-        if len(args) != 2 or args[0] not in ("begin", "end"):
-            reject("delegation is `begin <subagent>` or `end <subagent>`",
+        # schedule = queued (so the UI can show it before it starts), begin =
+        # active, end = done — three states, not two.
+        if len(args) != 2 or args[0] not in ("schedule", "begin", "end"):
+            reject("delegation is `schedule|begin|end <subagent>`",
                    attempted, sid, repo)
         envelope = build_envelope(
             sid, repo, f"orchard:agent:delegation:{args[0]}:{args[1]}")

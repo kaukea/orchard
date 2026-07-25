@@ -26,6 +26,7 @@ TOPIC_FAMILY = "repository"
 ACTIVE_WINDOW_SECONDS = 60 * 60
 REFRESH_SECONDS = 2
 MODEL_TIERS = ("haiku", "sonnet", "opus", "fable")
+_DELEGATION_STATE = {"schedule": "scheduled", "begin": "active", "end": "inactive"}
 
 RESET = "\033[0m"
 DIM = "\033[2m"
@@ -81,8 +82,9 @@ def sessions(project_dir: Path) -> dict[str, dict]:
             rec["task_outcome"] = subject.rsplit(":", 1)[-1]
         elif subject.startswith("orchard:agent:delegation:"):
             action, _, sub = subject[len("orchard:agent:delegation:"):].partition(":")
-            if sub and _latest(rec, f"_sub_{sub}", ts):
-                rec["subs"][sub] = "active" if action == "begin" else "inactive"
+            state = _DELEGATION_STATE.get(action)
+            if sub and state and _latest(rec, f"_sub_{sub}", ts):
+                rec["subs"][sub] = state
     return found
 
 
