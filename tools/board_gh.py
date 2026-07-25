@@ -534,6 +534,11 @@ def pull(board: Board):
         # (gh# commit not yet visible to this checkout) — never re-ingest
         if any(l["name"] == "board" for l in issue["labels"]):
             continue
+        # decision mirrors are board-born, never intake — the title is their
+        # stateless identity (Decision-067); belt for mirrors that predate
+        # the board label riding decision issues
+        if DECISION_ISSUE_TITLE_RE.match(issue["title"]):
+            continue
         slug = slugify(issue["title"])
         sidecar = board.root / "docs" / "TODO.md.d" / f"{slug}.md"
         if sidecar.exists():
@@ -615,7 +620,7 @@ DECISION_ISSUE_TITLE_RE = re.compile(r"^Decision-(\d+): ")
 def list_decision_issues(repo: str) -> dict:
     issues = gh_json("issue", "list", "-R", repo, "--search", "Decision- in:title",
                      "--state", "all", "--limit", "500",
-                     "--json", "number,title,state,body") or []
+                     "--json", "number,title,state,body,labels") or []
     by_number = {}
     for issue in issues:
         m = DECISION_ISSUE_TITLE_RE.match(issue["title"])
@@ -647,7 +652,7 @@ def sync_decisions(board: Board) -> dict:
         title = f"Decision-{e.number}: {e.title}"
         if not matches:
             out = sh("gh", "issue", "create", "-R", board.repo,
-                     "--title", title, "--body", e.body)
+                     "--title", title, "--label", "board", "--body", e.body)
             gh_num = int(out.strip().rsplit("/", 1)[1])
             was_open = True
             created += 1
@@ -659,6 +664,11 @@ def sync_decisions(board: Board) -> dict:
                 sh("gh", "issue", "edit", "-R", board.repo, str(gh_num),
                    "--title", title, "--body", e.body)
                 updated += 1
+            # board-born marker: a decision mirror without the board label is
+            # what pull() re-ingests as a GitHub-born task (the echo loop)
+            if not any(l["name"] == "board" for l in issue.get("labels", [])):
+                sh("gh", "issue", "edit", "-R", board.repo, str(gh_num),
+                   "--add-label", "board")
         node_id = issue_node_id(board.repo, gh_num)
         state[e.number] = {"gh_num": gh_num, "node_id": node_id, "was_open": was_open}
         if decision_type_id:
