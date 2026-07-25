@@ -107,6 +107,24 @@ frame every iteration builds inside — implement ONLY the iteration below.
   exactly two scenarios — (1) the end of a feature's time, (2) displaying
   nicely in the sidebar. Candidate additions offered to the operator are
   UNRULED and not part of this design until he rules.
+- SUBSCRIPTION IS A FILTER (operator, 2026-07-25): orchard sees a new
+  folder appear in a project and subscribes with a filter on the TYPE of
+  message to read — messages of other types are discarded at SCRIPT level,
+  not bus level.
+- FULL BROADCASTS ARE FORBIDDEN (operator): no broadcast to all — only
+  posting to topics. (Kills v1's fan-out-to-every-inbox model.)
+- MTIME PER AGENT AND PER PROJECT (operator): mtime preserved per agent
+  and per project — if the mtime of a child dir is updated, the script
+  updates the mtime of the parent dir too. Rationale, his: only orchard
+  cares about the various projects, so the model works.
+- REQUEST/RESPONSE (operator): deleted by the script upon reading.
+- TOPIC/BROADCAST MESSAGES (operator): pruned regularly by the script, as
+  they have a timestamp. (Narrows pending question (c): a timestamp for
+  pruning is RULED; whether it is the file's own mtime or a field is the
+  remaining sliver.)
+- SIMPLICITY IS THE SCOPE (operator): "we can do more advanced in the
+  future with FIFO or otherwise, but we're trying to keep this simple" —
+  no FIFO, no advanced delivery machinery in this design.
 - EVENTS ONLY, FLAT (operator, 2026-07-25 05:1x): an agent may advertise
   ONLY the events in the operator's document — nothing else rides the bus;
   status/phase/subagent-progress chatter serves no purpose and is OUT
