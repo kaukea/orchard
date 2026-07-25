@@ -1472,11 +1472,12 @@ Operator rulings (2026-07-25, midday), reshaping the GitHub mirror after the
 echo-loop failure:
 
 - **Binding:** a task's identity on GitHub is its TASK ID (the sidecar
-  basename — "the only thing we have right now"), carried as a hidden custom
-  field and matched via the API — the same stateless approach decisions
-  already use (Decision-067). The `gh#` badge write-back RETIRES: the sync
-  never mutates repository files again; existing badges are display-only
-  legacy.
+  basename — "the only thing we have right now"), carried as a custom
+  field or label and matched via the API — the same stateless approach
+  decisions already use (Decision-067). Refined same-day by the operator:
+  it need not be hidden — PUBLIC is preferred, the label is useful to the
+  manager. The `gh#` badge write-back RETIRES: the sync never mutates
+  repository files again; existing badges are display-only legacy.
 - **Sync moment:** whenever board work happens, the agent's NORMAL push is
   what carries the GitHub-issue synchronization. With no file mutations in
   the mirror leg, an on-push Action doing that sync mutates only GitHub-side

@@ -9,10 +9,10 @@
 
 ## Questions
 
-- Where the hidden task-id field lives concretely: an Orchidarium Project
-  custom field (as the decision rows already use), an issue-body marker
-  line, or both. Recommendation: Project custom field, matching the
-  decision precedent; body marker only if API lookup cost bites.
+- ~~Where the task-id field lives concretely.~~ REFINED by operator
+  (2026-07-25): it need not be hidden — PUBLIC is preferred, useful to the
+  manager. Concretely: a visible `id:<task-id>` label (or public Project
+  field); pick whichever the API matches cheapest at build time.
 
 ## Findings
 
