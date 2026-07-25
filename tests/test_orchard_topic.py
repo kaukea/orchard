@@ -218,6 +218,13 @@ def test_status_three_words_is_rejected(repo, runtime_dir):
 
 
 # --- delegation ----------------------------------------------------------
+#
+# The subject is EXACT (`orchard:agent:delegation:schedule`/`begin`/`end`)
+# and carries no variable data — the subagent id rides the body instead
+# (operator ruling: the orchard subject list is closed, not extensible, and
+# variable data never belongs in the subject). `schedule` was briefly
+# retired then restored into the closed subject corpus (operator ruling,
+# 2026-07-25): a session-id-less subagent queued/planned to be called.
 
 @pytest.mark.parametrize("action", ["schedule", "begin", "end"])
 def test_delegation_post_writes_expected_envelope(repo, runtime_dir, action):
@@ -229,8 +236,8 @@ def test_delegation_post_writes_expected_envelope(repo, runtime_dir, action):
     assert len(files) == 1
 
     envelope = json.loads(files[0].read_text(encoding="utf-8"))
-    assert envelope["subject"] == f"orchard:agent:delegation:{action}:builder"
-    assert "body" not in envelope
+    assert envelope["subject"] == f"orchard:agent:delegation:{action}"
+    assert envelope["body"] == {"subagent": "builder"}
     assert envelope["identity"]["agent"] == DEFAULT_AGENT
     assert "status" not in envelope
 

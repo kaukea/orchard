@@ -227,13 +227,21 @@ def do_post(rest: list[str]) -> None:
         envelope = build_envelope(sid, repo, "orchard:agent:status",
                                   " ".join(words))
     elif family == "delegation":
-        # schedule = queued (so the UI can show it before it starts), begin =
-        # active, end = done — three states, not two.
+        # schedule = queued, begin = active, end = done. The subject is
+        # EXACT and carries no variable data — the subagent id rides the
+        # body instead (operator ruling: the orchard subject list is
+        # closed, not extensible; a subagent id derived into the subject is
+        # exactly the kind of variable data that does not belong there).
+        # `schedule` is a member of the closed subject corpus (restored per
+        # operator ruling, 2026-07-25) — the sidebar's queued-subagent count
+        # (tools/sidebar.py's _DELEGATION_STATE / Feature.subagents_queued)
+        # reads it back.
         if len(args) != 2 or args[0] not in ("schedule", "begin", "end"):
             reject("delegation is `schedule|begin|end <subagent>`",
                    attempted, sid, repo)
         envelope = build_envelope(
-            sid, repo, f"orchard:agent:delegation:{args[0]}:{args[1]}")
+            sid, repo, f"orchard:agent:delegation:{args[0]}",
+            {"subagent": args[1]})
     elif family == "outcome":
         if len(args) != 1 or args[0] not in ("success", "fail"):
             reject("outcome is `success` or `fail`", attempted, sid, repo)

@@ -58,10 +58,13 @@ def _write_event(projects_root, slug, sid, subject, *,
     """One event file under `projects_root`/`slug`/. `mtime`, when given,
     overrides the FILE's own mtime (build_model()'s "latest of each kind
     wins" folding reads `f.stat().st_mtime`, not any embedded timestamp —
-    see sidebar.py's `_fold_sessions`) — the project dir's own mtime is
-    always bumped to "now" afterwards so the active-window filter never
-    trips on an old event's own timestamp, mirroring orchard_topic.py's own
-    write_message()/_bump_chain()."""
+    see sidebar.py's `_fold_sessions`) — this is what a session's staleness
+    check (`_status_for`, retention ruling 2026-07-25 revision) reads, via
+    each record's own `_seen_ts`. The project dir's own mtime is always
+    bumped to "now" afterwards, mirroring orchard_topic.py's own
+    write_message()/_bump_chain(); it no longer gates visibility (nothing
+    is ever excluded from build_model() any more — staleness is a colour,
+    not a removal), only per-session recency does."""
     project_dir = Path(projects_root) / slug
     project_dir.mkdir(parents=True, exist_ok=True)
     envelope = {"from": f":session:{sid}", "subject": subject}
@@ -184,12 +187,18 @@ class StatusDerivationTests(_FixtureTestCase):
         # a single session's status transitions working -> done as later
         # (by file mtime) events land -- each build_model() call is a fresh
         # snapshot, matching how the real curses loop re-derives on watch.
+        # Timestamps are recent-but-ordered (not tiny absolute epoch ints)
+        # so the first event stays inside ACTIVE_WINDOW_SECONDS and reads
+        # "working" rather than "stale" (see StalenessTests for the
+        # stale-vs-working boundary itself).
+        import time
+        now = time.time()
         self._event("own.repo", "s1", "orchard:agent:lifecycle:starting",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=100)
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=now - 100)
         self.assertEqual(self._repo().features[0].status, "working")
 
         self._event("own.repo", "s1", "orchard:agent:outcome:success",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=200)
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=now - 50)
         self.assertEqual(self._repo().features[0].status, "done")
 
     def test_activity_is_the_latest_status_body(self):
@@ -204,54 +213,83 @@ class StatusDerivationTests(_FixtureTestCase):
 
 
 # --------------------------------------------------------------------------
-# Subagent begin/end (orchard:agent:delegation:*)
+# Subagent begin/end (orchard:agent:delegation:begin|end — EXACT subject,
+# no appended subagent id: the subagent rides the body instead, operator
+# ruling that the orchard subject list is closed and variable data never
+# belongs in the subject).
 # --------------------------------------------------------------------------
 
 class SubagentDelegationTests(_FixtureTestCase):
     def test_begin_without_end_is_present(self):
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
-        self._event("own.repo", "s1", "orchard:agent:delegation:begin:sub-a",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=2)
+        self._event("own.repo", "s1", "orchard:agent:delegation:begin",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-a"}, mtime=2)
         feature = self._repo().features[0]
         self.assertEqual([s.label for s in feature.subagents], ["sub-a"])
 
     def test_begin_then_end_is_absent(self):
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
-        self._event("own.repo", "s1", "orchard:agent:delegation:begin:sub-a",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=2)
-        self._event("own.repo", "s1", "orchard:agent:delegation:end:sub-a",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=3)
+        self._event("own.repo", "s1", "orchard:agent:delegation:begin",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-a"}, mtime=2)
+        self._event("own.repo", "s1", "orchard:agent:delegation:end",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-a"}, mtime=3)
         feature = self._repo().features[0]
         self.assertEqual(feature.subagents, [])
 
-    def test_schedule_alone_is_not_a_subagent_row_but_counts_as_queued(self):
+    def test_schedule_increments_queued_without_a_subagent_row(self):
+        """`schedule` (restored per operator ruling, 2026-07-25) sets
+        subagents_queued but does NOT add a Subagent row — only `begin`
+        promotes a subagent to an active, rendered row (EXACT subject, no
+        appended id: the subagent id rides the body)."""
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
-        self._event("own.repo", "s1", "orchard:agent:delegation:schedule:sub-a",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=2)
+        self._event("own.repo", "s1", "orchard:agent:delegation:schedule",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-a"}, mtime=2)
         feature = self._repo().features[0]
         self.assertEqual(feature.subagents, [])
         self.assertEqual(feature.subagents_queued, 1)
         self.assertEqual(feature.subagents_running, 0)
 
-    def test_schedule_then_begin_moves_queued_to_running(self):
+    def test_schedule_then_begin_moves_from_queued_to_running(self):
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
-        self._event("own.repo", "s1", "orchard:agent:delegation:schedule:sub-a",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=2)
-        self._event("own.repo", "s1", "orchard:agent:delegation:begin:sub-a",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=3)
+        self._event("own.repo", "s1", "orchard:agent:delegation:schedule",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-a"}, mtime=2)
+        self._event("own.repo", "s1", "orchard:agent:delegation:begin",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-a"}, mtime=3)
         feature = self._repo().features[0]
         self.assertEqual([s.label for s in feature.subagents], ["sub-a"])
         self.assertEqual(feature.subagents_queued, 0)
         self.assertEqual(feature.subagents_running, 1)
 
+    def test_stray_schedule_with_appended_subagent_id_is_not_matched(self):
+        """The old family/prefix shape (`delegation:schedule:sub-a`, id
+        appended to the subject) is not the restored subject — EXACT
+        comparison only, so a stray event in that old shape still does not
+        contribute to the queued count."""
+        self._landscaper("own.repo", "s1", "feat-a", mtime=1)
+        self._event("own.repo", "s1", "orchard:agent:delegation:schedule:sub-a",
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=2)
+        feature = self._repo().features[0]
+        self.assertEqual(feature.subagents, [])
+        self.assertEqual(feature.subagents_queued, 0)
+        self.assertEqual(feature.subagents_running, 0)
+
     def test_multiple_active_subagents_sorted_by_label(self):
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
-        self._event("own.repo", "s1", "orchard:agent:delegation:begin:sub-c",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=2)
-        self._event("own.repo", "s1", "orchard:agent:delegation:begin:sub-a",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=3)
-        self._event("own.repo", "s1", "orchard:agent:delegation:begin:sub-b",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=4)
+        self._event("own.repo", "s1", "orchard:agent:delegation:begin",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-c"}, mtime=2)
+        self._event("own.repo", "s1", "orchard:agent:delegation:begin",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-a"}, mtime=3)
+        self._event("own.repo", "s1", "orchard:agent:delegation:begin",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-b"}, mtime=4)
         feature = self._repo().features[0]
         self.assertEqual([s.label for s in feature.subagents], ["sub-a", "sub-b", "sub-c"])
 
@@ -348,11 +386,13 @@ class RepoAssemblyTests(_FixtureTestCase):
 
     def test_two_parents_each_show_their_own_subagents(self):
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
-        self._event("own.repo", "s1", "orchard:agent:delegation:begin:sub-1",
-                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=2)
+        self._event("own.repo", "s1", "orchard:agent:delegation:begin",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-1"}, mtime=2)
         self._landscaper("own.repo", "s2", "feat-b", mtime=1)
-        self._event("own.repo", "s2", "orchard:agent:delegation:begin:sub-2",
-                     identity={"agent": "landscaper", "feature": "feat-b"}, mtime=2)
+        self._event("own.repo", "s2", "orchard:agent:delegation:begin",
+                     identity={"agent": "landscaper", "feature": "feat-b"},
+                     body={"subagent": "sub-2"}, mtime=2)
 
         features = {f.name: f for f in self._repo().features}
         self.assertEqual([s.label for s in features["feat-a"].subagents], ["sub-1"])
@@ -377,29 +417,70 @@ class RepoAssemblyTests(_FixtureTestCase):
 
 
 # --------------------------------------------------------------------------
-# Active-window filter — a project dir untouched for ACTIVE_WINDOW_SECONDS
-# is not shown at all.
+# Staleness — the ~1h ACTIVE_WINDOW is purely a colour signal now (retention
+# ruling, 2026-07-25, revised same day): nothing is ever dropped from the
+# model for being stale. A session with no event inside the window and no
+# terminal outcome reads "stale" (gray) but stays in the fleet; a terminal
+# outcome (done/failed) always wins over staleness and is a permanent
+# green/red one-liner. A row leaves the sidebar only when the process
+# restarts (the tmpfs projects tree clears with it) — not modelled here,
+# since build_model() has no notion of "restart", only of what is currently
+# on disk.
 # --------------------------------------------------------------------------
 
-class ActiveWindowTests(_FixtureTestCase):
-    def test_stale_project_dir_is_excluded(self):
+class StalenessTests(_FixtureTestCase):
+    def test_no_recent_event_and_no_outcome_reads_stale(self):
         self._event("own.repo", "s1", "orchard:agent:lifecycle:starting",
-                     identity={"agent": "landscaper", "feature": "feat-a"})
-        stale = self._time_minus(sidebar.ACTIVE_WINDOW_SECONDS + 60)
-        os.utime(self.projects_root / "own.repo", (stale, stale))
-        fleet = self._model()
-        self.assertEqual(fleet.repos, [])
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     mtime=self._stale_ts())
+        feature = self._repo().features[0]
+        self.assertEqual(feature.status, "stale")
 
-    def test_recent_project_dir_is_included(self):
+    def test_stale_session_is_never_dropped_from_the_model(self):
         self._event("own.repo", "s1", "orchard:agent:lifecycle:starting",
-                     identity={"agent": "landscaper", "feature": "feat-a"})
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     mtime=self._stale_ts())
         fleet = self._model()
         self.assertEqual(len(fleet.repos), 1)
+        self.assertEqual([f.name for f in fleet.repos[0].features], ["feat-a"])
+
+    def test_recent_event_is_working_not_stale(self):
+        self._landscaper("own.repo", "s1", "feat-a")
+        feature = self._repo().features[0]
+        self.assertEqual(feature.status, "working")
+
+    def test_success_outcome_overrides_staleness_and_stays_done(self):
+        self._event("own.repo", "s1", "orchard:agent:outcome:success",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     mtime=self._stale_ts())
+        feature = self._repo().features[0]
+        self.assertEqual(feature.status, "done")
+
+    def test_fail_outcome_overrides_staleness_and_stays_failed(self):
+        self._event("own.repo", "s1", "orchard:agent:outcome:fail",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     mtime=self._stale_ts())
+        feature = self._repo().features[0]
+        self.assertEqual(feature.status, "failed")
+
+    def test_finished_and_stale_features_coexist_in_the_same_repo(self):
+        self._event("own.repo", "s-old", "orchard:agent:outcome:success",
+                     identity={"agent": "landscaper", "feature": "feat-done"},
+                     mtime=self._stale_ts())
+        self._event("own.repo", "s-stale", "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-stale"},
+                     mtime=self._stale_ts())
+        self._landscaper("own.repo", "s-fresh", "feat-fresh")
+        features = {f.name: f for f in self._repo().features}
+        self.assertEqual(set(features), {"feat-done", "feat-stale", "feat-fresh"})
+        self.assertEqual(features["feat-done"].status, "done")
+        self.assertEqual(features["feat-stale"].status, "stale")
+        self.assertEqual(features["feat-fresh"].status, "working")
 
     @staticmethod
-    def _time_minus(seconds):
+    def _stale_ts():
         import time
-        return time.time() - seconds
+        return time.time() - sidebar.ACTIVE_WINDOW_SECONDS - 60
 
 
 # --------------------------------------------------------------------------
@@ -486,8 +567,9 @@ class DumpCLITests(unittest.TestCase):
                       "orchard:agent:lifecycle:starting",
                       identity={"agent": "landscaper", "feature": "feat-a"}, mtime=1)
         _write_event(self.projects_root, "own.repo", "s1",
-                      "orchard:agent:delegation:begin:sub-a",
-                      identity={"agent": "landscaper", "feature": "feat-a"}, mtime=2)
+                      "orchard:agent:delegation:begin",
+                      identity={"agent": "landscaper", "feature": "feat-a"},
+                      body={"subagent": "sub-a"}, mtime=2)
         lines = self._dump()
         sub_line = next(l for l in lines if "sub-a" in l)
         self.assertIn(sidebar.SUBAGENT_GLYPH, sub_line)
@@ -599,7 +681,7 @@ class RenderLinesTests(unittest.TestCase):
         # (sidebar-titling item 4). Looked up by which line contains the
         # feature's name rather than by position, since done-first sorting
         # (item 7) reorders the "done" row ahead of the others.
-        statuses = ["working", "waiting", "idle", "awaiting_agent", "done", "failed"]
+        statuses = ["working", "waiting", "idle", "awaiting_agent", "stale", "done", "failed"]
         fleet = sidebar.Fleet(repos=[
             sidebar.Repo(name="r", activity="", status="idle",
                          waiting_on_operator=False, features=[
@@ -639,14 +721,17 @@ class RenderLinesTests(unittest.TestCase):
         # and green at a traffic light")
         self.assertNotEqual(sidebar.STATUS_EMOJI["done"], sidebar.STATUS_EMOJI["failed"])
 
-    def test_idle_waiting_and_awaiting_agent_intentionally_share_the_hollow_circle(self):
-        # visual contract, unreachable from build_model() today (no
-        # blocked/notify_user signal exists in the new grammar) but still
-        # part of the STATUS_EMOJI vocabulary render_lines() honours
-        # defensively.
+    def test_idle_waiting_awaiting_agent_and_stale_intentionally_share_the_hollow_circle(self):
+        # visual contract. "waiting"/"awaiting_agent" are unreachable from
+        # build_model() today (no blocked/notify_user signal exists in the
+        # new grammar) but still part of the STATUS_EMOJI vocabulary
+        # render_lines() honours defensively; "stale" IS reachable (a
+        # session with no event inside ACTIVE_WINDOW_SECONDS and no
+        # terminal outcome — retention ruling, 2026-07-25 revision).
         self.assertEqual(sidebar.STATUS_EMOJI["idle"], "○")
         self.assertEqual(sidebar.STATUS_EMOJI["waiting"], "○")
         self.assertEqual(sidebar.STATUS_EMOJI["awaiting_agent"], "○")
+        self.assertEqual(sidebar.STATUS_EMOJI["stale"], "○")
 
     def test_working_done_and_failed_glyphs_stay_distinct_from_each_other_and_the_circle(self):
         distinguishable = {

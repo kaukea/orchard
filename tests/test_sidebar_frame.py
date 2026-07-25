@@ -110,9 +110,9 @@ def _has_basic_red(raw_line: str) -> bool:
 @unittest.skipUnless(_HAS_TMUX, "tmux not available in this environment")
 class SidebarEmulatorFrameTests(unittest.TestCase):
     """One fixture fleet — an orchids repo with a done feature and a working
-    feature (three running + two queued subagents), plus a signmc repo with
-    a working feature — rendered by the real curses app in a detached tmux
-    pane and captured with SGR."""
+    feature (three running subagents, see _seed_orchids), plus a signmc repo
+    with a working feature — rendered by the real curses app in a detached
+    tmux pane and captured with SGR."""
 
     PANE_WIDTH = 29
     PANE_HEIGHT = 50
@@ -159,12 +159,14 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
                      identity=identity, status=status)
         self._event("orchids", "orch-arch", "orchard:agent:status",
                      identity=identity, status=status, body="writing")
+        # EXACT subject, no appended subagent id — the subagent rides the
+        # body instead (operator ruling: the orchard subject list is
+        # closed, variable data never belongs in the subject). Only running
+        # subagents are seeded here (`schedule`/queued has its own coverage
+        # in tests/test_sidebar.py's SubagentDelegationTests).
         for sub in ("sower-a", "sower-b", "sower-c"):
-            self._event("orchids", "orch-arch", f"orchard:agent:delegation:begin:{sub}",
-                         identity=identity, status=status)
-        for sub in ("sower-d", "sower-e"):
-            self._event("orchids", "orch-arch", f"orchard:agent:delegation:schedule:{sub}",
-                         identity=identity, status=status)
+            self._event("orchids", "orch-arch", "orchard:agent:delegation:begin",
+                         identity=identity, status=status, body={"subagent": sub})
 
     def _seed_signmc(self) -> None:
         # deliberately idle (no lifecycle/outcome signal posted) -- this

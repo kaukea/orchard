@@ -864,11 +864,44 @@ ORCHARD_REGISTRY_PATH = Path.home() / ".config" / "orchids" / "sidebar-registry.
 ORCHARD_REQUEST_TIMEOUT_S = 30.0
 ORCHARD_POLL_INTERVAL_S = 0.5
 
-ORCHARD_LIFECYCLE_STATES = ("starting", "started", "stopping", "stopped")
-ORCHARD_OUTCOME_RESULTS = ("success", "fail")
-ORCHARD_DELEGATION_ACTIONS = ("begin", "end")
-ORCHARD_OPERATOR_MESSAGE_KINDS = ("todo", "instructions", "request", "response", "content")
-ORCHARD_AGENT_MESSAGE_KINDS = ("request", "response", "content")
+# The orchard subject list is CLOSED and NOT extensible (operator ruling):
+# validation is EXACT MEMBERSHIP against this frozenset — no regex, no
+# startswith, no prefix/split matching, no derivation of any kind. A subject
+# is known or it is not; if not, reject. Variable data (a subagent id, a
+# topic name, ...) never rides the subject — it goes in the body.
+ORCHARD_VALID_SUBJECTS = frozenset({
+    "orchard:agent:status",
+    "orchard:agent:outcome:success",
+    "orchard:agent:outcome:fail",
+    "orchard:agent:lifecycle:starting",
+    "orchard:agent:lifecycle:started",
+    "orchard:agent:lifecycle:stopping",
+    "orchard:agent:lifecycle:stopped",
+    "orchard:agent:delegation:schedule",
+    "orchard:agent:delegation:begin",
+    "orchard:agent:delegation:end",
+    "orchard:bus:subscribe",
+    "orchard:bus:unsubscribe",
+    "orchard:operator:message:todo",
+    "orchard:operator:message:instructions",
+    "orchard:operator:message:request",
+    "orchard:operator:message:response",
+    "orchard:operator:message:content",
+    "orchard:agent:message:request",
+    "orchard:agent:message:response",
+    "orchard:agent:message:content",
+    "orchard:task:outcome:completed",
+    "orchard:task:outcome:failed",
+})
+
+# orchard:task:outcome:* is gardener-only: a task is fully complete only when
+# the GARDENER says so. Enforced here too (not just in orchard_topic.py's
+# do_post) now that these two subjects are members of the valid set and so
+# pass courier.py's own subject check on a hand-sent send/request/reply.
+ORCHARD_GARDENER_ONLY_SUBJECTS = frozenset({
+    "orchard:task:outcome:completed",
+    "orchard:task:outcome:failed",
+})
 
 
 def is_orchard_address(addr: str | None) -> bool:
@@ -970,35 +1003,23 @@ def make_orchard_envelope(sender: str, to: str, subject: str, *, body=None,
 
 
 def _orchard_subject_error(subject: str) -> str | None:
-    if subject == "orchard:agent:status":
+    """EXACT membership only — the orchard subject list is closed and not
+    extensible. No startswith, no regex, no split-based derivation: a
+    subject is a member of ORCHARD_VALID_SUBJECTS or it is rejected."""
+    if subject in ORCHARD_VALID_SUBJECTS:
         return None
-    if subject.startswith("orchard:agent:outcome:"):
-        rest = subject[len("orchard:agent:outcome:"):]
-        return None if rest in ORCHARD_OUTCOME_RESULTS else (
-            f"orchard:agent:outcome must be one of {ORCHARD_OUTCOME_RESULTS}")
-    if subject.startswith("orchard:agent:lifecycle:"):
-        rest = subject[len("orchard:agent:lifecycle:"):]
-        return None if rest in ORCHARD_LIFECYCLE_STATES else (
-            f"orchard:agent:lifecycle must be one of {ORCHARD_LIFECYCLE_STATES}")
-    if subject.startswith("orchard:agent:delegation:"):
-        rest = subject[len("orchard:agent:delegation:"):]
-        action, sep, sub = rest.partition(":")
-        if not sep or not sub:
-            return "orchard:agent:delegation:<begin|end>:<sub> malformed"
-        return None if action in ORCHARD_DELEGATION_ACTIONS else (
-            f"orchard:agent:delegation action must be one of {ORCHARD_DELEGATION_ACTIONS}")
-    if subject.startswith("orchard:bus:subscribe:") or subject.startswith("orchard:bus:unsubscribe:"):
-        topic = subject.partition(":bus:")[2].partition(":")[2]
-        return None if topic else "orchard:bus:subscribe|unsubscribe:<topic> needs a topic"
-    if subject.startswith("orchard:operator:message:"):
-        rest = subject[len("orchard:operator:message:"):]
-        return None if rest in ORCHARD_OPERATOR_MESSAGE_KINDS else (
-            f"orchard:operator:message must be one of {ORCHARD_OPERATOR_MESSAGE_KINDS}")
-    if subject.startswith("orchard:agent:message:"):
-        rest = subject[len("orchard:agent:message:"):]
-        return None if rest in ORCHARD_AGENT_MESSAGE_KINDS else (
-            f"orchard:agent:message must be one of {ORCHARD_AGENT_MESSAGE_KINDS}")
-    return f"unknown orchard subject {subject!r}"
+    return (f"unknown orchard subject {subject!r} — not in the closed set of "
+            f"{len(ORCHARD_VALID_SUBJECTS)} valid subjects")
+
+
+def _orchard_gardener_only_error(subject: str) -> str | None:
+    """orchard:task:outcome:* may only be sent by the gardener — a task is
+    fully complete only when the gardener says so."""
+    if subject not in ORCHARD_GARDENER_ONLY_SUBJECTS:
+        return None
+    if identity_of().get("agent_type") == "gardener":
+        return None
+    return f"{subject!r} may only be sent by the gardener"
 
 
 def _load_envelope_schema() -> dict:
@@ -1064,10 +1085,11 @@ def orchard_send(args) -> dict:
         sys.exit("courier: orchard send requires --subject")
     reason = _orchard_subject_error(subject)
     if reason:
-        sys.exit(f"courier: {reason} — allowed subjects: orchard:agent:status, "
-                 "orchard:agent:outcome:*, orchard:agent:lifecycle:*, "
-                 "orchard:agent:delegation:*, orchard:bus:subscribe|unsubscribe:*, "
-                 "orchard:operator:message:*, orchard:agent:message:*")
+        sys.exit(f"courier: {reason} — allowed subjects: "
+                 f"{', '.join(sorted(ORCHARD_VALID_SUBJECTS))}")
+    reason = _orchard_gardener_only_error(subject)
+    if reason:
+        sys.exit(f"courier: {reason}")
 
     kind, value = parse_orchard_address(args.to)
     repo = project_slug()

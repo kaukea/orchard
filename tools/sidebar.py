@@ -153,23 +153,31 @@ LOCATION_BADGES = {"local": "💻", "cloud": "☁️"}
 # row (superseded by the band sweep, see module docstring).
 SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
-# Six-state status vocabulary (final, settled — sidebar-titling item 9,
-# revised again by the mock's visual contract): idle, waiting, and
-# awaiting_agent share the same hollow circle — there is no longer a
-# separate operator-wait glyph variant (bus-message-specifying B5 item 7:
-# "hollow circle only, no watch/timer glyphs anywhere in row status").
-# "waiting"/"awaiting_agent" are part of the full vocabulary the mock
-# defines but are currently unreachable: the fleet model (below) only ever
-# derives working/done/failed/idle from the new event grammar, which has no
-# blocked/notify_user signal to distinguish a wait — see the module
-# docstring's "NOT ported" list. Kept here rather than pruned, since
-# STATUS_EMOJI.get() is used defensively and a future data source may yet
-# supply the signal.
+# Seven-state status vocabulary (sidebar-titling item 9, revised again by
+# the mock's visual contract, and again by the retention ruling below):
+# idle, waiting, awaiting_agent, and stale share the same hollow circle —
+# there is no longer a separate operator-wait glyph variant (bus-message-
+# specifying B5 item 7: "hollow circle only, no watch/timer glyphs anywhere
+# in row status"). "waiting"/"awaiting_agent" are part of the full
+# vocabulary the mock defines but are currently unreachable: the fleet
+# model (below) only ever derives working/done/failed/idle/stale from the
+# new event grammar, which has no blocked/notify_user signal to distinguish
+# a wait — see the module docstring's "NOT ported" list. Kept here rather
+# than pruned, since STATUS_EMOJI.get() is used defensively and a future
+# data source may yet supply the signal.
+#
+# "stale" IS reachable (operator ruling, 2026-07-25, revised same day): a
+# session with no event inside the ~1h ACTIVE_WINDOW and no terminal
+# outcome renders gray rather than being dropped from the model — nothing
+# is ever removed from the sidebar by staleness; only a session restart
+# (the tmpfs projects tree clearing) resets what is shown. See
+# `_status_for`.
 STATUS_EMOJI = {
     "working": SPINNER_FRAMES[7],
     "waiting": "○",
     "idle": "○",
     "awaiting_agent": "○",
+    "stale": "○",
     "done": "✓",
     "failed": "❌",
 }
@@ -412,7 +420,16 @@ def role_emoji(role: str | None) -> str | None:
 # <sessionid>.<ts>.json (see module docstring for what is and isn't ported).
 # --------------------------------------------------------------------------
 
-ACTIVE_WINDOW_SECONDS = 60 * 60  # a project dir untouched this long is not shown
+# A session with no event inside this window, and no terminal outcome,
+# renders "stale" (gray) rather than "working"/"idle" — it is NOT dropped
+# from the model (retention ruling, 2026-07-25, revised same day: nothing
+# ever leaves the sidebar due to staleness; only a session restart, which
+# clears the tmpfs projects tree, resets what is shown). See `_status_for`.
+ACTIVE_WINDOW_SECONDS = 60 * 60
+# schedule = queued, begin = active, end = inactive. `schedule` was briefly
+# retired then restored (operator ruling, 2026-07-25): it is a member of
+# the closed orchard subject corpus (courier.py's ORCHARD_VALID_SUBJECTS),
+# so Feature.subagents_queued has a real source again.
 _DELEGATION_STATE = {"schedule": "scheduled", "begin": "active", "end": "inactive"}
 
 _SESSION_UUID_RE = re.compile(
@@ -522,6 +539,11 @@ def _fold_sessions(project_dir: Path) -> dict[str, dict]:
             continue
         ts = f.stat().st_mtime
         rec = found.setdefault(sid, {"sid": sid, "subs": {}})
+        # The overall last-heard-from timestamp for this session, independent
+        # of the per-kind "latest wins" bookkeeping below — this is what
+        # `_status_for` compares against ACTIVE_WINDOW_SECONDS to decide
+        # "stale", so it advances on ANY event, recognised or not.
+        rec["_seen_ts"] = max(rec.get("_seen_ts", 0.0), ts)
         if _latest(rec, "_snap", ts):
             rec["identity"] = env.get("identity", rec.get("identity", {}))
             rec["status"] = env.get("status", rec.get("status", {}))
@@ -534,23 +556,39 @@ def _fold_sessions(project_dir: Path) -> dict[str, dict]:
             rec["outcome"] = subject.rsplit(":", 1)[-1]
         elif subject.startswith("orchard:task:outcome:") and _latest(rec, "_task", ts):
             rec["task_outcome"] = subject.rsplit(":", 1)[-1]
-        elif subject.startswith("orchard:agent:delegation:"):
-            action, _, sub = subject[len("orchard:agent:delegation:"):].partition(":")
+        elif subject in ("orchard:agent:delegation:schedule",
+                          "orchard:agent:delegation:begin",
+                          "orchard:agent:delegation:end"):
+            # EXACT subject match — the subagent id is no longer derived from
+            # the subject tail (there is none any more): it rides the body.
+            action = subject.removeprefix("orchard:agent:delegation:")
+            sub = (env.get("body") or {}).get("subagent")
             state = _DELEGATION_STATE.get(action)
             if sub and state and _latest(rec, f"_sub_{sub}", ts):
                 rec["subs"][sub] = state
     return found
 
 
-def _status_for(rec: dict) -> str:
-    """working/done/failed/idle, derived from the lifecycle+outcome signals
-    this grammar actually carries. No waiting/awaiting_agent variant exists
-    (no blocked/notify_user post verb), so those STATUS_EMOJI entries are
-    simply never produced here."""
+def _status_for(rec: dict, now: float) -> str:
+    """working/done/failed/idle/stale, derived from the lifecycle+outcome
+    signals this grammar actually carries, plus `now` for the staleness
+    check. No waiting/awaiting_agent variant exists (no blocked/notify_user
+    post verb), so those STATUS_EMOJI entries are simply never produced
+    here.
+
+    A terminal outcome (done/failed) always wins — it is never demoted to
+    stale, no matter how old (retention ruling, 2026-07-25 revision: a
+    finished task is a permanent green/red one-liner). Absent a terminal
+    outcome, a session with no event inside ACTIVE_WINDOW_SECONDS reads
+    stale (gray) rather than working/idle — checked before the
+    working/idle split, since staleness overrides even a stuck "starting"
+    lifecycle state that never followed up."""
     if rec.get("outcome") == "fail" or rec.get("task_outcome") == "failed":
         return "failed"
     if rec.get("outcome") == "success" or rec.get("task_outcome") == "completed":
         return "done"
+    if now - rec.get("_seen_ts", 0.0) >= ACTIVE_WINDOW_SECONDS:
+        return "stale"
     if rec.get("state") in ("starting", "started", "stopping"):
         return "working"
     return "idle"
@@ -567,7 +605,7 @@ def _row_label(rec: dict) -> str | None:
     return None if _is_bare_uuid(rec["sid"]) else rec["sid"]
 
 
-def _apply_common(row: Feature | Repo, rec: dict) -> None:
+def _apply_common(row: Feature | Repo, rec: dict, now: float) -> None:
     """Copy the fields a session record and a Feature/Repo row share —
     both dataclasses carry this exact field set, so one function serves
     either (duck-typed on purpose)."""
@@ -575,7 +613,7 @@ def _apply_common(row: Feature | Repo, rec: dict) -> None:
     status = rec.get("status") or {}
     row.activity = rec.get("activity", "")
     row.status_word = row.activity
-    row.status = _status_for(rec)
+    row.status = _status_for(rec, now)
     row.waiting_on_operator = False  # no source in this grammar
     row.role = identity.get("agent")
     row.model = status.get("model")
@@ -584,7 +622,7 @@ def _apply_common(row: Feature | Repo, rec: dict) -> None:
     row.subagents_queued = sum(1 for s in subs.values() if s == "scheduled")
 
 
-def _assemble_repo(dir_name: str, sess: dict[str, dict]) -> Repo:
+def _assemble_repo(dir_name: str, sess: dict[str, dict], now: float) -> Repo:
     repo = Repo(name=_repo_display_name(dir_name), activity="", status="idle",
                 waiting_on_operator=False)
 
@@ -594,7 +632,7 @@ def _assemble_repo(dir_name: str, sess: dict[str, dict]) -> Repo:
         None,
     )
     if gardener is not None:
-        _apply_common(repo, gardener)
+        _apply_common(repo, gardener, now)
 
     for sid in sorted(sess):
         rec = sess[sid]
@@ -605,7 +643,7 @@ def _assemble_repo(dir_name: str, sess: dict[str, dict]) -> Repo:
             continue
         feature = Feature(name=label, activity="", status="idle",
                            waiting_on_operator=False)
-        _apply_common(feature, rec)
+        _apply_common(feature, rec, now)
         # subagents surfaced by the landscaper's own delegation traffic
         # (orchard:agent:delegation:begin/end) — the only subagent source
         # this grammar has (see module docstring: a child session that
@@ -621,11 +659,14 @@ def _assemble_repo(dir_name: str, sess: dict[str, dict]) -> Repo:
 
 
 def build_model(root: Path | None = None) -> Fleet:
-    """One snapshot of the fleet: every project directory touched within
-    ACTIVE_WINDOW_SECONDS (mirrors the retired sidebar_v3.py's own
-    active-window rule — a project with no recent event just isn't shown,
-    there is no separate hide/show registry consulted here), folded and
-    assembled into one Repo per directory."""
+    """One snapshot of the fleet: every project directory is folded and
+    assembled into one Repo, unconditionally — nothing is ever excluded by
+    staleness (retention ruling, 2026-07-25 revision: a row leaves the
+    sidebar only when the process restarts and the tmpfs projects tree
+    clears with it). ACTIVE_WINDOW_SECONDS still matters — it is what
+    `_status_for` compares `now` against to decide whether an
+    unfinished session reads "stale" (gray) rather than "working"/"idle" —
+    but it no longer removes anything from this snapshot."""
     root = root or projects_root()
     fleet = Fleet()
     if not root.is_dir():
@@ -634,9 +675,7 @@ def build_model(root: Path | None = None) -> Fleet:
     for d in sorted(root.iterdir()):
         if not d.is_dir():
             continue
-        if now - d.stat().st_mtime >= ACTIVE_WINDOW_SECONDS:
-            continue
-        fleet.repos.append(_assemble_repo(d.name, _fold_sessions(d)))
+        fleet.repos.append(_assemble_repo(d.name, _fold_sessions(d), now))
     return fleet
 
 
@@ -1132,6 +1171,13 @@ def _draw_header(
 # with the band sweep layered on top for a "working" row)
 # --------------------------------------------------------------------------
 
+# "stale" and "failed" both fall through to MUTED here — MUTED IS the mock's
+# gray (retention ruling, 2026-07-25: a stale row renders gray, never
+# removed). "failed" has no dedicated RED entry in the mock-canonical
+# palette at the top of this file (only GREEN exists for a terminal state);
+# its own distinct ❌ glyph — inherently red in every terminal's emoji font —
+# is what carries the red signal, same as the pre-existing done/failed glyph
+# distinction (never re-derive a colour the mock doesn't define).
 def _feature_glyph_colour(status: str | None, accent: tuple[int, int, int]) -> tuple[int, int, int]:
     if status == "done":
         return GREEN

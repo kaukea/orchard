@@ -663,5 +663,118 @@ class SignalNotifyLegalityCliTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
+class OrchardSubjectValidationTests(unittest.TestCase):
+    """Unit-level: orchard subject validation is EXACT membership against the
+    closed 22-item set (operator ruling, 2026-07-25; `delegation:schedule`
+    restored into the set the same day) — no startswith/regex/split
+    derivation. A subject the OLD family/prefix validator used to accept by
+    pattern (a delegation subject with an appended subagent id, a
+    `bus:subscribe:<topic>` with an appended topic) must be rejected
+    outright: variable data belongs in the body, not the subject."""
+
+    def test_every_valid_subject_is_accepted(self):
+        for subject in courier.ORCHARD_VALID_SUBJECTS:
+            self.assertIsNone(courier._orchard_subject_error(subject), subject)
+
+    def test_exactly_22_valid_subjects(self):
+        self.assertEqual(len(courier.ORCHARD_VALID_SUBJECTS), 22)
+
+    def test_old_delegation_with_appended_subagent_is_rejected(self):
+        self.assertIsNotNone(
+            courier._orchard_subject_error("orchard:agent:delegation:begin:builder-1"))
+
+    def test_delegation_schedule_bare_is_accepted(self):
+        self.assertIsNone(
+            courier._orchard_subject_error("orchard:agent:delegation:schedule"))
+
+    def test_delegation_schedule_with_appended_subagent_is_rejected(self):
+        self.assertIsNotNone(
+            courier._orchard_subject_error("orchard:agent:delegation:schedule:builder-1"))
+
+    def test_bus_subscribe_with_appended_topic_is_rejected(self):
+        self.assertIsNotNone(
+            courier._orchard_subject_error("orchard:bus:subscribe:some-topic"))
+
+    def test_bus_subscribe_bare_is_accepted(self):
+        self.assertIsNone(courier._orchard_subject_error("orchard:bus:subscribe"))
+
+    def test_unknown_subject_is_rejected(self):
+        self.assertIsNotNone(courier._orchard_subject_error("orchard:made:up"))
+
+
+class OrchardSubjectCliTests(unittest.TestCase):
+    """CLI-level: `send --to :session:<id> --subject ...` — exact accept/
+    reject over the closed subject set, and gardener-only enforcement on
+    orchard:task:outcome:* (a task is fully complete only when the gardener
+    says so — now also gated here, not only in orchard_topic.py's do_post,
+    since these two subjects are members of the valid set and so now pass
+    courier.py's own subject check on a hand-sent send)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        base = Path(self._tmp.name)
+        self.runtime_dir = base / "run"
+        self.runtime_dir.mkdir()
+        self.cache_home = base / "cache"
+        self.cache_home.mkdir()
+        self.home = base / "home"
+        self.home.mkdir()
+        self.repo = make_repo(str(base))
+
+    def _env(self, session_id, **extra):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("ORCHID_PARENT_SESSION", "ORCHID_PARENT_PROJECT", "CLAUDE_CODE_AGENT")}
+        env.update(
+            CLAUDE_CODE_SESSION_ID=session_id,
+            XDG_RUNTIME_DIR=str(self.runtime_dir), XDG_CACHE_HOME=str(self.cache_home),
+            HOME=str(self.home),
+        )
+        env.update(extra)
+        return env
+
+    def _send(self, subject, session_id="senderX", **extra_env):
+        return subprocess.run(
+            [sys.executable, _COURIER_PY, "send", "--to", ":session:recipientA",
+             "--subject", subject],
+            cwd=self.repo, capture_output=True, text=True,
+            env=self._env(session_id, **extra_env),
+        )
+
+    def test_valid_subject_is_accepted(self):
+        proc = self._send("orchard:agent:status")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_off_list_subject_is_rejected(self):
+        proc = self._send("orchard:agent:delegation:begin:builder-1")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("unknown orchard subject", proc.stderr)
+
+    def test_delegation_schedule_with_appended_subagent_is_rejected(self):
+        proc = self._send("orchard:agent:delegation:schedule:builder-1")
+        self.assertNotEqual(proc.returncode, 0)
+
+    def test_delegation_schedule_bare_subject_is_accepted(self):
+        proc = self._send("orchard:agent:delegation:schedule")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_delegation_begin_exact_subject_is_accepted(self):
+        proc = self._send("orchard:agent:delegation:begin")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_task_outcome_by_non_gardener_is_rejected(self):
+        proc = self._send("orchard:task:outcome:completed")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("gardener", proc.stderr)
+
+    def test_task_outcome_completed_by_gardener_is_accepted(self):
+        proc = self._send("orchard:task:outcome:completed", CLAUDE_CODE_AGENT="gardener")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_task_outcome_failed_by_gardener_is_accepted(self):
+        proc = self._send("orchard:task:outcome:failed", CLAUDE_CODE_AGENT="gardener")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
