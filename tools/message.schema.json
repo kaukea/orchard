@@ -63,6 +63,18 @@
     "multi": {
       "const": true,
       "description": "Present and true only when a `courier.py ask --multi` broadcast (item 12g): the popup is a multi-select (digits toggle, Enter confirms) rather than the default instant-on-digit single-select."
+    },
+    "subject": {
+      "type": "string",
+      "description": "Fixed orchard wire-grammar subject (e.g. orchard:agent:status, orchard:agent:outcome:success|fail, orchard:agent:lifecycle:starting|started|stopping|stopped, orchard:agent:delegation:begin|end:<sub>, orchard:bus:subscribe|unsubscribe:<topic>, orchard:operator:message:todo|instructions|request|response|content, orchard:agent:message:request|response|content). Present only on an orchard-transport envelope (`from`/`to` using :session:/:topic: addressing)."
+    },
+    "repo": {
+      "type": "string",
+      "description": "The sender's project slug (<repo>.<project>), present only on an orchard-transport envelope."
+    },
+    "project": {
+      "type": "string",
+      "description": "The target project slug for a cross-project :session: send, present only when the send crosses projects."
     }
   }
 }
