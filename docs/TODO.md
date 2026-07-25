@@ -46,7 +46,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `feature · todo · · blocked-on-answers · process · gh#39` [Gardener emits the orchard summary file, parseable from outside](TODO.md.d/orchard-summary.md)
   - `feature · todo · · queued · process · gh#40` [Orchard view: consolidate the fleet, show priorities and cross-repo edges](TODO.md.d/orchard-view.md) ⊘orchard-summary
   - `feature · todo · · queued · process · gh#41` [Orchard launch: session per repo, gardener told the pick and double-checks](TODO.md.d/orchard-launch.md) ⊘orchard-view
-  - `feature · todo · · plan-ready · process · gh#42` [Tmux topology: window per landscaper, stacked pane per coder, focus returns on close](TODO.md.d/tmux-topology.md) ~hook-choreography ~fleet-sidebar
+  - `feature · todo · critical · plan-ready · process · gh#42` [Tmux topology: window per landscaper, stacked pane per coder — written spec this time](TODO.md.d/tmux-topology.md) ⊘bus-finishing ~hook-choreography ~fleet-sidebar ~close-family-fakes
   - `feature · done · · complete/interactive · · gh#23` [Fleet sidebar: always-visible navigable job states with phase emojis](TODO.md.d/fleet-sidebar.md) ~bus-liveness ~agent-metadata
     - `feature · todo · · blocked-on-answers · process · gh#189` [Cloud event feed: GitHub Actions events land as sidebar files](TODO.md.d/cloud-event-feed.md) ~cloud-architect
     - `bug · done · · complete/interactive · process ·` [Fleet sidebar fixes: correct the defects the first build shipped](TODO.md.d/sidebar-fixes.md)
@@ -79,7 +79,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `bug · todo · · queued · process · gh#204` [Bloom subset posterior: multi-select dimensions converge instead of exhausting](TODO.md.d/bloom-subset-posterior.md) ~psychometric-discovery ~bloom-administering
 - `bug · done · · complete/interactive · process ·` [Agents leave sub-agents and sessions unclosed: the flow cannot finish](TODO.md.d/agent-closing.md) ~message-bus ~hook-choreography ~zombie-revival
 - `bug · done · critical · complete/interactive · process · gh#258` [Close dispatching: the gate-word groundskeeper dispatch can die with the landscaper](TODO.md.d/close-dispatching.md) ~agent-closing ~window-closing-owning ~hook-choreography
-- `feature · todo · · queued · · gh#263` [Close-family fakes: window owning, zombie revival, sidebar witnessing — re-examined once the bus lands](TODO.md.d/close-family-fakes.md) ⊘bus-finishing ~close-dispatching ~agent-closing
+- `feature · todo · critical · plan-ready · · gh#263` [Close-family fakes: the supervising controller — the close moves to the gardener; fakes re-examined](TODO.md.d/close-family-fakes.md) ⊘bus-finishing ~close-dispatching ~agent-closing ~tmux-topology
   - `bug · todo · critical · working · process · gh#215` [Window closing owning: agents close themselves — kill listener removed by Decision-081](TODO.md.d/window-closing-owning.md) ~sidebar-polish ~bus-singleton ~agent-closing
   - `feature · todo · · blocked-on-answers · process · gh#30` [Zombie delivery: scripts revive dead sessions before handing them messages](TODO.md.d/zombie-revival.md) ~bus-liveness ~message-bus
   - `bug · todo · · queued · process · gh#193` [Sidebar witnessing: ghost rows persist, silent live agents invisible — the ephemeral-courier observer gap](TODO.md.d/sidebar-witnessing.md) ~sidebar-polish ~bus-singleton ~message-bus

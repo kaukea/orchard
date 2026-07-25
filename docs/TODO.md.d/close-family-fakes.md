@@ -26,9 +26,24 @@
 
 ## Proposal
 
-After [[bus-finishing]] merges: re-examine each of the four against the new
-transport; close what dissolved with evidence, rescope the residue (if any)
-into precise small tasks. No building on the old design.
+RULED (operator, 2026-07-25 afternoon — Decision-090): the build IS the
+SUPERVISING CONTROLLER, started immediately when [[bus-finishing]] lands:
+
+- The close moves to the gardener: its own groundskeeper subagent fires on the
+  landscaper's `finished` (or detected death) and releases what the gardener
+  created — worktree, branch, window — in reverse creation order.
+- The landscaper becomes a pure scope: its courier, monitors, sowers and log
+  all die inside it before exit (final State + `_closed` + telemetry are its
+  LAST acts); it dispatches no closer and touches no window. `.return-window`
+  retires — the parent knows its own pane.
+- Supervision collects, never kills (Decision-081). The lease/ledger pattern
+  is REJECTED — assumes idempotent work, not achievable.
+- The four fakes are then re-examined against the new shape; expected: most
+  dissolve — close what dissolved with evidence, rescope any residue small.
+
+Sibling work item, same trigger: [[tmux-topology]] — the raw tmux layer made
+to work correctly per a WRITTEN spec (operator: "this time I want this
+written down").
 
 ## Testing
 

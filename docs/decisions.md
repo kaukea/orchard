@@ -1510,3 +1510,30 @@ family is always latest, bumped as a mechanical edit when the family
 ships.
 
 (Operator, 2026-07-25.)
+
+## [2026-07-25 15:46 CEST] Decision-090: The close belongs to the supervising controller; the ledger pattern is rejected
+#close #supervision #ownership #encapsulation #lifecycle #tmux #groundskeeper #landscaper
+
+Operator rulings (2026-07-25 afternoon), from the ownership audit of the agent
+tree (creator-owns-and-cleans, a child never outlives its parent's scope):
+
+- **Adopted — the supervising controller (pattern 2):** the close is the
+  GARDENER's, executed by the gardener's own groundskeeper subagent, fired on
+  the landscaper's `finished` (or on its detected death). The gardener releases
+  what the gardener created — worktree, branch, window — in reverse creation
+  order. The landscaper is a PURE SCOPE: everything it creates (courier,
+  monitors, sowers, its log) dies inside it before exit; it dispatches no
+  closer, removes no worktree, touches no window. Supervision COLLECTS, never
+  kills (Decision-081 stands). Aligns with Decision-068-addendum (supervisor is
+  the orchestrator's subagent) and Decision-083 (completion is
+  orchestrator-only); Decision-054's staging-fold mechanics survive, re-homed.
+- **Rejected — the lease/ledger pattern:** it assumes idempotent work and is
+  not achievable. No resource ledger; ownership is structural (the tree), not
+  recorded state.
+- **Ordering:** the moment [[bus-finishing]] lands, work starts immediately on
+  (1) the supervising controller and (2) making the RAW TMUX layer work
+  correctly, as requested and specified — and the tmux behaviour is WRITTEN
+  DOWN this time: a committed spec the operator reviews, not chat convention
+  ([[tmux-topology]] is its home).
+
+(Operator, 2026-07-25.)

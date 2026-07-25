@@ -3,8 +3,19 @@
 
 ## Blockers
 
-- None hard; co-designed with [[fleet-sidebar]] (shared layout) and it reshapes the
-  close choreography [[hook-choreography]] carries today.
+- ⊘[[bus-finishing]] (operator ordering, 2026-07-25): starts immediately when
+  the bus lands, alongside the supervising controller
+  ([[close-family-fakes]], Decision-090).
+- Co-designed with [[fleet-sidebar]] (shared layout); reshapes what remains of
+  the close choreography after Decision-090 re-homes it.
+
+## Written-spec gate (operator, 2026-07-25 — Decision-090)
+
+"This time I want this written down": the tmux behaviour — window creation,
+naming, closing, focus return, pane stacking — ships as a COMMITTED SPEC the
+operator reviews before/with the build; chat convention and skill prose do
+not count. Window rename has NEVER worked (operator, 2026-07-25 morning);
+the spec starts from his requirements, not the incumbent mechanics.
 
 ## Questions
 
