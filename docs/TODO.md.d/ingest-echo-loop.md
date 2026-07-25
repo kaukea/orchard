@@ -1,6 +1,17 @@
 - created: 2026-07-25
 - created_by: Sebastien Lambla
 - created_during: orchestrator session (orchard-renaming close repair)
+- completed: 2026-07-25
+- completed_during: orchestrator session (procedural-on-main, Decision-065)
+
+## Result
+
+FIXED and proven (2026-07-25, commit 4530303): decision mirrors now carry the
+`board` label (at create; retrofitted on match at each push), and `pull()`
+also skips any `Decision-N:`-titled issue outright. Proof after a full mirror
+push: local `pull` → 0 ingested; dispatched board-sync run 30157044393 →
+success, `0 ingested`, no commit on remote main. Both filter sides shipped
+(label + title), answering the open question as "both".
 
 ## Blockers
 
@@ -8,9 +19,9 @@
 
 ## Questions
 
-- Which side should filter: the cloud ingest workflow (skip issues carrying the
-  decision-mirror label/type), the pusher (mark mirrors so ingest can tell them
-  apart), or both? Recommendation: both — belt and braces on a loop.
+- ~~Which side should filter: the cloud ingest workflow, the pusher, or
+  both?~~ RESOLVED by the fix: both — label at the pusher, label+title skip
+  at the puller.
 
 ## Findings
 

@@ -38,7 +38,8 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `completion · done · · complete/interactive · process ·` [Field projecting: every sidecar field maps to GitHub or is created there](TODO.md.d/field-projecting.md) ~nested-tasks-projecting ~tags-and-labels
   - `feature · done · · complete/interactive · process ·` [Decision projecting: decisions mirror as their own type, closing on supersession](TODO.md.d/decision-projecting.md) ~field-projecting
   - `completion · todo · · queued · process · gh#187` [Component field declaring: Component missing from board_gh field sets](TODO.md.d/component-field-declaring.md) ~field-projecting
-  - `bug · todo · critical · blocked-on-answers · process · gh#252` [Ingest echo loop: callabloom folds the board's own decision mirrors back as tasks](TODO.md.d/ingest-echo-loop.md) ~github-board-sync ~decision-projecting ~close-dispatching
+  - `bug · done · critical · complete/interactive · process · gh#252` [Ingest echo loop: callabloom folds the board's own decision mirrors back as tasks](TODO.md.d/ingest-echo-loop.md) ~github-board-sync ~decision-projecting ~close-dispatching
+  - `feature · todo · · plan-ready · process ·` [Sync automating: hidden-field binding, no file write-backs, inline draft issues at intake](TODO.md.d/sync-automating.md) ~github-board-sync ~ingest-echo-loop ~intake-deduping
 - `housekeeping · todo · nice-to-have · blocked-on-answers · process · gh#14` [Install-id migration to the kaukea org — parked until the org name is final](TODO.md.d/install-id-kaukea.md)
 - `feature · todo · idea · queued · process · gh#188` [Epic grouping: features rolled toward a big feature, with cockpit progress](TODO.md.d/epic-grouping.md) ~orchard ~github-board-sync
 - `feature · todo · · queued · · gh#25` [Orchard: the fleet workbench — global view, selection, dispatch](TODO.md.d/orchard.md) ~github-board-sync ~cross-repo-inbox

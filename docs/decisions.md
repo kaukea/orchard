@@ -1464,3 +1464,34 @@ Ruling (operator, 2026-07-25): the `bus`→`courier` rename in Decision-085 is a
 #naming #cloud #location #sidebar #scope
 
 Ruling (operator, 2026-07-25): cloud vs local is NOT an agent-type distinction and will not be — it is a planning/execution-time property that applies to anything, orthogonal to the role. The location badges were therefore DROPPED from the orchard-renaming feature; `tools/sidebar.py`'s `LOCATION_BADGES` constant stays unwired. Only the role glyph was wired into the identity render. The `-cloud` def variants were left untouched this pass (the cloud model is being reworked).
+
+## [2026-07-25 13:55 CEST] Decision-088: Task↔issue binding is the task id in a hidden field; the sync never writes repo files
+#github #board #sync #binding #issues #draft #actions #gh-badges
+
+Operator rulings (2026-07-25, midday), reshaping the GitHub mirror after the
+echo-loop failure:
+
+- **Binding:** a task's identity on GitHub is its TASK ID (the sidecar
+  basename — "the only thing we have right now"), carried as a hidden custom
+  field and matched via the API — the same stateless approach decisions
+  already use (Decision-067). The `gh#` badge write-back RETIRES: the sync
+  never mutates repository files again; existing badges are display-only
+  legacy.
+- **Sync moment:** whenever board work happens, the agent's NORMAL push is
+  what carries the GitHub-issue synchronization. With no file mutations in
+  the mirror leg, an on-push Action doing that sync mutates only GitHub-side
+  components and commits nothing — a push-triggers-push loop is impossible
+  structurally, not just guarded.
+- **Inline create at intake:** when the agent creates a sidecar + TODO row,
+  it also creates the GitHub issue right then — one best-effort call per
+  issue, tagged `draft` to say the task is currently being written. A
+  network failure blocks nobody: the push-moment reconciler creates it
+  instead, and id-based matching makes duplicates impossible. The
+  reconciler clears `draft` once the committed board carries the task.
+  The full worst case is an issue the board no longer needs (an intake
+  abandoned or renamed before commit) — closed as won't-fix, and that is
+  it; duplicates cannot arise.
+- **Ingest leg unchanged:** issue events → files, sender-gated to the
+  operator, remains the only file-writer in the system.
+
+(Operator, 2026-07-25.)
