@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Launch the bloomer as a tmux PANE split out of the orchestrator's current
-# window (Decision-075's pane variant of the architect's window pattern): the
+# Launch the bloomer as a tmux PANE split out of the gardener's current
+# window (Decision-075's pane variant of the landscaper's window pattern): the
 # bloomer pane gets the bottom 75% of the window's height, the calling
-# (orchestrator) pane keeps the top 25% — both stay visible at once, and the
+# (gardener) pane keeps the top 25% — both stay visible at once, and the
 # operator converses with the bloomer directly in its pane.
 #
 # Companion to bloomer-teardown.sh, which the bloomer runs as its last act to
 # close its own pane and hand focus back to the pane recorded here.
 #
-# Usage: bloomer-launch.sh <task-id>   (run FROM the orchestrator's pane)
+# Usage: bloomer-launch.sh <task-id>   (run FROM the gardener's pane)
 set -euo pipefail
 
 if [ -z "${1:-}" ]; then
@@ -34,7 +34,7 @@ sock="${TMUX%%,*}"
 tx(){ tmux -S "$sock" "$@"; }
 
 # State file lives under the git-common-dir so it is shared across worktrees,
-# mirroring the architect's .return-window contract (Decision-006: line 1 is
+# mirroring the landscaper's .return-window contract (Decision-006: line 1 is
 # a pane id %N, line 2 is the tmux socket path).
 common_dir="$(git rev-parse --git-common-dir)"
 common_dir="$(cd "$common_dir" && pwd)"

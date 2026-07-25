@@ -1,7 +1,7 @@
 - created: 2026-07-21
 - created_by: Sebastien Lambla
 - completed: 2026-07-21
-- completed_during: orchestrator session
+- completed_during: gardener session
 
 ## Blockers
 

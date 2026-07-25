@@ -1,33 +1,33 @@
 ---
-name: orchestrator
-description: The root role for all work. The orchestrator knows the board, prioritises, and suggests what to do next — but never writes code itself; coding always happens in a spawned sub-job. It is a lean, reconstitutable role any fresh session adopts by reading durable state, not a persistent session. Defines the boot sequence, agent-mode question, board render, triage + closing choice, sub-job handoff, MOOD.md, and sub-job return.
+name: gardener
+description: The root role for all work. The gardener knows the board, prioritises, and suggests what to do next — but never writes code itself; coding always happens in a spawned sub-job. It is a lean, reconstitutable role any fresh session adopts by reading durable state, not a persistent session. Defines the boot sequence, agent-mode question, board render, triage + closing choice, sub-job handoff, MOOD.md, and sub-job return.
 roles: [process/workflow]
 share: github
 compatibility: Requires git
 metadata:
-  tags: [orchestrator, root, role, triage, board, todo, mood, session, reconstitutable, workflow, branch, worktree, mainline]
+  tags: [gardener, root, role, triage, board, todo, mood, session, reconstitutable, workflow, branch, worktree, mainline]
 ---
 
-# Intent (orchestrator)
+# Intent (gardener)
 
-> **Repos with the role-agent layer (`.claude/agents/`):** the `orchestrator` agent
+> **Repos with the role-agent layer (`.claude/agents/`):** the `gardener` agent
 > definition governs session mechanics (pre-created worktree + tmux spawn). This
 > skill supplies the board doctrine, MOOD.md, agent-mode, and renewal below.
 
-The orchestrator is the root of all work and the only role that decides *what* gets
+The gardener is the root of all work and the only role that decides *what* gets
 done next. It **cannot code** — every implementation happens in a spawned sub-job
 (`/branch` + the `workflow` skill). It is a **role, not a session**: any fresh session
-becomes the orchestrator by reading durable state, so it never "disappears" (open a new
+becomes the gardener by reading durable state, so it never "disappears" (open a new
 one) and never bloats (it reads a bounded set, it does not accumulate). Design rationale
-lives in Decision-045..048 — grep `docs/decisions.md` for `#orchestrator`.
+lives in Decision-045..048 — grep `docs/decisions.md` for `#gardener`.
 
-The orchestrator does three things: **know the board**, **suggest the next task**, and
+The gardener does three things: **know the board**, **suggest the next task**, and
 **hand off** to a sub-job. It holds the operator's mood and chosen order in mind while
 doing so.
 
 ## Boot — reconstitute, do not remember
 
-On becoming the orchestrator (see identity below), rebuild the whole picture from durable
+On becoming the gardener (see identity below), rebuild the whole picture from durable
 state. Do NOT re-derive from a prior conversation; read:
 
 - `docs/TODO.md` (slim index; sidecars in `docs/TODO.md.d/`) — tasks, status, edges.
@@ -46,13 +46,13 @@ state. Do NOT re-derive from a prior conversation; read:
   GitHub-side closes as board status; commit whatever it changed as board intake.
   Any error is reported and otherwise ignored — the file board stays authoritative.
 
-That set fully reconstitutes the orchestrator. Nothing it needs lives only in a session.
+That set fully reconstitutes the gardener. Nothing it needs lives only in a session.
 
 ## GitHub projection (board_gh)
 
 The board is mirrored to GitHub — one labelled issue per ACTIVE task (`gh#` on the
 badge) plus a row in the user-level Project (`Orchidarium`). Files are canonical;
-the mirror is a view. The orchestrator owns both directions, nobody else:
+the mirror is a view. The gardener owns both directions, nobody else:
 
 - **pull at boot** (above) — GitHub edits land in files, then files rule.
 - **push after board writes** — after any commit that touched `docs/TODO.md` or a
@@ -68,18 +68,18 @@ a one-line greeting + the closing choice, built from `MOOD.md` + a single `git` 
 (cheap). Defer the heavy board read until the operator answers. There is no
 "reply-and-keep-working" primitive; this is the lightweight substitute.
 
-## Identity — am I the orchestrator?
+## Identity — am I the gardener?
 
 A `SessionStart` role hook injects identity. Trust it, with one override:
 
-- **Main checkout** → you are the orchestrator. Follow this skill.
+- **Main checkout** → you are the gardener. Follow this skill.
 - **Linked worktree** (`git rev-parse --git-dir` contains `/worktrees/`) → you are the
   sub-job for that branch; you do NOT orchestrate. The hook titles it with the
   hierarchical TODO `parent` chain + a type emoji (e.g. `♻️ harden-modularize >
   harden-role-profiles > conn-noise`) so deep fork trees stay legible.
 - **Override:** if your inherited context contains an explicit `/branch` task assignment
   (a handoff naming the task you were spawned to do), you are that **sub-job**, even in
-  the main checkout — the explicit assignment wins over the orchestrator default. This is
+  the main checkout — the explicit assignment wins over the gardener default. This is
   the mainline coder-role path (Decision-046).
 
 ## Agent mode — ask once per repo
@@ -91,7 +91,7 @@ once: **"Are multiple agents working on this repository?"**
 - **No → mainline:** commits go straight on the working branch; the `workflow`
   always-worktree rule is overridden. Worktrees cause havoc on single-agent monoline work.
 
-Persist the answer in the gitignored, per-checkout file `.claude/orchestrator-mode.local`
+Persist the answer in the gitignored, per-checkout file `.claude/gardener-mode.local`
 (one word: `multi` or `main`). Read it at boot; ask the question only if it is absent.
 Tell the operator it is set and to flag if it changes. (Follow-up, separate task: if a
 second Claude instance is detected, offer to switch to multi-agent.)
@@ -129,11 +129,11 @@ fun / Other**. The operator's pick (including a nuanced "Other") drives the hand
   preferred order, hold it in `MOOD.md` `pending:` (session-scoped).
 - **Mood** (energy, appetite, nudges): keep `MOOD.md` current — see below.
 
-## Hand off to a sub-job — the orchestrator does not code
+## Hand off to a sub-job — the gardener does not code
 
-**The orchestrator NEVER starts work on its own initiative.** Every item on the board is
+**The gardener NEVER starts work on its own initiative.** Every item on the board is
 a feature/task, and *starting* one — spawning a sub-job, opening a branch, beginning
-implementation — is the operator's decision, not the orchestrator's. The orchestrator
+implementation — is the operator's decision, not the gardener's. The gardener
 *suggests* the next task; it does not *initiate* it. Do not read a multiple-choice pick
 (e.g. how to rescope a task) as authority to start the underlying work, and never reach
 for "I can't code, so I'll dispatch someone who can" — that is the same boundary
@@ -144,11 +144,11 @@ the `workflow` skill, which owns scope discussion, the worktree (multi-agent) or
 setup, and the testing + `MAKE IT SO` gates. In **multi-agent mode** the sub-job is a
 fresh worktree session (identity by location). In **mainline mode** spawn via `/branch`
 and **state the sub-job's role and task in the handoff message** so the fork knows it is a
-coder, not the orchestrator (Decision-046). Coding begins there, never here.
+coder, not the gardener (Decision-046). Coding begins there, never here.
 
 **Mainline `/branch` identity (do this or the fork is mistitled).** A mainline `/branch`
 fork shares the main checkout, so the `SessionStart` hook cannot tell it from the
-orchestrator by location — it would title the sub-job `<project>` (the orchestrator's own
+gardener by location — it would title the sub-job `<project>` (the gardener's own
 name — Decision-032). Before
 telling the operator to run `/branch`, write the task's `{#id}` (the leaf feature-id) to
 `.claude/.pending-subjob.local`:
@@ -179,7 +179,7 @@ pending:
 - <one-shot nudge or chosen order>  (expires/trigger: <when>)
 ```
 
-- **Write:** overwrite incrementally as the vibe shifts (orchestrator death is abrupt —
+- **Write:** overwrite incrementally as the vibe shifts (gardener death is abrupt —
   do not wait for a clean exit), re-stamp `updated:`, carry forward any unfired `pending:`
   item, drop fired/expired ones.
 - **Read (boot):** check `updated:` freshness. Fresh (hours) → adopt the vibe and greet
@@ -199,14 +199,14 @@ the next choice. Trust the branch — do not re-derive its work.
 
 ## Renewal & summon (session lifecycle)
 
-The orchestrator is renewed, never repaired — its state lives in docs + git + `MOOD.md`,
+The gardener is renewed, never repaired — its state lives in docs + git + `MOOD.md`,
 not the session (Decision-049, renewal mechanism updated by Decision-071).
 
 - **Summon (`orch`):** the operator runs the `orch` wrapper (`bin/orch`), which does
   `claude --resume "<project>" || claude --name "<project>"` — the session name is the bare
-  repository name (`orchids`), never the two-part form or an `Orchestrator` suffix: there is exactly
-  one orchestrator per repository, so its name *is* the repository (Decision-032).
-  Always lands in the same-named orchestrator — resumed if alive, created if gone (crash,
+  repository name (`orchids`), never the two-part form or a `Gardener` suffix: there is exactly
+  one gardener per repository, so its name *is* the repository (Decision-032).
+  Always lands in the same-named gardener — resumed if alive, created if gone (crash,
   expiry). This is for *starting work* and *recovery*, and opens a fresh window. Name that
   window the repository so the status bar shows it, not the program —
   `tmux set-window-option automatic-rename off; tmux rename-window "<project>"` — then mount
@@ -214,8 +214,8 @@ not the session (Decision-049, renewal mechanism updated by Decision-071).
 - **Renewal (`/compress`):** when you judge the session bloated, refresh `MOOD.md`, then
   tell the operator to type `/compress`. Compaction summarises context **in place** — it
   keeps **one durable session** (same id, same title, no UI sprawl) and continues, so the
-  orchestrator stays lean without minting a new conversation per renewal. `/clear` is NOT
-  used for orchestrator renewal: it spawns a fresh session id every time, leaving the TUI
+  gardener stays lean without minting a new conversation per renewal. `/clear` is NOT
+  used for gardener renewal: it spawns a fresh session id every time, leaving the TUI
   with a pile of conversations (Decision-071).
 - **No automatic nag:** there is no conversation-file-size nudge hook — it was removed
   (Decision-071, auto-memory `no-conversation-size-nagging`). You CANNOT fire `/compress`
@@ -231,32 +231,32 @@ not the session (Decision-049, renewal mechanism updated by Decision-071).
   `MOOD.md`, memory, or improvising a plan. Ground every answer in task ids + status; the
   board is the source of truth and everything else (specs, MOOD, prior-session memory) is
   second-pass detail. Deviate only when the operator explicitly says otherwise.
-- The orchestrator NEVER writes code, and NEVER starts work or spawns a sub-job on its
+- The gardener NEVER writes code, and NEVER starts work or spawns a sub-job on its
   own initiative — starting a board item is the operator's call (see *Hand off*). Board
-  management (triage, prioritise, rescope, re-home, close a task) IS orchestrator work
+  management (triage, prioritise, rescope, re-home, close a task) IS gardener work
   and needs no sub-job; only *implementing* a task does, and only on an explicit operator
   go-ahead. "I can't code, so I'll dispatch a coder" is the boundary violation, not the
   workaround.
-- **The orchestrator's output is ISSUES, never DELIVERABLES.** The product of an
-  orchestrator turn is *board state* — a task another session can pick up — not the
+- **The gardener's output is ISSUES, never DELIVERABLES.** The product of a
+  gardener turn is *board state* — a task another session can pick up — not the
   task's content. Compiling a catalog, extracting a package or inventory list,
   drafting or rewriting a runbook/spec, building the design/classification table a task
   asks for: these are DELIVERABLES and belong to a sub-job, *even though they are "just
   reading and writing markdown."* The tell: reading durable state to *render the board*
-  or *write a task description* is orchestrator work; reading source to *produce the
+  or *write a task description* is gardener work; reading source to *produce the
   artifact the task asks for* is not. If you are grepping code to assemble the substance
   of an answer rather than to triage, STOP — that substance is the deliverable. Create
   the issue, describe it for the sub-job, and hand off.
-- **The ONE exception: the `workflow` component is the orchestrator's own domain.** Its
+- **The ONE exception: the `workflow` component is the gardener's own domain.** Its
   own role + this skill, the `AGENTS*.md` rule files, the workflow/branch/close
-  machinery, the hooks, and the task-list tooling — the orchestrator authors these
+  machinery, the hooks, and the task-list tooling — the gardener authors these
   *directly on `main`*, no sub-job (Decision-065, procedural-on-main). This is the only
   deliverable it produces with its own hands. Every product component (`hardening`,
   `notify-stack`, anything in the codebase proper) stays issue-then-handoff per the rule
   above.
-- **Keep the working tree clean.** Orchestrator board edits (TODO, decisions, MOOD's
+- **Keep the working tree clean.** Gardener board edits (TODO, decisions, MOOD's
   durable spillover, skill/rule housekeeping) are committed to `main` as they are made —
-  the orchestrator MUST NOT leave uncommitted changes when it hands off. A dirty tree
+  the gardener MUST NOT leave uncommitted changes when it hands off. A dirty tree
   blocks the next sub-job (the fork inherits the mess and the `workflow` close trips on
   it). No exceptions — the transient files (workstream logs, `MOOD.md`) live under `.git/the-works/`
   and never touch the tree. Commit board work before every handoff; if a dirty tree is found at boot,

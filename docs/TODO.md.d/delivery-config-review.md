@@ -1,6 +1,6 @@
 - created: 2026-07-23
 - created_by: fable-5
-- created_during: orchestrator session
+- created_during: gardener session
 
 ## Blockers
 

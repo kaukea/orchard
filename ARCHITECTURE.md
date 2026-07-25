@@ -22,12 +22,12 @@ build approval are human-only, always.
 
 | Role | Model | Dispatch | Scope & boundary |
 |---|---|---|---|
-| orchestrator | opus | top-level session (`claude --agent orchestrator`) | Knows the board, prioritises, holds MOOD, hands ONE feature to an architect on explicit operator go. Never codes; never opens a sidecar in steady state. Authors only the workflow component, directly on `main`. Never kills, reaps, or removes another agent's process, pane, window, or files — lingering state is reported to the operator, who rules on it. |
-| bloomer | fable-5 | own pane inside the orchestrator's window (`tools/bloomer-launch.sh` / `bloomer-teardown.sh`) | The Decision-027 intake-measurement instrument: turns a two-to-three-sentence functional spec into a converged WHAT. Question selection and stopping are owned by the statistical engine `tools/bloom_engine.py` (EIG + IRT/Fisher-information selection, SE-threshold stop; item parameters flagged uncalibrated); phrasing and parsing by the LLM. Asks only on measured low confidence, records voluntary deferrals, and reports a graduated confidence band over the bus — the orchestrator executes any launch. Single-writer on its task's sidecar. Scheduled backlog-prep passes stay with the demoted predecessor definition until the repoint follow-up. |
-| architect | opus | worktree session (`.claude/worktrees/<id>`, branch `f/<id>`) | One feature; its sidecar is the whole scope. Read-only discovery (parallel explorers) → plan agreed with the operator → **no file edit before MAKE IT SO** → builds/tests → on the operator's `THAT IS ALL`, countersigns and signals `finished` on the bus. Never reads the board or prior conversation. |
-| builder | sonnet | headless subagent from the architect | Exactly one step-spec; returns typed diff + self-test. |
-| housekeeper | sonnet | headless, in the MAIN repo, dispatched on the architect's `finished` signal | The deterministic close: verify docs, tag, squash-merge, push, remove worktree + branch. Verifies documentation, never authors it. |
-| bus | haiku | one per session, loaded at session start | Not on the pipeline — the sidecar that connects a session to the message bus. Announces its parent, watches its inbox, relays messages up, sends on request. Owns the mechanism so no other role learns it. Does nothing else. |
+| gardener | opus | top-level session (`claude --agent gardener`) | Knows the board, prioritises, holds MOOD, hands ONE feature to a landscaper on explicit operator go. Never codes; never opens a sidecar in steady state. Authors only the workflow component, directly on `main`. Never kills, reaps, or removes another agent's process, pane, window, or files — lingering state is reported to the operator, who rules on it. |
+| bloomer | fable-5 | own pane inside the gardener's window (`tools/bloomer-launch.sh` / `bloomer-teardown.sh`) | The Decision-027 intake-measurement instrument: turns a two-to-three-sentence functional spec into a converged WHAT. Question selection and stopping are owned by the statistical engine `tools/bloom_engine.py` (EIG + IRT/Fisher-information selection, SE-threshold stop; item parameters flagged uncalibrated); phrasing and parsing by the LLM. Asks only on measured low confidence, records voluntary deferrals, and reports a graduated confidence band over the courier — the gardener executes any launch. Single-writer on its task's sidecar. Scheduled backlog-prep passes stay with the demoted predecessor definition until the repoint follow-up. |
+| landscaper | opus | worktree session (`.claude/worktrees/<id>`, branch `f/<id>`) | One feature; its sidecar is the whole scope. Read-only discovery (parallel explorers) → plan agreed with the operator → **no file edit before MAKE IT SO** → builds/tests → on the operator's `THAT IS ALL`, countersigns and signals `finished` on the courier. Never reads the board or prior conversation. |
+| sower | sonnet | headless subagent from the landscaper | Exactly one step-spec; returns typed diff + self-test. |
+| groundskeeper | sonnet | headless, in the MAIN repo, dispatched on the landscaper's `finished` signal | The deterministic close: verify docs, tag, squash-merge, push, remove worktree + branch. Verifies documentation, never authors it. |
+| courier | haiku | one per session, loaded at session start | Not on the pipeline — the sidecar that connects a session to the message courier. Announces its parent, watches its inbox, relays messages up, sends on request. Owns the mechanism so no other role learns it. Does nothing else. |
 
 Isolation is per-dispatch (native worktrees), not a per-repo mode. One writer
 per task, always.
@@ -47,9 +47,9 @@ PR comment revises.
 
 | Cloud role | Model | Hop | Scope & boundary |
 |---|---|---|---|
-| orchestrator-cloud | haiku | `ENGAGE` → prologue | Resolves issue → task id (board `gh#` badge), checks the sidecar is ripe, flips the board to `doing` (its only `main` write, `docs/TODO.md` alone), creates `f/<id>`. Never plans or builds. |
-| architect-cloud | opus | PLAN · BUILD · REVISE | Authors the tech plan and plan comment; on `MAKE IT SO` builds, tests, authors close docs, opens the PR (`Fixes #n`); revises on review comments. Never merges, never writes the board, never self-emits a gate. |
-| housekeeper-cloud | haiku | `THAT IS ALL` → close | Verifies the close-docs gate, amends, tags `archive/<id>`, `gh pr merge --squash`, commit-count note. The only role merging feature work into `main`; engages once, post-approval. |
+| gardener-cloud | haiku | `ENGAGE` → prologue | Resolves issue → task id (board `gh#` badge), checks the sidecar is ripe, flips the board to `doing` (its only `main` write, `docs/TODO.md` alone), creates `f/<id>`. Never plans or builds. |
+| landscaper-cloud | opus | PLAN · BUILD · REVISE | Authors the tech plan and plan comment; on `MAKE IT SO` builds, tests, authors close docs, opens the PR (`Fixes #n`); revises on review comments. Never merges, never writes the board, never self-emits a gate. |
+| groundskeeper-cloud | haiku | `THAT IS ALL` → close | Verifies the close-docs gate, amends, tags `archive/<id>`, `gh pr merge --squash`, commit-count note. The only role merging feature work into `main`; engages once, post-approval. |
 
 Runners have no kauk: each job overlays `agents/` and `skills/` into `.claude/`
 (the committed symlinks point into the untracked `.ai/` clone). Auth has two layers: the Claude CLI runs on the
@@ -63,13 +63,13 @@ manual issue comments on this surface — GitHub has no iterative-survey
 primitive, so the bloomer instrument is local-pane only; operator-less
 statistical kick-off on the cloud surface is deferred with it.
 
-## The message bus
+## The message courier
 
 A cross-cutting channel between top-level sessions, orthogonal to the pipeline —
 no role depends on it to do its own job, and it belongs to no single agent type.
 
 ```
-session ──spawns──> bus sidecar ──announce──> every peer's inbox
+session ──spawns──> courier sidecar ──announce──> every peer's inbox
                           │
    inbox events ──────────┘──SendMessage──> its own parent
 ```
@@ -77,16 +77,16 @@ session ──spawns──> bus sidecar ──announce──> every peer's inbox
 - **Address** = the session id (`CLAUDE_CODE_SESSION_ID`), never derived from
   location. Role and worktree are separate facts, not folded into the address.
 - **Transport** = one JSON file per message under
-  `$(git rev-parse --git-common-dir)/the-works/bus/<session-id>/`, so every
-  worktree of a repo shares one bus and nothing is committed. The set of folders
+  `$(git rev-parse --git-common-dir)/the-works/courier/<session-id>/`, so every
+  worktree of a repo shares one courier and nothing is committed. The set of folders
   IS the registry; there is no broker for ordinary traffic.
-- **Exception: `bus.py ask`** (sidebar-polish, a lean trial) blocks for a reply —
+- **Exception: `courier.py ask`** (sidebar-polish, a lean trial) blocks for a reply —
   the one deliberate departure from "no delivery guarantee," used to put a
   question to the operator. `tools/orchard-question-broker.py` is a narrow,
   token-free broker (a plain process, never an agent) that watches for question
   envelopes, defers popping while the operator has input in flight, pops a
   native tmux popup accepting only the defined option keys, and answers back
-  over the bus (`send --in-reply-to`) — none of that policy is exposed to the
+  over the courier (`send --in-reply-to`) — none of that policy is exposed to the
   asking agent. A `Notification` harness hook backstops harness-native prompts
   that bypass this path.
 - **No supervision kills** (operator ruling, 2026-07-25): no agent ever kills,
@@ -108,50 +108,50 @@ session ──spawns──> bus sidecar ──announce──> every peer's inbox
   parent's transcript, so they cost the parent no context and keep answering while
   it is busy or wedged.
 - Agents **broadcast on a specified vocabulary** — WIRE GRAMMAR v1, canonical in
-  `agents/bus.md`, mechanically enforced by `bus.py` (any other `orchid:*` body is
+  `agents/courier.md`, mechanically enforced by `courier.py` (any other `orchid:*` body is
   rejected at send). Five classes, each with a declared consumer:
   `orchid:status:<word>` (one/two agent-chosen doing-words, on change only),
   `orchid:update:<sentence>` (log/cockpit-targeted), `orchid:phase:<phase>[:<k>/<n>]`
   (the five-phase spine ideation→scoping→designing→building→releasing, from which
   the sidebar derives a live percentage), `orchid:subagent:queue|start|done:<label>`
   (counts are the message), and `orchid:interrupt:question:<subject>` (emitted only
-  by `bus.py ask`). Exactly three DERIVED interrupts may summon the operator —
+  by `courier.py ask`). Exactly three DERIVED interrupts may summon the operator —
   QUESTION ⇐ ask, SUCCEEDED ⇐ done/finished, FAILED ⇐ abandoned/blocked+notify —
   and `--notify-user` is illegal everywhere else. Sidecars never author wire text
-  of their own. `bus.py validate` audits recorded traffic against the grammar.
-  No new mechanism: plain broadcasts on the same bus.
+  of their own. `courier.py validate` audits recorded traffic against the grammar.
+  No new mechanism: plain broadcasts on the same courier.
 - **Operator approvals relay** as a distinct operator-origin class: an approval
-  typed outside an agent's own window (e.g. in the orchestrator pane) is forwarded
+  typed outside an agent's own window (e.g. in the gardener pane) is forwarded
   verbatim with an `operator_origin` flag, which a gate-waiting agent accepts as the
   operator's own word — ordinary peer traffic never closes a gate (Decision-047). A
-  close reaches a bus as a **wake** (an inbound message resuming it), never a passive
-  timeout; on that wake the bus tears down its own inotify watch before departing
+  close reaches a courier as a **wake** (an inbound message resuming it), never a passive
+  timeout; on that wake the courier tears down its own inotify watch before departing
   (Decisions 046, 041).
 
 ## The fleet sidebar
 
-A pinned left pane in every orchestrator and architect window, mounted at launch
+A pinned left pane in every gardener and landscaper window, mounted at launch
 (`tools/sidebar-mount.sh`, idempotent and strictly best-effort). One renderer per
 mount, all showing the same global picture.
 
 ```
-bus (per repo) ──observed──> sidebar_model ──Fleet──> sidebar.py (curses)
+courier (per repo) ──observed──> sidebar_model ──Fleet──> sidebar.py (curses)
                                                             │ Enter
                                                             └─> sidebar_nav ──> tmux switch
 ```
 
-- **Reads the bus as a pure observer** across every repository the Orchard
+- **Reads the courier as a pure observer** across every repository the Orchard
   registry (`~/.config/orchids/sidebar-registry.json`, `tools/orchard_registry.py`)
-  currently resolves as visible — never mutating a bus file. Installing orchids
+  currently resolves as visible — never mutating a courier file. Installing orchids
   in a repo (`.ai.toml` presence) registers it there and it appears in every
   mounted sidebar immediately, no add command; hiding a repo is conversational
   (ask any agent, or `/orchard hide <name>`/`show`) and persists across remounts.
   `$ORCHIDS_SIDEBAR_REPOS` survives only as an explicit manual override. State is
   attributed by message sender and accumulated in memory, so it survives the
-  bus's ephemerality; a sender's state is evicted once its own terminal lifecycle
+  courier's ephemerality; a sender's state is evicted once its own terminal lifecycle
   signal is observed. Updates are event-driven (inotify), never polled.
 - **Renders the approved display grammar** (fixed visual contract: the blessed
-  mock archived with the bus-message-specifying stream). Repo headers are solid
+  mock archived with the courier-message-specifying stream). Repo headers are solid
   per-repo hue blocks; a feature is ONE line — its name drawn over the progress
   fill derived from the phase channel, right-aligned percentage, dim-amber `?N`
   badge when questions wait (never red). One circle family carries state: ✓ done
@@ -171,29 +171,29 @@ bus (per repo) ──observed──> sidebar_model ──Fleet──> sidebar.py
   degrading gracefully on a limited terminal. Truncated text ends in an ellipsis,
   never a hard cut. Role names appear nowhere; structure carries the role.
 - **Navigates** by matching the tmux window name — the bare repository name for a
-  repository's orchestrator, `<repo> ▸ <human name>` for a feature (the
+  repository's gardener, `<repo> ▸ <human name>` for a feature (the
   session-naming display forms, Decision-032). The human name is read from the
   board's authored short title (`docs/TODO.md`) / sidecar H1 — never a runtime
   grammar transform — falling back to the mechanical hyphen-to-space form only
   pre-intake (`tools/feature_name.py`, one helper, every title call site).
   Switching the client happens on Enter. Windows carry the human-readable
-  identity. Teardown and reaping key off a stable `@arch_id` tmux **window**
-  user-option, set on the architect window at launch — immune to the live
-  status-glyph indicator that clobbers pane titles. `arch:<id>` survives only as
-  a non-load-bearing human hint on the pane title. `@arch_id` is the small stable
+  identity. Teardown and reaping key off a stable `@landscaper_id` tmux **window**
+  user-option, set on the landscaper window at launch — immune to the live
+  status-glyph indicator that clobbers pane titles. `land:<id>` survives only as
+  a non-load-bearing human hint on the pane title. `@landscaper_id` is the small stable
   handle contract the sidebar mount also consumes.
-- **Mounted automatically** at the orchestrator's own boot, in addition to the
-  existing per-architect-spawn mount — no manual step either way
+- **Mounted automatically** at the gardener's own boot, in addition to the
+  existing per-landscaper-spawn mount — no manual step either way
   (`tools/sidebar-mount.sh`, idempotent).
-- Components in `tools/`: `sidebar.py` (renderer), `sidebar_model.py` (bus
+- Components in `tools/`: `sidebar.py` (renderer), `sidebar_model.py` (courier
   reader), `sidebar_nav.py` (navigation), `sidebar-mount.sh` (mount),
   `orchard_registry.py` (repo registration/visibility), `feature_name.py` (ledger
-  name resolution), `orchard-question-broker.py` (the bus-ask popup broker,
+  name resolution), `orchard-question-broker.py` (the courier-ask popup broker,
   above). `/orchard show|hide` is a skill (`skills/orchard/`).
 
 ## The topic transport (bus-transport-v2)
 
-Sanctioned agent-activity telemetry, decoupled from the inbox bus — no fan-out,
+Sanctioned agent-activity telemetry, decoupled from the inbox courier — no fan-out,
 no agent woken.
 
 ```
@@ -203,7 +203,7 @@ agents ──orchard_topic.py post──> $XDG_RUNTIME_DIR/orchard/topics/reposi
 - **`tools/orchard_topic.py`** (event producer) — the only sanctioned writer of a
   project topic: `post <lifecycle|status|delegation|outcome|task> …`, absolute
   validation, violations refused + telemetry + a rejection bounced to the sender.
-  Every event carries the two bus-supplied operations (identity immutable, status
+  Every event carries the two courier-supplied operations (identity immutable, status
   mutable); the project is the git repo via `--git-common-dir`, so all worktrees
   post to one topic directory.
 - **`tools/sidebar_v3.py`** (topic consumer) — renders the active projects and
@@ -254,10 +254,10 @@ symlink, everyone), `template` (install-time copy, then project-owned),
 ## Repo layout
 
 ```
-agents/            five pipeline roles + bus sidecar (→ .claude/agents/)
+agents/            five pipeline roles + courier sidecar (→ .claude/agents/)
 skills/<name>/     SKILL.md packages (→ .claude/skills/, per role)
-hooks/             bus-init.sh · bus-end.sh (→ .claude/hooks/)
-tools/             board_lint.py · board_stale.py · bus.py · orchard_topic.py · architect-teardown.sh · sidebar.py · sidebar_model.py · sidebar_nav.py · sidebar_v3.py · sidebar-mount.sh (→ .claude/tools/)
+hooks/             courier-init.sh · courier-end.sh (→ .claude/hooks/)
+tools/             board_lint.py · board_stale.py · courier.py · orchard_topic.py · landscaper-teardown.sh · sidebar.py · sidebar_model.py · sidebar_nav.py · sidebar_v3.py · sidebar-mount.sh (→ .claude/tools/)
 templates/         AGENTS.md (template) · CLAUDE.md (prefix block)
 migrations/        dated structural-upgrade instructions (YYYY-MM-DD-<slug>.md); applied
                    per clone against the .git/the-works/migrated watermark

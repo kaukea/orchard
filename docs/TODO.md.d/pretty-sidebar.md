@@ -16,12 +16,12 @@
 
 ## Findings
 
-- UI SPEC (operator, direct 2026-07-25 — display only, NEVER bus data):
+- UI SPEC (operator, direct 2026-07-25 — display only, NEVER courier data):
   - A project appears only when an agent posts in its topic dir; the FIRST poster
-    is the orchestrator and becomes the project header.
+    is the gardener and becomes the project header.
   - 5-phase ACCORDION: raw states MAP to the phases in the UI; the active phase
     is OPEN (agent inside), others CLOSED until activity.
-  - Active row: `orchestrator . model` line, then the ≤2-word status line.
+  - Active row: `gardener . model` line, then the ≤2-word status line.
     Default: large EMPTY circle, neutral colour; flips to soft-RED/soft-GREEN
     background + FILLED circle on fail/success.
   - NO spinner on the open feature/task — it is obviously active.
@@ -40,7 +40,7 @@
 Reformat, animate and colorise `sidebar_v3.py` on the topic-data foundation:
 project → feature → task grouping for concurrent features, the 5-phase accordion,
 outcome colouring and collapse — exactly the dictated UI spec above. The phase
-mapping lives in the UI; no new fields ride the bus.
+mapping lives in the UI; no new fields ride the courier.
 
 ## Testing
 

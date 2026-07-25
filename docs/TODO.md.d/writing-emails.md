@@ -76,22 +76,22 @@ connector/MCP integration work; producing specific finished correspondence.
 ### Explicit voluntary deferrals (Decision-027)
 - **Sensitivity classification boundary** — which non-secure@ mail counts as
   "very sensitive" is left to agent judgement with a when-in-doubt-treat-as-
-  sensitive default; a sharper definition is deferred to the architect's plan.
+  sensitive default; a sharper definition is deferred to the landscaper's plan.
 - **Voice/tone/style content** of the skill (beyond plain-text) — unmeasured
-  this round; deferred to the architect's plan phase with the operator.
+  this round; deferred to the landscaper's plan phase with the operator.
 - **Engine deferral candidates** `surface` and `email-domain` — stopped by
   exhaustion, not convergence; substance operator-confirmed but uncertified by
   the v1 proxy. Re-examine at plan review.
 
 ## Testing
 To be agreed with the operator at build time. Candidate method staged for the
-architect: draft one ordinary email via thunderbird-secure and one via the Gmail
+landscaper: draft one ordinary email via thunderbird-secure and one via the Gmail
 connector; exercise the sensitive path with a local-only vehicle and verify the
 no-cloud rule holds; confirm the per-email approval gate is enforced before any
 send; verify plain-text output.
 
 ## Decision entries
-Staged for orchestrator promotion to docs/decisions.md (operator rulings,
+Staged for gardener promotion to docs/decisions.md (operator rulings,
 2026-07-24, measured during the writing-emails bloom round):
 - `#email #skills` — Email-writing skill scope is a RULE, not a list: any email
   an agent writes for a human reader is governed; machine-formatted technical

@@ -9,14 +9,14 @@
 ## Questions
 
 - OPEN: the operator's definition of the subagent's remit and its seam with the
-  orchestrator was cut off mid-sentence ("in a subagent that…") in the
+  gardener was cut off mid-sentence ("in a subagent that…") in the
   app-identifying session — ask him to complete it BEFORE any plan.
 
 ## Findings
 
 - SEAM 1 of the unified local/remote loop (see merge-ordering sidecar): the
-  launcher owns the local-vs-remote check; the orchestrator calls it blind.
-  Local → create worktree + spawn architect. Remote → NO-OP (runner checkout +
+  launcher owns the local-vs-remote check; the gardener calls it blind.
+  Local → create worktree + spawn landscaper. Remote → NO-OP (runner checkout +
   f/<id> branch already exist, created by the ENGAGE prologue).
 - Rationale: worktree creation + agent launching is implementation-detail
   mechanics with no cloud analogue; factoring it out mirrors the cloud's
@@ -24,12 +24,12 @@
 
 ## Proposal
 
-Extract the git-worktree creation + architect launching the local orchestrator
-performs at handoff into its own launcher subagent, so the orchestrator's
+Extract the git-worktree creation + landscaper launching the local gardener
+performs at handoff into its own launcher subagent, so the gardener's
 handoff step is mode-agnostic.
 
 ## Testing
 
 To agree when bloomed — expected: a local handoff through the launcher yields
-the same worktree/pane topology as today; the orchestrator no longer runs
+the same worktree/pane topology as today; the gardener no longer runs
 git worktree/tmux commands itself.

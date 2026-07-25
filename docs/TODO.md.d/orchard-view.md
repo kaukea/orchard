@@ -20,7 +20,7 @@
   exist, how many pressing / broken / blocked issues each carries, and cross-repository
   dependencies (worked example: manifest-by-convention re-homed orchids→kauk). From that
   view the operator chooses where to engage.
-- Presentation-only by ruling: Orchard renders what orchestrators prepared
+- Presentation-only by ruling: Orchard renders what gardeners prepared
   ([[orchard-summary]]) — it never scans repos or re-derives priorities.
 - [[github-board-sync]] (functional) already aggregates the fleet on GitHub (Orchidarium
   Project); Orchard is the local terminal counterpart — same data, different surface.

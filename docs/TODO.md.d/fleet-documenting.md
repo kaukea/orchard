@@ -25,9 +25,9 @@
   channel is documented — event names, and a JSON Schema attached to each,
   "like we agreed in a previous decision". No decision entry in
   docs/decisions.md records that agreement explicitly, but the precedent
-  artifact exists: `tools/message.schema.json` ships with the bus — the
+  artifact exists: `tools/message.schema.json` ships with the courier — the
   convention to extend.
-- Channel inventory to document (as of today): bus envelope (announce /
+- Channel inventory to document (as of today): courier envelope (announce /
   depart / send / broadcast / signal / status), lifecycle signals
   (on-closing / on-closed / finished / abandoned / done / blocked, plus
   the supervisor's kill-broadcast, Decision-068), activity broadcasts

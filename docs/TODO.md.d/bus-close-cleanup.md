@@ -1,6 +1,6 @@
 - created: 2026-07-25
 - created_by: Sebastien Lambla
-- created_during: orchestrator session (operator order, absolute priority)
+- created_during: gardener session (operator order, absolute priority)
 
 ## Blockers
 
@@ -15,56 +15,56 @@
 
 - OPERATOR ORDER (2026-07-25), verbatim intent: the recurring dead-inbox /
   orphaned-folder "big problem" is NOT a real problem — it is a symptom of the
-  bus never closing properly, and it has been raised before and still not
+  courier never closing properly, and it has been raised before and still not
   dealt with. Make this ABSOLUTE PRIORITY. The proposed reaper is REJECTED: a
   reaper would only exist to delete the folders that collect and listen
   (the inbox spool + the monitor), and those only orphan because proper close
   does not run. Fix the close, not the litter.
-- ROOT CAUSE: session/agent close kills the bus's MONITOR (the `inotifywait`
-  watcher) directly, instead of WAKING the bus sidecar with a close/release
-  message so it can run its own teardown. Killed externally, the bus never
+- ROOT CAUSE: session/agent close kills the courier's MONITOR (the `inotifywait`
+  watcher) directly, instead of WAKING the courier sidecar with a close/release
+  message so it can run its own teardown. Killed externally, the courier never
   gets to: delete its inbox folder, discard remaining content, verify its
   watcher is dead, and depart. So the inbox folder and its accumulated
   messages are left behind — the 244-file `ac9f36c6` orphan and every "dead
   inbox" complaint since.
 - ROOT CAUSE SHARPENED (operator, 2026-07-25): this is an instance of a
-  broader PREMATURE-KILL pattern — the HOUSEKEEPER (and/or the teardown
+  broader PREMATURE-KILL pattern — the GROUNDSKEEPER (and/or the teardown
   scripts) kills components before those components have had time to clean up
-  after themselves. The window/panes are reaped — taking the bus's monitor
-  process with them — BEFORE the bus was woken to self-teardown. So the
+  after themselves. The window/panes are reaped — taking the courier's monitor
+  process with them — BEFORE the courier was woken to self-teardown. So the
   ordering is inverted: reaping-the-live happens before the-live-finishes-
   self-cleanup. This directly contradicts Decision-041's own rule ("the
   closing agent kills itself; parents reap only the DEAD"). Suspect sites for
   the fix to re-sequence: `tools/architect-teardown.sh` (window-granular
-  `@arch_id` kill, agent-closing D1) and the housekeeper/orchestrator reaping.
+  `@arch_id` kill, agent-closing D1) and the groundskeeper/gardener reaping.
   FIX ORDERING — this RESTORES Decision-041 (already ruled), it is not a new
   design. Decision-041: components clean up after THEMSELVES; the closing
-  agent kills itself; the orchestrator reaps ONLY an agent that died first.
-  So the housekeeper does NOT kill live components at all — that was never
+  agent kills itself; the gardener reaps ONLY an agent that died first.
+  So the groundskeeper does NOT kill live components at all — that was never
   her job. The rule (operator 2026-07-25):
-  (1) each component closes its OWN — the bus, woken via the self-message
-      below, closes its monitor and tears its own folder; the architect runs
-      its own teardown (release bus → architect-teardown.sh);
-  (2) the housekeeper's only destructive touch is FILES (the git close:
+  (1) each component closes its OWN — the courier, woken via the self-message
+      below, closes its monitor and tears its own folder; the landscaper runs
+      its own teardown (release courier → landscaper-teardown.sh);
+  (2) the groundskeeper's only destructive touch is FILES (the git close:
       docs, tag, squash-merge, push) and it happens LAST — after components
       have self-closed;
-  (3) reaping a component is the ORCHESTRATOR's fallback for one that died
+  (3) reaping a component is the GARDENER's fallback for one that died
       WITHOUT self-closing — never a routine kill of the live.
   The current bug is exactly the violation: components are being killed
-  (by the housekeeper / teardown ordering) BEFORE they self-close, so the
-  bus never gets its turn. Restore the decision: self-close first, files
+  (by the groundskeeper / teardown ordering) BEFORE they self-close, so the
+  courier never gets its turn. Restore the decision: self-close first, files
   last, reap only the already-dead.
 - PRIOR ART — this was already ruled and only half-delivered:
-  - Decision-041 (self-teardown at close; a bus is RELEASED by parent close or
+  - Decision-041 (self-teardown at close; a courier is RELEASED by parent close or
     self-exits when ORPHANED) — charters only, no mechanical enforcement.
-  - Decision-046 (active-wake): a bus blocked on its monitor must be WOKEN by
+  - Decision-046 (active-wake): a courier blocked on its monitor must be WOKEN by
     an inbound message and tear its monitor down ITSELF; killing the monitor
-    externally leaves the bus asleep forever. Delivered on f/agent-closing as
+    externally leaves the courier asleep forever. Delivered on f/agent-closing as
     D2 = CHARTER TEXT in agents/bus.md only, explicitly marked
     UNVERIFIED-until-live. The mechanical close path was never changed to
-    send the wake, so charter text telling the bus to wake never fires.
+    send the wake, so charter text telling the courier to wake never fires.
   - First live observation (2026-07-21, agent-closing sidecar §Testing)
-    already recorded the monitor OUTLIVING the departed bus — evidence the
+    already recorded the monitor OUTLIVING the departed courier — evidence the
     charter-only fix did not hold.
 - The whole [[bus-message-specifying]] "dead inbox" evidence trail
   (exhibits, the 244-file census, the cost model) traces to THIS bug, not to
@@ -78,11 +78,11 @@ THE GOVERNING CONTRACT (operator, 2026-07-25) — the two-phase close is the
 interlock that makes premature-kill structurally impossible; the fix is to
 HONOUR it, not add machinery:
 - CLOSING = "I'm cleaning, go away" — the agent is actively self-tearing-down
-  (bus closes its monitor + folder; architect runs its teardown). NOTHING
+  (courier closes its monitor + folder; landscaper runs its teardown). NOTHING
   reaps an agent in `closing`. Hands off.
 - CLOSED = "take it away, mama" — self-cleanup is COMPLETE; only now is it
   safe for a parent to remove whatever remains.
-The bug is any reap of an agent still in `closing`. The reaper/housekeeper
+The bug is any reap of an agent still in `closing`. The reaper/groundskeeper
 acts ONLY on `closed`. WIRE TOUCHPOINT (observation for the operator, not a
 self-made change): WIRE GRAMMAR v1's lifecycle enum is
 started/building/testing/done/finished/blocked/abandoned — it does not carry
@@ -90,30 +90,30 @@ an explicit `closing` vs `closed` pair; the fix may need the two-phase signal
 made explicit on the wire so a reaper can tell "still cleaning" from "safe to
 take away". To confirm at dispatch.
 
-Make close mechanically WAKE the bus, and let the bus delete its own folders.
+Make close mechanically WAKE the courier, and let the courier delete its own folders.
 
 MECHANISM (operator, 2026-07-25) — the wake IS a message, using only today's
-mechanics. The bus sidecar is asleep, blocked on its `inotifywait`; the ONLY
+mechanics. The courier sidecar is asleep, blocked on its `inotifywait`; the ONLY
 thing that wakes it is a message arriving in the folder it watches. So:
 - The closing agent SENDS ITSELF a message — "I'm closing, stop all messaging
   function." That write lands in the watched inbox and trips the monitor.
-- The bus wakes on it, recognizes the close directive, CLOSES ITS OWN MONITOR
+- The courier wakes on it, recognizes the close directive, CLOSES ITS OWN MONITOR
   (the charter already says it knows how — Decision-046), tears down its inbox
   folder, and exits cleanly, leaving NOTHING behind.
 - NEVER kill the monitor externally — an externally-killed monitor never gives
-  the bus the turn it needs to clean up (the exact current bug).
+  the courier the turn it needs to clean up (the exact current bug).
 
 One corrective, built on that mechanism:
-- The close path (architect-teardown, orchestrator retirement) performs the
+- The close path (landscaper-teardown, gardener retirement) performs the
   self-message wake instead of killing the monitor process.
-- On that wake the bus runs its existing teardown: recognize the close signal,
+- On that wake the courier runs its existing teardown: recognize the close signal,
   stop the watcher, VERIFY it is gone, `bus.py teardown` its inbox folder
   (removing the folder that collects) and depart.
 - The orphan path (parent already dead, no wake possible) is the one place a
   swept cleanup is legitimate — bounded to that case only, not a general
   reaper.
 - No new reaper, no TTL sweeper, no daemon.
-Scope to agree at dispatch; the fix touches the teardown scripts and the bus
+Scope to agree at dispatch; the fix touches the teardown scripts and the courier
 charter's wake mechanics, not the transport grammar. Same self-message wake is
 what assures the cross-agent-notify scenario ([[bus-message-specifying]]
 round 18): a live listener is one a message can reach and turn.
@@ -122,24 +122,24 @@ round 18): a live listener is one a message can reach and turn.
 
 The grammar feature's own close reproduced the bug end to end, on the
 current (unfixed) machinery:
-- The architect signalled `finished`; its teardown ran but found NO
+- The landscaper signalled `finished`; its teardown ran but found NO
   `.return-window` marker for its pane, so it could not return focus —
-  it handed the window to the orchestrator's reaper (a focus-return
+  it handed the window to the gardener's reaper (a focus-return
   defect, [[focus-returning]]).
-- The bus did NOT self-clean: its inbox folder survived with 3 undrained
-  messages — all of them the orchestrator's OWN `awaiting operator
+- The courier did NOT self-clean: its inbox folder survived with 3 undrained
+  messages — all of them the gardener's OWN `awaiting operator
   (native prompt)` broadcasts from 2026-07-24, fanned in and never
   consumed, then orphaned at close. The litter is the fan-out + dead-inbox
   mechanism caught in the act.
-- The orchestrator reaped by hand: `bus.py teardown` on the dead session's
+- The gardener reaped by hand: `bus.py teardown` on the dead session's
   inbox + `tmux kill-window`. That manual reap is exactly the self-clean
-  the fix must make the bus do for itself, in the `closing` phase, before
+  the fix must make the courier do for itself, in the `closing` phase, before
   any reaper touches it.
 
 ## Testing
 
 To agree at dispatch — expected shape: drive a real feature close and observe
-(tmux list-panes + bus roster + spool listing) that after `THAT IS ALL` /
-`ALL IT IS` no bus inbox folder, monitor process, pane, or session of the
+(tmux list-panes + courier roster + spool listing) that after `THAT IS ALL` /
+`ALL IT IS` no courier inbox folder, monitor process, pane, or session of the
 closed feature remains. This is the live-close observation Decision-046 was
 left waiting on; it is the gate.

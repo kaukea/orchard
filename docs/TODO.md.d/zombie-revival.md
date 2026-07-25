@@ -8,7 +8,7 @@
 ## Questions
 
 - ~~Is revival universal, or scoped to roles worth reviving?~~ Answered (operator,
-  2026-07-21): WHITELISTED child→parent scenarios only — architect → orchestrator for
+  2026-07-21): WHITELISTED child→parent scenarios only — landscaper → gardener for
   now. Subagents are irrelevant by construction (same session id as their parent).
 - ~~How does the SessionStart guard distinguish the operator's manual resume from an
   agent's CLI bypass?~~ Resolved (operator, 2026-07-21): it doesn't — no discriminator
@@ -20,7 +20,7 @@
 ## Findings
 
 - Operator spec (2026-07-21): delivery to a ZOMBIE (a session that died, e.g. an
-  orchestrator that must be revived) is decided by SCRIPTS, not models — the delivery
+  gardener that must be revived) is decided by SCRIPTS, not models — the delivery
   path checks whether the session id still has a live pid; if not, it restores the
   session BEFORE delivering. The respawn race is avoided by a LOCK on the session-id
   folder while respawning.
@@ -38,7 +38,7 @@
 
 ## Proposal
 
-The bus delivery path gains a script-side liveness gate: under `flock` on the
+The courier delivery path gains a script-side liveness gate: under `flock` on the
 recipient's session-id folder — is the session id's pid alive? If not, and ONLY if
 the revival is authorised, `claude --resume <session-id>`; then unlock and deliver.
 Scripts decide everything; models decide nothing. The delivery gate also inherits [[bus-liveness]]'s residue:
@@ -50,12 +50,12 @@ bypass the gate and burn tokens):
 
 - A message may carry `{resurrect: true}`. The SENDER requests; the delivery SCRIPT
   decides: the flag is honoured only when the (sender role → target role) edge is on
-  a whitelist compiled into the script — `{architect → orchestrator}` for now.
+  a whitelist compiled into the script — `{landscaper → gardener}` for now.
   Orphaned agents are the Unix orphan mess replayed in agentic form: nothing adopts
   them automatically. Mail to a dead session without an authorised resurrect just
   queues in the inbox.
 - Direct-CLI bypass dies at birth: when the script legitimately revives, it writes a
-  ONE-SHOT resurrection token (nonce + edge + timestamp) into the dead session's bus
+  ONE-SHOT resurrection token (nonce + edge + timestamp) into the dead session's courier
   folder before `claude --resume`, consumed at start. The SessionStart hook — which
   already runs everywhere — adds one stat(): session registered dead + no valid token
   → refuse the boot before any model turn runs. A model resuming by hand gets a

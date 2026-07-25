@@ -16,7 +16,7 @@
 - Repeat-probe policy: deliberate re-probing is legitimate instrument
   machinery (consistency checks, reliability triangulation) — so what
   separates justified repeats from the wasteful kind seen in the live run,
-  and what bounds them? (Orchestrator's UNCONFIRMED suggestion, needing
+  and what bounds them? (Gardener's UNCONFIRMED suggestion, needing
   operator confirmation at scope: an expected-information-gain floor per
   administered item.)
 
@@ -27,7 +27,7 @@
   group many questions so the respondent answers them one at a time from the
   same tab, saving tokens and operator time. He was probed five times on
   near-identical cloud-agents-and-email ground.
-- Analysis (orchestrator, same day): one-item-at-a-time is NOT required by
+- Analysis (gardener, same day): one-item-at-a-time is NOT required by
   the machinery. Multistage testing (block → score → route, the GRE's model)
   keeps all but a few percent of pure-CAT efficiency; and with several
   largely independent dimensions, cross-axis adaptivity is weak — a block of

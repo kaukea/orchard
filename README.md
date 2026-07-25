@@ -11,7 +11,7 @@ versioned in one place and delivered identically to every repository you own.
 
 ## Five agents, one assembly line
 
-You talk to the **orchestrator** — it knows the board, reads your mood, and
+You talk to the **gardener** — it knows the board, reads your mood, and
 suggests what's worth doing next. It never writes a line of code.
 
 While you think, the **bloomer** measures what you actually want: point it
@@ -21,59 +21,59 @@ scope converges with an explicit confidence number. High confidence can
 launch the work; anything less comes back to you with the loose ends
 named.
 
-Say go, and an **architect** takes ONE feature into its own worktree. It
+Say go, and a **landscaper** takes ONE feature into its own worktree. It
 explores read-only, agrees a plan with you, and touches nothing until you say
 **MAKE IT SO**. No surprise diffs, no "while I was in there".
 
-The architect fans the build out to **builders** — headless workers that each
+The landscaper fans the build out to **sowers** — headless workers that each
 take one tight step and hand back a diff with its own test result.
 
-And when you say it's done, the **housekeeper** runs the close: docs verified,
+And when you say it's done, the **groundskeeper** runs the close: docs verified,
 tagged, squash-merged, pushed, cleaned up. The same close, every single time.
 
 Nothing lives in chat. Scope, findings, decisions, progress — all of it is
 files in the repo, so any agent picks up cold exactly where the last one
 stopped.
 
-One more agent isn't on the line at all. Every session quietly loads a **bus** —
+One more agent isn't on the line at all. Every session quietly loads a **courier** —
 a sidecar that lets independent agents in the same repository talk to each other,
-so the orchestrator can hold a live picture of who is running, how far along they
+so the gardener can hold a live picture of who is running, how far along they
 are, and how much context they have left before they need handing over. You'll
 see it as a `messages · …` line in your pane. You never address agents yourself;
 it's how they reach each other, not you.
 
 **And you get to watch.** A fleet sidebar mounts automatically as a pinned left
-pane in every orchestrator and architect window: a live tree of every
+pane in every gardener and landscaper window: a live tree of every
 repository, the features under it, what each one is doing *right now*, and any
-sub-agents in flight — all read straight off the bus (agents broadcast
+sub-agents in flight — all read straight off the courier (agents broadcast
 `orchid:activity:<text>` and `orchid:subagent:start|done:<label>` as ordinary
 messages; no extra machinery). Rows carry a status emoji, flash when something
 is waiting on **you**, and arrow keys + Enter jump you straight to that work's
 tmux window. It shows the current repository by default; list more in
 `~/.config/orchids/sidebar-repos` (one path per line) or `ORCHIDS_SIDEBAR_REPOS`.
 
-## Bus messages, as built (audit inventory, 2026-07-25)
+## Courier messages, as built (audit inventory, 2026-07-25)
 
 The complete set of pre-fixed / formatted messages that exist in the codebase
-today (`tools/bus.py` + the agent definitions), recorded here as the baseline
+today (`tools/courier.py` + the agent definitions), recorded here as the baseline
 for the redesign. Delivery is unconditional fan-out: every message is copied
 into every registered session's spool folder — dead inboxes included — and
-every live agent's bus sidecar wakes on every copy.
+every live agent's courier sidecar wakes on every copy.
 
 | Format | Sent by | Defined in |
 |---|---|---|
-| `announce` — identity envelope (session id, feature) | bus sidecar at session start | `bus.py announce` |
-| `depart` — departure broadcast | bus sidecar at session end | `bus.py depart` |
-| `signal --state started·building·testing·done·finished·blocked·abandoned` | agent (to parent, else broadcast), always as itself | `bus.py signal` |
-| `orchid:activity:<free text>` | **agents directly** (`bus.py broadcast`, "never spend a bus-agent turn on it") | orchestrator/architect/bloomer/groomer definitions |
-| `orchid:subagent:start:<label>` / `orchid:subagent:done:<label>` | agent via its bus sidecar | orchestrator/architect definitions |
-| `ask --question --option… [--multi]` — blocking question broker; replies `{index}`, `{indices}`, or `{continue}` | agent | `bus.py ask` |
-| Fixed request bodies `identity`, `status` | any agent; answered by the recipient's sidecar without waking its parent | `bus.py` FIXED tuple |
+| `announce` — identity envelope (session id, feature) | courier sidecar at session start | `courier.py announce` |
+| `depart` — departure broadcast | courier sidecar at session end | `courier.py depart` |
+| `signal --state started·building·testing·done·finished·blocked·abandoned` | agent (to parent, else broadcast), always as itself | `courier.py signal` |
+| `orchid:activity:<free text>` | **agents directly** (`courier.py broadcast`, "never spend a courier-agent turn on it") | gardener/landscaper/bloomer/groomer definitions |
+| `orchid:subagent:start:<label>` / `orchid:subagent:done:<label>` | agent via its courier sidecar | gardener/landscaper definitions |
+| `ask --question --option… [--multi]` — blocking question broker; replies `{index}`, `{indices}`, or `{continue}` | agent | `courier.py ask` |
+| Fixed request bodies `identity`, `status` | any agent; answered by the recipient's sidecar without waking its parent | `courier.py` FIXED tuple |
 | Envelope flags: `notify_user`, `operator_origin`, `in_reply_to` | any sender | `make_envelope` |
 
 Two audit findings the redesign must correct:
 
-- **There is no single send path.** Agents are *instructed* to call `bus.py
+- **There is no single send path.** Agents are *instructed* to call `courier.py
   broadcast` directly for activity; sidecars send announces, relays, and
   subagent markers; nothing blocks any tool, so any agent can send anything
   at any time. Single-choke-point sending does not exist today.
@@ -85,23 +85,23 @@ Two audit findings the redesign must correct:
 Measured cost of this design (2026-07-24, one heavy day, ~4 live agents):
 the sidecar layer alone consumed ≈150–200k subagent tokens (~1k per message
 per listener); the hand-ups re-invoked parent agents with full context
-≈45 times in the orchestrator alone — order of 7M cache-read tokens plus
-~0.3M fresh working tokens attributable to bus chatter, dominated by
+≈45 times in the gardener alone — order of 7M cache-read tokens plus
+~0.3M fresh working tokens attributable to courier chatter, dominated by
 duplicate waiting-state rebroadcasts carrying zero information.
 
-**Bus messages, as specified (WIRE GRAMMAR v1).** The free-form layer above
-is retired. Canonical spec: `agents/bus.md`; mechanical enforcement:
-`tools/bus.py` (send and broadcast reject any `orchid:*` body outside the
+**Courier messages, as specified (WIRE GRAMMAR v1).** The free-form layer above
+is retired. Canonical spec: `agents/courier.md`; mechanical enforcement:
+`tools/courier.py` (send and broadcast reject any `orchid:*` body outside the
 grammar). Five classes, each with a declared consumer: `orchid:status:<word>`
 (one/two agent-chosen doing-words, on change only), `orchid:update:<sentence>`
 (log/cockpit-targeted), `orchid:phase:<phase>[:<k>/<n>]` (the five-phase spine
 the sidebar turns into a live percentage), `orchid:subagent:queue|start|done:
 <label>` (counts are the message), `orchid:interrupt:question:<subject>`
-(emitted only by `bus.py ask`). Exactly three DERIVED interrupts may summon
+(emitted only by `courier.py ask`). Exactly three DERIVED interrupts may summon
 the operator — QUESTION ⇐ ask, SUCCEEDED ⇐ done/finished, FAILED ⇐
 abandoned/blocked+notify; `--notify-user` is illegal anywhere else, and
-sidecars never author wire text of their own. `bus.py validate [PATH]` audits
-recorded traffic (run against the live bus on 2026-07-24 it measured the old
+sidecars never author wire text of their own. `courier.py validate [PATH]` audits
+recorded traffic (run against the live courier on 2026-07-24 it measured the old
 grammar at 247 violations across 411 envelopes — the baseline this spec
 retires). The sidebar renders the approved cockpit grammar: solid hue
 headers, one-line feature rows over a progress fill, phase checklist,
@@ -138,7 +138,7 @@ storage.
 
 **And the model's own machinery.** Skills that keep the agents honest
 (`read-agents`, `agent-behaviour`), pass work between sessions without leaking
-chatter into history (`handover`), bloom the board (`bloom-tasks`, `orchestrator`),
+chatter into history (`handover`), bloom the board (`bloom-tasks`, `gardener`),
 migrate a grown-wild repo into the canonical shape (`history-rewrite`), and
 teach agents to write new skills properly (`authoring-skills`).
 
@@ -162,7 +162,7 @@ is the couch-friendly view).
 **And the pipeline itself rides GitHub too.** On the package repo the same
 spine runs on issue comments (`cloud-path` workflow): the feature is an issue,
 and your comments are the gates — `ENGAGE`/⚙ kicks off the plan, `MAKE IT
-SO`/🖖 builds and opens the PR, `THAT IS ALL`/🚪 sends the housekeeper to
+SO`/🖖 builds and opens the PR, `THAT IS ALL`/🚪 sends the groundskeeper to
 squash-merge it. Only your comments count, and no gate ever approves itself.
 
 ## What it is not

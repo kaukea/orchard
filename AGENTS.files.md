@@ -11,7 +11,7 @@ read the relevant section here first.
 
 The board is a **single slim-index file**, `docs/TODO.md` (the former per-component
 `TODO.<component>.md` files are collapsed into it). It carries only the machine payload its
-two readers need — the deterministic staleness walk and the orchestrator's board-walk —
+two readers need — the deterministic staleness walk and the gardener's board-walk —
 while every task's prose lives in its **sidecar** (`docs/TODO.md.d/<id>.md`, §Sidecar). New
 items surfaced in any conversation — follow-ups, parked thoughts, future ideas, side-quests —
 are added here when they surface, not held in memory and not deferred.
@@ -124,8 +124,8 @@ our `bug` to fix, even when the symptom surfaces outside our code.
 
 A **sidecar** is the durable contract and working record for ONE task, at
 `docs/TODO.md.d/<task-id>.md` (one file per bloomed/active task; `<task-id>` matches the
-TODO `{#id}`). It is the single hand-off medium between roles (orchestrator → architect →
-builder → housekeeper); transient chatter travels separately via the uncommittable
+TODO `{#id}`). It is the single hand-off medium between roles (gardener → landscaper →
+sower → groundskeeper); transient chatter travels separately via the uncommittable
 `.git/` handover (`handover` skill), never here. The TODO
 entry carries only the projected stage; the sidecar is the source of truth.
 
@@ -159,8 +159,8 @@ header field with no value.
    dead-ends not to repeat, measurements. Durable — where former "handover chatter" with
    lasting value now lands.
 4. `## Proposal` — the WHAT: feature definition, scope, constraints — complete enough
-   that the architect never needs a scope answer mid-build. The HOW (technical design)
-   is NOT handoff content: the architect authors it in its plan phase and records the
+   that the landscaper never needs a scope answer mid-build. The HOW (technical design)
+   is NOT handoff content: the landscaper authors it in its plan phase and records the
    agreed plan here once frozen (Decision-025).
 5. `## Testing` — exit gate: the pre-agreed test method, set up front (satisfying the
    mandatory Testing gate before the close, not at it).
@@ -171,7 +171,7 @@ ask ↔ answer.
 **Staged repo-level docs (Decision-034)** — at close, the sidecar result additionally
 carries a `## Changelog entry` block (the outcome verbatim, in the author's words) and,
 for user-facing changes, a `## Readme delta` block. The feature's agent never edits
-`CHANGELOG.md`/`README.md`; the orchestrator promotes these blocks intact at ingest.
+`CHANGELOG.md`/`README.md`; the gardener promotes these blocks intact at ingest.
 
 **Stage projection** — the task's `readiness = stage × origin` (stage ∈ `queued` /
 `working` / `blocked-on-answers` / `plan-ready` / `complete`; §TODO) is *projected* onto the
@@ -180,7 +180,7 @@ In particular `blocked-on-answers` is projected from this sidecar's `## Question
 open items. The sidecar is the single writer of its own stage.
 
 **Single writer** — exactly one role holds and writes a sidecar at a time (the
-orchestrator/blooming role while parked, the architect while active). A hand-off is a
+gardener/blooming role while parked, the landscaper while active). A hand-off is a
 stage transition, not a copy.
 
 ---
@@ -304,10 +304,10 @@ Structure:
   board / sidecar / `decisions.md` entries.
 
 **Operator gate** — promotion of a feature that reached `done`/`functional` is NOT
-automatic: at ingest the ORCHESTRATOR asks the operator explicitly per feature
+automatic: at ingest the GARDENER asks the operator explicitly per feature
 ("Feature `<id>` reached `functional` — are we ready to amend the CHANGELOG?").
 Operator can defer individual features. The entry TEXT is staged verbatim by the
-feature's agent in its sidecar result (Decision-034) — the orchestrator places,
+feature's agent in its sidecar result (Decision-034) — the gardener places,
 formats and merges; it never rewrites.
 
 ---

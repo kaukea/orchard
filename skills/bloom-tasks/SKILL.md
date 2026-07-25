@@ -1,11 +1,11 @@
 ---
 name: bloom-tasks
-description: Run a board-blooming pass — dispatch the prep-only groomer over the stalest opted-in tasks so their sidecars advance through the readiness pipeline without the operator driving each one. NOT a cron; a manual/on-demand trigger fired by the operator ("bloom the board") or by the orchestrator when it notices the change signal (docs/decisions.md or a sidecar moved since the last swept SHA). Prep-only, commit-only, N=2 per pass.
+description: Run a board-blooming pass — dispatch the prep-only groomer over the stalest opted-in tasks so their sidecars advance through the readiness pipeline without the operator driving each one. NOT a cron; a manual/on-demand trigger fired by the operator ("bloom the board") or by the gardener when it notices the change signal (docs/decisions.md or a sidecar moved since the last swept SHA). Prep-only, commit-only, N=2 per pass.
 roles: [process/workflow]
 share: github
 compatibility: Requires git
 metadata:
-  tags: [bloom, board, blooming, readiness, staleness, orchestrator, groomer, trigger, on-demand]
+  tags: [bloom, board, blooming, readiness, staleness, gardener, groomer, trigger, on-demand]
 ---
 
 # Intent (bloom)
@@ -20,16 +20,16 @@ is trigger-agnostic, so adding a schedule later changes only how it is kicked of
 # Triggers (any fires a pass)
 
 1. **Operator asks** — "bloom the board", "do a blooming pass", etc.
-2. **Orchestrator notices the change signal** — `docs/decisions.md` or a sidecar moved since
-   the last swept SHA. The orchestrator evaluates this live at a natural board-holding moment;
+2. **Gardener notices the change signal** — `docs/decisions.md` or a sidecar moved since
+   the last swept SHA. The gardener evaluates this live at a natural board-holding moment;
    there is no clock. No change → no pass → no board churn.
-3. **Handoff — every operator go (Decision-050).** The orchestrator dispatches the groomer
-   on the picked task BEFORE any architect is spawned — the mandatory bloom round that
+3. **Handoff — every operator go (Decision-050).** The gardener dispatches the groomer
+   on the picked task BEFORE any landscaper is spawned — the mandatory bloom round that
    closes the WHAT (functional completeness, Decision-027) at the moment of launch. This
    trigger targets exactly the picked task(s), is not N-capped, and a `plan-ready` badge
    does not skip it.
 
-# The pass (what the orchestrator / operator runs)
+# The pass (what the gardener / operator runs)
 
 1. **Find candidates.** Run the staleness walk:
    - default: `python3 .claude/tools/board_stale.py --n 2` — the 2 stalest bloomable tasks.
@@ -50,14 +50,14 @@ is trigger-agnostic, so adding a schedule later changes only how it is kicked of
    build-ready task is left at `plan-ready` for the operator.
 3. **Record the swept SHA.** After the pass, write HEAD so the next change-signal check has a
    baseline: `git rev-parse HEAD > .claude/state/last-bloom.sha` and commit it.
-4. **Re-triage.** The orchestrator ingests the bloomers' one-line results (and any Questions
+4. **Re-triage.** The gardener ingests the bloomers' one-line results (and any Questions
    they raised for the operator) and folds them into the board-walk.
 
 # Boundaries
 
 - **Single writer** — the groomer only touches *parked* tasks, never the one the operator is
   actively building (no blooming a task with an open worktree / `f/<id>` branch).
-- **Commit-only, no push** — the operator/orchestrator pushes; blooming never reaches a remote
+- **Commit-only, no push** — the operator/gardener pushes; blooming never reaches a remote
   on its own. The human merge/review gate is preserved (nothing autonomous reaches `main`).
 - **Supervised first** — review the groomer's commits before enabling any recurring schedule
   (there is none yet); the first autonomous-to-`main` path stays gated off.

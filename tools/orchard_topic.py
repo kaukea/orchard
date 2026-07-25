@@ -28,7 +28,7 @@ Usage:
 Validation is absolute. An off-list subject, a bad lifecycle state, or a status
 over two words is refused: the attempt is captured as telemetry (what was tried,
 to where, and why it failed — no log file, a telemetry topic) and a rejection is
-bounced straight back to the calling session over the bus. Nothing is written.
+bounced straight back to the calling session over the courier. Nothing is written.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import NoReturn
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # for the sibling bus.py
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # for the sibling courier.py
 
 TOPIC_FAMILY = "repository"
 TELEMETRY_FAMILY = "telemetry"
@@ -129,11 +129,11 @@ def build_envelope(sid: str, repo: str, subject: str, body: object = None) -> di
 
 
 def _identity() -> dict:
-    """Immutable facts (the bus's identity operation) — never change for a session:
+    """Immutable facts (the courier's identity operation) — never change for a session:
     agent role, feature, human name, parent. Session id already rides `from`."""
     try:
-        import bus
-        ident = bus.identity_of()
+        import courier
+        ident = courier.identity_of()
     except Exception:
         return {}
     keep = {
@@ -146,11 +146,11 @@ def _identity() -> dict:
 
 
 def _status() -> dict:
-    """Mutable metadata (the bus's status operation) — changes through the session:
+    """Mutable metadata (the courier's status operation) — changes through the session:
     model, context occupancy, spend. Attached to every event so the latest is truth."""
     try:
-        import bus
-        st = bus.status_of()
+        import courier
+        st = courier.status_of()
     except Exception:
         return {}
     keep = {
@@ -162,7 +162,7 @@ def _status() -> dict:
 
 
 def _attach_snapshot(envelope: dict) -> dict:
-    """Ride the two fixed operations the bus answers itself (never the agent):
+    """Ride the two fixed operations the courier answers itself (never the agent):
     the immutable identity and the mutable status, so the consumer needs nothing else."""
     identity = _identity()
     if identity:
@@ -173,8 +173,8 @@ def _attach_snapshot(envelope: dict) -> dict:
     return envelope
 
 
-def _bus() -> Path:
-    return Path(__file__).resolve().parent / "bus.py"
+def _courier() -> Path:
+    return Path(__file__).resolve().parent / "courier.py"
 
 
 def reject(reason: str, attempted: list[str], sid: str, repo: str) -> NoReturn:
@@ -194,10 +194,10 @@ def reject(reason: str, attempted: list[str], sid: str, repo: str) -> NoReturn:
         )
     except Exception:
         pass
-    # Bounce the rejection straight back to the calling session over the bus.
+    # Bounce the rejection straight back to the calling session over the courier.
     try:
         subprocess.run(
-            [sys.executable, str(_bus()), "send", "--from", sid, "--to", sid,
+            [sys.executable, str(_courier()), "send", "--from", sid, "--to", sid,
              "--body", f"orchard-topic rejected: {reason}"],
             capture_output=True, text=True, timeout=10,
         )
@@ -240,12 +240,12 @@ def do_post(rest: list[str]) -> None:
             reject("outcome is `success` or `fail`", attempted, sid, repo)
         envelope = build_envelope(sid, repo, f"orchard:agent:outcome:{args[0]}")
     elif family == "task":
-        # A task is fully complete only when the ORCHESTRATOR says so — this
-        # task-level outcome is orchestrator-only, enforced by the sender's role.
+        # A task is fully complete only when the GARDENER says so — this
+        # task-level outcome is gardener-only, enforced by the sender's role.
         if len(args) != 1 or args[0] not in ("completed", "failed"):
             reject("task is `completed` or `failed`", attempted, sid, repo)
-        if _identity().get("agent") != "orchestrator":
-            reject("orchard:task:outcome may only be sent by the orchestrator",
+        if _identity().get("agent") != "gardener":
+            reject("orchard:task:outcome may only be sent by the gardener",
                    attempted, sid, repo)
         envelope = build_envelope(sid, repo, f"orchard:task:outcome:{args[0]}")
     else:

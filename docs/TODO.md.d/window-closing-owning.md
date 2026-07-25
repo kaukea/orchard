@@ -10,7 +10,7 @@
 ## Questions
 
 - ~~Which agent is the designated killer?~~ RULED (operator, 2026-07-22,
-  second 068 addendum): a subagent OWNED BY THE ORCHESTRATOR, in its
+  second 068 addendum): a subagent OWNED BY THE GARDENER, in its
   session — supervision lives where the fleet knowledge already is
   (announces, grace requests, dispatch ledger). Remaining HOW (reuse of the
   polish build's untested exit-grace code) is the build's to present.
@@ -18,8 +18,8 @@
 ## Findings
 
 - Operator causality finding (2026-07-22): windows failed to close because
-  the HOUSEKEEPER deleted worktree files under agents still mid-teardown —
-  the floor vanished beneath the closing agent. The housekeeper charter now
+  the GROUNDSKEEPER deleted worktree files under agents still mid-teardown —
+  the floor vanished beneath the closing agent. The groundskeeper charter now
   carries the hard precondition (never remove before on-closed); this task
   builds the mechanism proper.
 - The sidebar-polish build already shipped exit-grace lifecycle code
@@ -35,10 +35,10 @@ monitors and resources (cascading self-cleanup). `on-closed` is emitted only
 when the agent is ready to close its window. NOBODY observes the window
 itself — supervision consumes signals about what agents are doing and
 advertising, never tmux state; the window is an implementation detail. ONE
-designated bus-listening agent watches on-closing/on-closed and kills any
+designated courier-listening agent watches on-closing/on-closed and kills any
 agent exceeding its allocated time (five seconds default from on-closing;
 longer only if requested at announce), broadcasting the death on its
-behalf. The housekeeper's worktree removal waits on `on-closed`/kill-
+behalf. The groundskeeper's worktree removal waits on `on-closed`/kill-
 broadcast, already chartered. Sidebar eviction consumes the same signals
 (already built).
 

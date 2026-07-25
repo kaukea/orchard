@@ -28,7 +28,7 @@
 
 ## Findings
 
-- Wiki state verified live (2026-07-22, orchestrator, operator-sanctioned):
+- Wiki state verified live (2026-07-22, gardener, operator-sanctioned):
   the wiki EXISTS, is initialized (Home + one page, "Initial Home page"
   commits), and is writable with the operator's local credentials — the
   routine's 403 is purely a CREDENTIAL limitation of the cloud session's

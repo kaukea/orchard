@@ -28,7 +28,7 @@ A step-record convention plus a small tool: the committing agent authors ONE
 structured record per landed step; a script projects it into (a) the commit
 message per the git-commit skill's format (subject/body/trailers assembled
 mechanically), (b) the appended workstream-log entry, and (c) the
-`ingest_increment` of the builder's typed return. Judgment is written once,
+`ingest_increment` of the sower's typed return. Judgment is written once,
 where the context is hot (Decision-056); assembly is deterministic. Free-form
 log writing (deviations, findings, state) stays direct — only the per-step
 landed entry is projected.
@@ -37,5 +37,5 @@ landed entry is projected.
 
 One real build step recorded through the tool: the commit message passes the
 git-commit skill's checklist, the log entry lands in the stream, the
-increment reaches the architect's staged blocks — all from a single authored
+increment reaches the landscaper's staged blocks — all from a single authored
 record, none hand-written separately.

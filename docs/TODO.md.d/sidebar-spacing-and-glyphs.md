@@ -12,7 +12,7 @@
 ## Questions
 
 - None yet — raw operator feedback, not yet bloomed/clarified. The bloomer
-  or the next architect should confirm each point against the live sidebar
+  or the next landscaper should confirm each point against the live sidebar
   before planning (some may already be partially true and just need a fix;
   others may need a design choice, e.g. the exact circle glyphs below are a
   suggestion, not a ruling).
@@ -45,7 +45,7 @@ verbatim):
    (●) for an active/pending ask, an unfilled white circle (○) for an
    inactive one. Needs clarifying exactly which indicator this replaces or
    supplements (candidates: the ❓ operator-question marker, or something at
-   the bus-row level) before building — don't guess.
+   the courier-row level) before building — don't guess.
 5. **Running vs. complete feature indicator** — some visible indication is
    missing for a feature that is currently running, distinct from its
    success/fail state once complete. NOTE: sidebar-polish deliberately

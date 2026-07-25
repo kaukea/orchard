@@ -5,17 +5,17 @@ shells out to it), against a real git-init'd temp repo (see tests/support.py)
 so `git rev-parse --git-common-dir` resolves for real rather than being
 mocked. XDG_RUNTIME_DIR, CLAUDE_CODE_SESSION_ID, CLAUDE_CODE_AGENT and
 ORCHID_PARENT_SESSION are pinned per-test via a private tmp_path (see
-`_run`), so no real runtime dir or session is ever touched, `bus.identity_of()`
-resolves deterministically, and any bus bounce the reject path triggers lands
-inside the temp repo's own `.git/the-works/bus/` (explicitly cleaned in the
+`_run`), so no real runtime dir or session is ever touched, `courier.identity_of()`
+resolves deterministically, and any courier bounce the reject path triggers lands
+inside the temp repo's own `.git/the-works/courier/` (explicitly cleaned in the
 `repo` fixture's teardown) rather than this repo's.
 
-Every valid post now carries an `identity` block (from `bus.identity_of()`,
+Every valid post now carries an `identity` block (from `courier.identity_of()`,
 via the producer's `_attach_snapshot`) alongside the fixed from/to/subject/
 body fields — the temp repos here have no linked worktree and no transcript
 under ~/.claude/projects, so `identity` resolves to just `{"agent": ...}`
 (plus `parent` when ORCHID_PARENT_SESSION is set) and `status` never
-resolves at all (bus.status_of() finds no transcript, so every key it would
+resolves at all (courier.status_of() finds no transcript, so every key it would
 contribute is empty and _status() drops them all) — asserted absent below
 rather than guessed at.
 """
@@ -39,16 +39,16 @@ from support import make_repo  # noqa: E402
 
 _SCRIPT = os.path.join(_TOOLS_DIR, "orchard_topic.py")
 SID = "test-sid-0001"
-DEFAULT_AGENT = "architect"
+DEFAULT_AGENT = "landscaper"
 
 
 def _run(cwd, runtime_dir, args, sid=SID, agent=DEFAULT_AGENT, parent=None):
     """Shell out to the script with a deterministic identity environment.
 
-    CLAUDE_CODE_AGENT is pinned (default "architect", overridable for the
-    orchestrator-only `task` cases) and ORCHID_PARENT_SESSION is pinned to
+    CLAUDE_CODE_AGENT is pinned (default "landscaper", overridable for the
+    gardener-only `task` cases) and ORCHID_PARENT_SESSION is pinned to
     `parent` or deleted outright — never left to whatever the real
-    environment happens to hold — so `bus.identity_of()` resolves the same
+    environment happens to hold — so `courier.identity_of()` resolves the same
     way on every run.
     """
     env = dict(os.environ)
@@ -75,9 +75,9 @@ def _telemetry_dir(runtime_dir, repo_name):
 
 @pytest.fixture
 def repo(tmp_path):
-    """A throwaway git repo — plus teardown for the bus inbox a reject-path
-    bounce (orchard_topic.py's `reject()` shells out to `bus.py send`) writes
-    under the repo's own git-common-dir, so no bus state leaks past the test
+    """A throwaway git repo — plus teardown for the courier inbox a reject-path
+    bounce (orchard_topic.py's `reject()` shells out to `courier.py send`) writes
+    under the repo's own git-common-dir, so no courier state leaks past the test
     even though tmp_path would eventually reclaim it anyway."""
     path = make_repo(str(tmp_path))
     yield path
@@ -86,9 +86,9 @@ def repo(tmp_path):
         capture_output=True, text=True,
     ).stdout.strip()
     if common:
-        bus_dir = Path(common).resolve() / "the-works" / "bus"
-        if bus_dir.exists():
-            shutil.rmtree(bus_dir, ignore_errors=True)
+        courier_dir = Path(common).resolve() / "the-works" / "courier"
+        if courier_dir.exists():
+            shutil.rmtree(courier_dir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -253,11 +253,11 @@ def test_outcome_bad_value_is_rejected(repo, runtime_dir):
     assert envelope["body"]["attempted"] == ["post", "outcome", "bogus"]
 
 
-# --- task (orchestrator-only) ---------------------------------------------
+# --- task (gardener-only) ---------------------------------------------
 
 @pytest.mark.parametrize("value", ["completed", "failed"])
-def test_task_post_by_orchestrator_writes_expected_envelope(repo, runtime_dir, value):
-    result = _run(repo, runtime_dir, ["task", value], agent="orchestrator")
+def test_task_post_by_gardener_writes_expected_envelope(repo, runtime_dir, value):
+    result = _run(repo, runtime_dir, ["task", value], agent="gardener")
     assert result.returncode == 0, result.stderr
 
     repo_name = Path(repo).name
@@ -267,15 +267,15 @@ def test_task_post_by_orchestrator_writes_expected_envelope(repo, runtime_dir, v
     envelope = json.loads(files[0].read_text(encoding="utf-8"))
     assert envelope["subject"] == f"orchard:task:outcome:{value}"
     assert "body" not in envelope
-    assert envelope["identity"]["agent"] == "orchestrator"
+    assert envelope["identity"]["agent"] == "gardener"
     assert "status" not in envelope
 
 
-def test_task_post_by_non_orchestrator_is_rejected(repo, runtime_dir):
+def test_task_post_by_non_gardener_is_rejected(repo, runtime_dir):
     result = _run(repo, runtime_dir, ["task", "completed"], agent=DEFAULT_AGENT)
     assert result.returncode != 0
     assert result.stderr.strip().startswith("orchard-topic: rejected")
-    assert "orchestrator" in result.stderr
+    assert "gardener" in result.stderr
 
     repo_name = Path(repo).name
     assert not _topic_dir(runtime_dir, repo_name).exists()
@@ -283,11 +283,11 @@ def test_task_post_by_non_orchestrator_is_rejected(repo, runtime_dir):
     assert len(tfiles) == 1
     envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
     assert envelope["body"]["attempted"] == ["post", "task", "completed"]
-    assert "orchestrator" in envelope["body"]["reason"]
+    assert "gardener" in envelope["body"]["reason"]
 
 
 def test_task_bad_value_is_rejected(repo, runtime_dir):
-    result = _run(repo, runtime_dir, ["task", "bogus"], agent="orchestrator")
+    result = _run(repo, runtime_dir, ["task", "bogus"], agent="gardener")
     assert result.returncode != 0
     assert result.stderr.strip().startswith("orchard-topic: rejected")
 

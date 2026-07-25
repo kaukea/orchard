@@ -1,4 +1,4 @@
-# Sidebar witnessing: the ephemeral-bus observer gap
+# Sidebar witnessing: the ephemeral-courier observer gap
 
 - created: 2026-07-23
 - created_by: fable-5
@@ -13,7 +13,7 @@ None.
 
 ## Findings
 
-- The sidebar model's only data source is the bus spool: unconsumed message
+- The sidebar model's only data source is the courier spool: unconsumed message
   files on disk plus traffic it happens to witness while watching
   (`tools/sidebar_model.py` docstring names the accumulation problem itself).
   Three symptoms follow, all observed live on 2026-07-23:
@@ -23,24 +23,24 @@ None.
   with no eviction possible: the terminal signal that evicts a row can
   never arrive from a dead sender.
 - **Invisible living agents.** The genuinely live SignMc seal-chain
-  architect and both orchestrators showed nowhere: their announces predated
+  landscaper and both gardeners showed nowhere: their announces predated
   the sidebar processes and were consumed by live recipients, so a
   late-starting observer never sees them.
 - **Zero-peer repos are unwitnessable.** `bus.py fan_out` writes only into
   peer session folders; with one live session in a repo a broadcast reaches
   0 folders and touches no disk at all — proven: after the spool cleanup,
-  the orchids orchestrator's activity broadcast reported "broadcast to
+  the orchids gardener's activity broadcast reported "broadcast to
   0 agents". A single-agent repo can never surface on the sidebar.
 - Remediation applied same day (hygiene, not the fix): dead spool folders
   archived to `.git/the-works/_ingested/bus-spool-20260723/`, both sidebar
   panes restarted clean.
 - Re-observed after the 2026-07-24 ~14:07 tmux crash (pane capture, evening):
   the sidebar showed THREE near-identical rows for the one feature — the
-  crashed architect (dead ~5h), the bloomer test session (exited cleanly
+  crashed landscaper (dead ~5h), the bloomer test session (exited cleanly
   hours prior, ⚪ row), and the live successor — indistinguishable because
-  every row renders the same truncated board title. The bus itself also
+  every row renders the same truncated board title. The courier itself also
   still carried the two dead sessions as registered and one orphaned
-  builder as live.
+  sower as live.
 
 ## Proposal
 
@@ -48,7 +48,7 @@ The sidebar must render the fleet truthfully regardless of when its own
 process started: agents that are dead never render; agents that are alive
 always render — including in single-agent repos and when they have been
 silent since the watcher started. Scope is the observer's data source /
-bus contract, not a bus rewrite. Boundaries with neighbours:
+courier contract, not a courier rewrite. Boundaries with neighbours:
 `bus-singleton` reaps stray sidecar folders; exit-grace enforcement
 (sidebar-polish item 2) covers a signalling agent that outlives its grace;
 this task covers what the OBSERVER can know.

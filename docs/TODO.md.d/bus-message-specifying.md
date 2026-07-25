@@ -17,11 +17,11 @@
   notify-user flags, operator-origin relays — and are any missing or
   superfluous?~~ Resolved by the dictated grammar (see Proposal): status ·
   status update · three interrupts; lifecycle stays internal plumbing.
-- ~~Where does the specification live: the bus agent definition, a channel
+- ~~Where does the specification live: the courier agent definition, a channel
   schema per [[fleet-documenting]] (which already envisions channels with
   JSON Schemas), or both — and does this task fold into fleet-documenting or
   precede it as the tightening pass?~~ Resolved: this task PRECEDES
-  fleet-documenting — the vocabulary ships in the bus definition and the
+  fleet-documenting — the vocabulary ships in the courier definition and the
   agents' contracts now; formal channel schemas remain fleet-documenting's.
 - ~~What does "more appropriate" rule out — free-form activity wording, ad-hoc
   labels, duplicate waiting-state broadcasts?~~ Resolved: all three, plus
@@ -33,13 +33,13 @@ alongside the KITT-scanner debt above.
 
 FULL-GO MANDATE (operator, 2026-07-25, verbatim intent: "go for full
 implementation beginning to end, don't ask me questions"): the plan-gate
-question round and the MAKE IT SO prologue are WAIVED; the architect
+question round and the MAKE IT SO prologue are WAIVED; the landscaper
 builds the entire agreed WHAT without operator rounds; testing per
 §Testing plus the design contract's emulator checks; the operator's
 remaining touch points are the scheduled post-test refinement pass and
 THAT IS ALL at the close.
 
-Build inputs and sequencing for the architect:
+Build inputs and sequencing for the landscaper:
 - The FIXED VISUAL CONTRACT: `.git/the-works/bus-message-specifying/`
   holds `sidebar-mock.py` (the approved renderer, emulator-verified) and
   `approved-frame.ans` (the blessed frame). The mock is the truth for
@@ -60,15 +60,15 @@ Build inputs and sequencing for the architect:
 
 ## Findings
 
-- Operator intake (2026-07-24): bus messages need tightening, cleanup and a
+- Operator intake (2026-07-24): courier messages need tightening, cleanup and a
   specification of what each message DOES; what each agent actually sends
   diverges from any common shape and must be audited and fixed alongside the
   spec.
-- Live example from today's session: the architect's waiting state arrived
+- Live example from today's session: the landscaper's waiting state arrived
   twice in a row as identical `awaiting operator (native prompt)` notify
   broadcasts; activity labels are free-form prose.
-- Second live example (successor architect, 2026-07-24 close): its
-  `orchid:activity:Closing` broadcast was read by its own bus as a
+- Second live example (successor landscaper, 2026-07-24 close): its
+  `orchid:activity:Closing` broadcast was read by its own courier as a
   session-departure signal — free-form activity wording collides with
   lifecycle vocabulary.
 - Operator dictation (2026-07-24 evening, first message of the spec — more
@@ -90,10 +90,10 @@ Build inputs and sequencing for the architect:
   what happened". A QUESTION, when triggered, arrives right after a summary
   of WHY it is being asked. Feature progress is legible from the sidebar.
   ULTIMATE GOAL: each agent stays in its own window where the operator
-  never goes; the ORCHESTRATOR window synthesizes all statuses in a
+  never goes; the GARDENER window synthesizes all statuses in a
   structured way — feature positions at a glance, and incoming questions
   carry an immediate summary sufficient to DECIDE WITHOUT LEAVING THE
-  WINDOW. Target capacity: driving five or six connected architects without
+  WINDOW. Target capacity: driving five or six connected landscapers without
   ever visiting them. (Ties directly into [[operator-interacting]] —
   questions/gates/summaries as one typed exchange.) His closing sentence —
   "this is one of the reasons I wanted questioning to go through a
@@ -106,7 +106,7 @@ Build inputs and sequencing for the architect:
   seconds — "by this point I will take any decision just for all this to
   go away" (noted: no design decisions are to be extracted from that state
   beyond killing the noise). Immediate mitigation applied by the
-  orchestrator, runtime-only and reversible (lost on tmux server restart):
+  gardener, runtime-only and reversible (lost on tmux server restart):
   monitor-activity/visual-activity off, activity-action none, bell-action
   none, visual-bell off — ALL tmux flash/ding suppressed until the designed
   three-interrupt channel (succeeded/failed/question) exists to replace it.
@@ -122,28 +122,28 @@ Build inputs and sequencing for the architect:
   followed by a discreet emphasized/italic name, purely for his orientation
   in the flow. HELD — no action; awaiting the better idea.
 - DELIVERY FAILURE, live (2026-07-24 ~20:2x): the operator's row-split
-  clarification, relayed via the bus to the working sidebar-titling
-  architect, landed in a DEAD inbox (ac9f36c6, the crash-orphaned builder's
-  stale spool). The live architect (PID confirmed running) had NO reachable
-  bus registration at delivery time despite its own bus sidecar running — a
-  bootstrap/registration gap: an in-production agent the bus can neither
-  address nor track. Workaround: the orchestrator relayed the clarification
-  directly into the architect's pane (tmux send-keys) with provenance
+  clarification, relayed via the courier to the working sidebar-titling
+  landscaper, landed in a DEAD inbox (ac9f36c6, the crash-orphaned sower's
+  stale spool). The live landscaper (PID confirmed running) had NO reachable
+  courier registration at delivery time despite its own courier sidecar running — a
+  bootstrap/registration gap: an in-production agent the courier can neither
+  address nor track. Workaround: the gardener relayed the clarification
+  directly into the landscaper's pane (tmux send-keys) with provenance
   stated. Third live exhibit for this task, and corroboration for
   [[sidebar-witnessing]]'s observer gap from the sender's side.
 - Operator dictation, message 7 (phase model, checked against the built
   pipeline): features move through phases — his sketch: planning →
   ideation → specification → architecture → testing → release, with
-  crash-rebuild as a special case. Orchestrator's faithful mapping given
+  crash-rebuild as a special case. Gardener's faithful mapping given
   back: (1) ideation/intake — boarded with a sidecar stub; (2)
   specification — the bloom round converges the WHAT; (3) sizing &
-  dispatch; (4) architecture — architect discovery + frozen plan at the
+  dispatch; (4) architecture — landscaper discovery + frozen plan at the
   gate; (5) build; (6) testing — the pre-agreed gate; (7) release — the
   fold (tag, squash-merge, push); (8) ingest — promotions, mostly
   invisible to him. Crash-resume is a lateral re-entry into whichever
   phase died (successor protocol, proven live today).
 - Operator dictation, message 8 (phase list corrected to the OPERATOR-FACING
-  view): sizing & dispatch is the orchestrator's concern — none of his
+  view): sizing & dispatch is the gardener's concern — none of his
   business; ingest likewise (he cares as the system's designer, not as
   operator — the hovering and file-writing is plumbing). Release INCLUDES
   documentation as a logical grouping. The operator-facing spine is
@@ -155,14 +155,14 @@ Build inputs and sequencing for the architect:
   spans the subagents that build; docs are written inside release. His
   candidate spine, "becomes human": IDEATION → SPECIFICATION → ARCHITECTING
   (word to improve) → BUILDING (testing folds in) → RELEASING. Ideation may
-  stay permanently for symmetry even when a feature isn't new. Orchestrator
+  stay permanently for symmetry even when a feature isn't new. Gardener
   opinion given: agree on five and on folding testing into building —
   phases are for orientation, the three interrupts carry the summons, so
   "failed" alarms regardless of phase; keep ideation always (it separates
   "just boarded" from "being measured"); proposed word: DESIGNING for the
-  architect's discovery+plan span.
+  landscaper's discovery+plan span.
 - Operator dictation, message 10: the five stand, but "specification" is
-  the odd word form out — needs a replacement (orchestrator candidate:
+  the odd word form out — needs a replacement (gardener candidate:
   SCOPING). The phase spine must MAP TO A 100% progress scale as it
   happens. Each phase decomposes into subphases — some invisible
   (internal), some user-visible — and that mapping must be agreed QUICKLY.
@@ -203,7 +203,7 @@ accepted — full record in Findings above). The display-and-messaging grammar:
 - **Phase spine**: ideation → scoping → designing → building → releasing.
   A soft scale, each phase containing the last; testing lives inside
   building; documentation inside releasing; sizing/dispatch and ingest are
-  orchestrator plumbing and never surface. Maps to a live 100% via the
+  gardener plumbing and never surface. Maps to a live 100% via the
   agreed subphase map (visible ticks advance the number; hidden work never
   does). Spans as drafted: 10/15/15/45/15, adjustable.
 - **Feature row**: ONE line — the feature name drawn over the advancing
@@ -221,11 +221,11 @@ accepted — full record in Findings above). The display-and-messaging grammar:
   interrupts — SUCCEEDED, FAILED, QUESTION. Questions ride the broker path
   (never the native UI popup) so they can QUEUE for the right moment, and
   each arrives prefaced by why it is asked plus a decision-sufficient
-  summary, answered from the orchestrator window without moving.
+  summary, answered from the gardener window without moving.
 - **Identity**: each agent role carries its own emoji (revival); ONE
-  interactive main agent at a time; the orchestrator window is the cockpit
+  interactive main agent at a time; the gardener window is the cockpit
   where all statuses synthesize — target capacity, five-six connected
-  architects driven without visiting them.
+  landscapers driven without visiting them.
 - **The audit half**: every agent's ACTUAL sends are audited against this
   vocabulary and corrected — the four live exhibits in Findings (duplicate
   waiting notifies, Closing/lifecycle collision, dead-inbox delivery,
@@ -270,13 +270,13 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   (the git-commit-flavoured stat he's fond of); (b) TOKEN usage per feature
   — granularity open — animating/ticking upward live as work happens, as
   the block's LAST section. Everything else he already has a plugin for —
-  do not duplicate. Orchestrator source note: both are already emitted
-  locally (bus agent-metadata token denominators; session/commit
+  do not duplicate. Gardener source note: both are already emitted
+  locally (courier agent-metadata token denominators; session/commit
   timestamps) — zero-token injection is feasible. Dictation cut mid-
   sentence at "the last two things that…" — continuation pending.
 - FOOTER dictation, part 2: also candidates — the BRANCH name with its ⎇
-  glyph, the DOLLARS spent, and the TURN count; he asked the orchestrator
-  to rank usefulness and propose the display. Orchestrator ranking given:
+  glyph, the DOLLARS spent, and the TURN count; he asked the gardener
+  to rank usefulness and propose the display. Gardener ranking given:
   tokens and dollars in (one line, tokens tick live, dollars translate
   them); age-vs-worked in (his "amazing" stat); BRANCH dropped from the
   footer (fully derivable — in this fleet the branch IS f/<feature-id>, so
@@ -298,13 +298,13 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
 - ROUND 9 corrections (operator, live read): (a) the sweep is a LIFT, not
   a band — the base colour raised slightly as the motion passes, title
   always legible (supersedes round 8's "very light" band); (b) the phase
-  is spoken ONCE — of his either/or, the orchestrator picked: the feature
+  is spoken ONCE — of his either/or, the gardener picked: the feature
   row drops its inline phase word (row = glyph + name + %), the checklist's
   active line is the single place the phase is named, the this-minute word
-  lives in the identity line; (c) the identity line "writing ⋮ architect ⋮
+  lives in the identity line; (c) the identity line "writing ⋮ landscaper ⋮
   model" is glued with non-breaking spaces around the ⋮, wraps only
   between whole segments, continuation at the SAME indent level; (d) the
-  standalone flock line under the model name "doesn't work" — orchestrator
+  standalone flock line under the model name "doesn't work" — gardener
   placement pick, flagged for veto: the dots move inline onto the
   checklist's active phase line ("⠧ building ●●●○○"), the workforce shown
   inside the phase it works.
@@ -324,7 +324,7 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   preserved as the fixed visual contract; mock script currently at
   scratchpad/sidebar-mock.py, to be staged durably with this task.
 - TRANSPORT DICTATION (operator, 2026-07-25, opening the redesign he
-  announced after the as-built audit — baseline: README "Bus messages, as
+  announced after the as-built audit — baseline: README "Courier messages, as
   built", ddccbc5). Two requirements, verbatim intent: (1) agent-to-agent
   communication is ADDRESSED — an agent reaches a specific peer by
   session id + project, not by fan-out into every registered spool;
@@ -337,7 +337,7 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
 - TRANSPORT DICTATION round 2 (operator, 2026-07-25): four requirement
   axes for the redesign — (1) reduce traffic, (2) enforce conformance,
   (3) encrypt, (4) support cloud agents. Discussion round opened with the
-  orchestrator; axes are his, mechanisms under discussion.
+  gardener; axes are his, mechanisms under discussion.
 - CLOUD-LEG FACTS (round 3, 2026-07-25). Operator: GitHub-hosted cloud
   agents already have an update-subscription channel from GitHub; the
   Claude side was unknown. Verified against current docs (claude-code-
@@ -346,7 +346,7 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   while the session is open (code.claude.com/docs/en/channels.md);
   (b) remote subagents spawned from a local session are parent-mediated
   only — no external contact surface, and none needed (the parent is on
-  the bus); (c) API Managed Agents accept full inbound push — POST
+  the courier); (c) API Managed Agents accept full inbound push — POST
   user.message / user.interrupt events to a session by id, multi-turn
   (platform.claude.com/docs/en/managed-agents/events-and-streaming.md);
   (d) ALL flavours have egress and can poll (GitHub API, object store,
@@ -363,8 +363,8 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   tool: agent-id shape, lifecycle enum, the two FIXED request bodies).
   The flood is script-compliant: 225/441 copies (51%) are the one
   improvised string `orchid:activity:awaiting operator (native prompt)`,
-  every copy notify_user=true, top senders the orchestrator's own
-  sidecar (119 copies) and the grammar architect's (120). Two further
+  every copy notify_user=true, top senders the gardener's own
+  sidecar (119 copies) and the grammar landscaper's (120). Two further
   leaks: a FIFTH prefix live in the wild (`orchid:update:<text>`, absent
   from the audit inventory), and sender identity is free-form — some
   envelopes sign as session id, others as feature name. Dead-inbox
@@ -375,7 +375,7 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   daemon rather than claimed, and attention (notify) becomes a property
   of the message CLASS — the three interrupts — never a sender flag.
 - ROUND 9 — OPERATOR SCHEMA DRAFT (2026-07-25), his design, verbatim
-  intent: fixed list of sendable messages; the bus SUBAGENT stays;
+  intent: fixed list of sendable messages; the courier SUBAGENT stays;
   broadcast replaced by TOPICS (v1: `global` only). Addresses — From:
   `:session:<session-id>`; To: `:session:<session-id>` (requires manual
   auth) or `:topic:<topic-name>` (fixed list, needs daemon sig).
@@ -392,7 +392,7 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
     (script creates the agent's topic folder + monitor / deletes all,
     discards remaining content)
   Prefix orchid:→orchard: (renaming alignment).
-- ROUND 9 GAP REVIEW (orchestrator answer to his "have I forgotten
+- ROUND 9 GAP REVIEW (gardener answer to his "have I forgotten
   things", UNRULED — checked against the audit inventory, the census,
   and the approved display grammar):
   1. QUESTION class absent — the third interrupt (succeeded/failed/
@@ -410,17 +410,17 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
      identity/status request-reply dropped (replaced by published
      state?); gate-reject feedback presumably the script's exit code.
 - ROUND 18 — ASSURE THE CROSS-AGENT-NOTIFY SCENARIO (operator,
-  2026-07-25). Trigger: the orchestrator, to detect the grammar close,
+  2026-07-25). Trigger: the gardener, to detect the grammar close,
   ran an out-of-band watch — polling git for the branch-ref deletion and
-  inspecting spool folders — instead of learning it from the bus. That
-  hand-rolled coordination IS what the bus is for: one agent knowing when
+  inspecting spool folders — instead of learning it from the courier. That
+  hand-rolled coordination IS what the courier is for: one agent knowing when
   a peer reaches a state (here, close finished). RULING: the scenario is
   nominally covered (lifecycle `finished`/`done`, `outcome`,
   `delegation:end`) but NOT ASSURED — nothing guarantees the signal
   reaches a LIVE listener, so agents fall back to git/tmux polling. Amend
   the design so cross-agent completion/coordination is a FIRST-CLASS,
   ASSURED, TESTED case: an agent learns of a peer's state change through
-  the bus ALONE, never by polling git or the filesystem. NOT an ack
+  the courier ALONE, never by polling git or the filesystem. NOT an ack
   (round 16 stands — one-way, no receipt back to the sender); this is
   delivery ASSURANCE to the receiver — the signal must reach a live
   inbox and be acted on. The reason it is "not sured" today is precisely
@@ -440,7 +440,7 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   · ENFORCEMENT MODEL = COOPERATIVE (option 1 chosen): "we'll do 1
     anyway." bus.py stays the convention; no daemon, no per-agent UIDs.
   · v2 IS INTERIM. The METRONOME project will need something much bigger
-    and stronger that REPLACES bus v2 wholesale — so the heavy security
+    and stronger that REPLACES courier v2 wholesale — so the heavy security
     architecture (admission PKI, signed gate phrases, real local
     confidentiality) is METRONOME's, not this build's.
   · SCOPE NOW = LIGHT FIXES ONLY: stop the chatter and the token spend,
@@ -485,7 +485,7 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   light-fix hygiene. That thread is METRONOME-scoped; the light-fix pass
   needs no local-crypto and no heavy review. Do not re-run a broad audit.
 - ROUND 16 RULINGS (operator, 2026-07-25), closing two functional holes
-  the orchestrator raised: (a) NO DELIVERY ACK — messaging is one-way by
+  the gardener raised: (a) NO DELIVERY ACK — messaging is one-way by
   design; an agent wanting confirmation sends a message and asks for a
   reply (that IS the ack). Knowing the transport succeeded is neither the
   agent's job nor the script's beyond the fact that the script wrote the
@@ -512,10 +512,10 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   · TYPES (Subject = type, payload in body): status (word + optional
     0–100 + text) · outcome success|fail · lifecycle (payload = the
     display minimum: location + project) · delegation begin|end ·
-    operator relay (unicast) · bus subscribe|unsubscribe (folder +
+    operator relay (unicast) · courier subscribe|unsubscribe (folder +
     monitor lifecycle).
   · LOCAL-KNOWLEDGE PRINCIPLE (rounds 11/12/14): identity never rides
-    the bus; scripts derive project/location from their own worktree
+    the courier; scripts derive project/location from their own worktree
     and CLI; mechanical facts are boot context.
   · GLOBAL STATE — the open core problem: cross-project topics need a
     home OUTSIDE any repo; the content is sensitive inter-instance
@@ -531,12 +531,12 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   · SEAM (unruled): v1 `phase:k/n` tick math vs round-11's optional
     0–100 on status.
 - ROUND 14 RULING (operator, 2026-07-25): nothing ever REQUESTS its
-  project or placement over the bus — the script derives it from its
+  project or placement over the courier — the script derives it from its
   own execution context (the worktree it runs in, the CLI it already
   has). Identity/placement request-reply is dead in every form; the
   subscription folders and monitors are likewise created from locally
   derived knowledge. Same principle as rounds 11–12: mechanical
-  knowledge is local; the bus carries only what third parties display.
+  knowledge is local; the courier carries only what third parties display.
 - ROUND 13 — THE GENERATED SPEC FINALLY READ (2026-07-25, on the
   operator's pointer): the full-go build had CLOSED on
   f/bus-message-specifying with WIRE GRAMMAR v1 — canonical text in
@@ -560,10 +560,10 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   what the sidebar displays. The boundary PRINCIPLE: what is required
   MECHANICALLY (exit-grace, session internals, any identifying detail)
   is not what is required to be COMMUNICATED to third parties — the
-  mechanical stays in boot context; the bus carries the display
+  mechanical stays in boot context; the courier carries the display
   minimum only.
 - ROUND 11 RULINGS (operator, 2026-07-25): (a) IDENTITY NEVER RIDES THE
-  BUS — only the agent itself needs its identity; it loads its bus
+  COURIER — only the agent itself needs its identity; it loads its courier
   subagent with it at boot, and the script stamps anything downstream
   from that local knowledge. Standing gap 2 dissolves: `lifecycle:
   starting` carries no identity body. (b) PROGRESS rides STATUS —
@@ -592,10 +592,10 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   by his fixed-but-extensible topic list.
 - MEASURED COST MODEL (round 8, 2026-07-25) — replaces the pre-compact
   README estimate; sources: dead-inbox census (registered from 00:10,
-  consumed nothing, 243 files), the orchestrator transcript's
-  notification count, the bus sidecar's own token counters. 2026-07-24
+  consumed nothing, 243 files), the gardener transcript's
+  notification count, the courier sidecar's own token counters. 2026-07-24
   actuals: 243 broadcasts fleet-wide; 357 full-context re-invocations
-  of the orchestrator by background events, 118 of them carrying the
+  of the gardener by background events, 118 of them carrying the
   single improvised waiting string; sidecar marginal cost ~175 tokens
   per message per listener (~170k/day across ~4 listeners). Dominant
   term by ~40×: the re-invocations — 357 × ~200k context ≈ ~70M
@@ -604,7 +604,7 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   (per-unit ~5× high, volume ~5× low); the hand-up count (~45) and
   cache volume (7M) were ~8–10× LOW. The round-7 rulings applied to the
   same measured day: volume 243→~80 (dedup at the gate), status wakes
-  →0 (sidebar reads published state), orchestrator re-invocations
+  →0 (sidebar reads published state), gardener re-invocations
   357→~15–20 (genuine interrupts only) — a ~20× cut in the dominant
   term, and cost decouples from fleet size × message rate, scaling
   instead with decisions that need the operator's agent.
@@ -624,7 +624,7 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   nothing; the harness rate-limits over-emitting monitors. Wake-on-
   precondition is real, and free until the precondition fires.
 - ROUND 6 (operator, 2026-07-25): "you are blinded by the work done
-  here" — BOTH orchestrator frames (daemon replacement, then in-place
+  here" — BOTH gardener frames (daemon replacement, then in-place
   hardening of `bus.py`) were anchored: the first to its own idea, the
   second to the incumbent artifact. Both are WITHDRAWN as frames. The
   design frame is the requirement list alone (addressed peer messages by
@@ -632,12 +632,12 @@ MOCK ROUNDS (2026-07-24/25, live in a pane beside the real sidebar):
   · conformance · encryption · cloud agents); the audited facts stay on
   the table as evidence; the design itself is the operator's to dictate.
   Structural fact any design must face, previously glossed: the current
-  bus is PER-REPO (spool root under each repo's git dir) — cross-project
+  courier is PER-REPO (spool root under each repo's git dir) — cross-project
   addressing has no substrate today; repos are islands.
 - COURSE CORRECTION (round 5, 2026-07-25): the operator rejected the
-  orchestrator's daemon-first framing — the script has no checks, checks
+  gardener's daemon-first framing — the script has no checks, checks
   have never been TRIED, and a passing "cloud agents later" is not
-  licence to replace the system. Standing proposal (orchestrator, NOT
+  licence to replace the system. Standing proposal (gardener, NOT
   ruled): harden `bus.py` IN PLACE — validate against the message
   registry at accept, skip delivery of identical unconsumed repeats
   (no file, no inotify event, no wake), derive notify from message
@@ -655,14 +655,14 @@ captured here as the design when the operator signs it off.
 ## Testing
 
 To agree when bloomed — expected shape: a session of each role runs and its
-bus traffic validates against the specification with no unspecified message.
+courier traffic validates against the specification with no unspecified message.
 
 ASSURED-SCENARIO GATE (operator, round 18) — MUST pass before the delivery
 model is called done: an agent detects a PEER'S completion (a `finished`/
-`done`/`outcome`/`delegation:end` signal) through the bus ALONE and acts on
+`done`/`outcome`/`delegation:end` signal) through the courier ALONE and acts on
 it, with NO git-ref or filesystem polling anywhere in the path. Concretely:
-the orchestrator learns a feature close finished from the housekeeper's/
-architect's bus signal reaching its live inbox — the exact coordination it
+the gardener learns a feature close finished from the groundskeeper's/
+landscaper's courier signal reaching its live inbox — the exact coordination it
 had to hand-roll by polling `git`/spool folders this session. Depends on
 [[bus-close-cleanup]] (a live listener that a signal can reach); that fix
 and this test land together.

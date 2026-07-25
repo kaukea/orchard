@@ -28,7 +28,7 @@ $(git rev-parse --git-common-dir)/the-works/<stream>/
 ```
 
 - `<stream>` is the feature-id for workflow sessions; the role name (e.g.
-  `orchestrator`) for role sessions outside a feature.
+  `gardener`) for role sessions outside a feature.
 - INSIDE `.git/` — physically uncommittable, worktree-shared (Decision-008).
   This is the ONLY place conversational context, personal information, or
   anything sensitive may be written; committed docs carry sanitized technical
@@ -90,17 +90,17 @@ Confidence-mark entries: **verified** (and how) vs **suspected**.
   flushed as it happens, never batched into a periodic summary. Batching
   reintroduces exactly the window this protocol exists to close: everything
   since the last catch-up dies with the process. This binds every role,
-  including the orchestrator.
+  including the gardener.
 
 ## End-of-task guard (MUST)
 
-Before ANY session declares its work finished — an architect presenting `done` or
-countersigning, a role session reporting a task complete, an orchestrator reporting
+Before ANY session declares its work finished — a landscaper presenting `done` or
+countersigning, a role session reporting a task complete, a gardener reporting
 a feature closed — it MUST clear this guard:
 
 - [ ] **No sub-agent left in flight.** Every entry in the `## Dispatched sub-agents`
   ledger has returned, was re-dispatched, or is explicitly recorded as abandoned with
-  its work reassigned. A session NEVER ends with an unreturned sub-agent. A BUS
+  its work reassigned. A session NEVER ends with an unreturned sub-agent. A COURIER
   sidecar is a sub-agent too: it is RELEASED at close, and its release IS its
   return (Decision-041).
 - [ ] **End state verified by observation, not by report.** Where the work has an
@@ -113,7 +113,7 @@ a feature closed — it MUST clear this guard:
   committed sidecar (`## Findings`) by the session that owns it; decisions and
   remaining work reach `docs/decisions.md` / the TODO via promotion (below),
   never directly from a child session (single-writer: the board and decisions
-  belong to the orchestrator / top-level session).
+  belong to the gardener / top-level session).
 - **Not everything leaves the stream.** Most log content is useful only inside
   the workstream; at ingestion it retires to `_ingested/` rather than being
   promoted — that is by design.
@@ -136,7 +136,7 @@ As part of the close housework (`workflow-complete`):
    answering three questions: which rules you did not follow and why; how the
    rules would need to change for you to be compliant; the number one
    improvement that would have reduced your token usage. Attach it to the
-   session's final commit — an architect uses its branch tip (reachable forever
+   session's final commit — a landscaper uses its branch tip (reachable forever
    via the `archive/` tag), a top-level session its last `main` commit:
 
        git notes --ref=telemetry add -m "<report>" <final-commit-sha>
@@ -153,7 +153,7 @@ As part of the close housework (`workflow-complete`):
    nothing, so silence stays distinguishable from a missed interview.
 3. Flush sanitized durable findings into the stream's committed sidecar.
 4. `touch <stream-dir>/_closed` — the marker the hook announces to the parent.
-5. **Tear yourself down (Decision-041):** release your bus (its release is its
+5. **Tear yourself down (Decision-041):** release your courier (its release is its
    return) and run your role's self-teardown — a closed session leaves no
    listener, pane, or session behind.
 

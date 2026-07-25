@@ -10,7 +10,7 @@
 
 ## Questions
 
-- "Orchestrator emphasized": confirm the exact meaning — orchestrator
+- "Gardener emphasized": confirm the exact meaning — gardener
   sessions/lines rendered with emphasis (italic/bold) in the digest?
 - Confirm the exact emoji per key once the other model's review lands
   (fixed vs todo bullet markers; the impact set below).
@@ -32,12 +32,12 @@ Restyle the telemetry digest's rendering:
   todo/open items.
 - Subtitles are emoji-prefixed by impact category: time impact (clock),
   money/token spend (euro banknotes), code quality (construction sign).
-- Orchestrator entries are emphasized (see Questions).
+- Gardener entries are emphasized (see Questions).
 - Digest lines link to `docs/decisions.md` entries and the other
   documents they reference, instead of naming them bare.
 
 ## Testing
 
 The next scheduled digest run renders the new format: status emoji on
-every bullet, impact-emoji subtitles, emphasized orchestrator entries,
+every bullet, impact-emoji subtitles, emphasized gardener entries,
 and working links to decisions/documents. Operator eyeballs it.
