@@ -94,6 +94,9 @@ frame every iteration builds inside — implement ONLY the iteration below.
   last event it posted: posting writes the event to
   `<topic>/<session-id>` (atomic tmp + rename, so the latest event
   replaces the previous one and the rename bumps the directory mtime).
+  Event CONTENT stops at: the event type, plus at most a generic parent
+  session id ("we stop there" — operator). No worktree, feature, model,
+  or any other identity field rides an event.
 - CONSUMER: `tools/sidebar_v3.py` (untracked on main, operator-pocketed)
   already reads the topic dirs' mtimes with a 60-minute active window. Do
   not modify it in this iteration.
