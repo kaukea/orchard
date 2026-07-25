@@ -1430,3 +1430,27 @@ worktree — so all worktrees see a unified session roster.
 identity), `test_orchard_topic.py` (multi-worktree scenarios).
 
 (Operator, 2026-07-25.)
+
+## [2026-07-25 07:27 CEST] Decision-085: The orchard naming vocabulary is closed — six roles, six glyphs
+#naming #roles #orchard #emoji #renaming #vocabulary
+
+Operator rulings (2026-07-25 morning), closing the picks [[orchard-renaming]] was
+parked on. Every role wears an orchard name and one glyph:
+
+| role (old) | orchard name | glyph |
+|---|---|---|
+| orchestrator | gardener | 🌳 |
+| architect | landscaper | 🌿 |
+| builder | sower (provisional — "if we find a better name, we will rename it") | 🌱 |
+| housekeeper | groundskeeper | 🧹 |
+| bus | courier | 📮 |
+| bloomer | bloomer (unchanged) | 🌸 |
+
+Constraints carried with the ruling: the courier's glyph must read at sidebar
+size — a small envelope is unreadable; a larger envelope or a mailbox (📮 chosen,
+📬 fallback if the red box reads wrong on screen). Location badges (local/cloud)
+stay orthogonal to the role glyph (mock round 5 ruling). Implementation ships as
+the [[orchard-renaming]] branch with its migration entry; no behaviour change
+rides along.
+
+(Operator, 2026-07-25.)
