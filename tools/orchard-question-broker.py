@@ -5,14 +5,17 @@ An agent asks a question over the courier (`courier.py ask`); this script — a 
 long-running process, never an agent, never spending a token — is what makes
 that ask() actually reach the operator and come back with an answer:
 
-    watch loop -> finds a new question broadcast (tools/courier.py's
-    _question_envelope, scanned via tools/sidebar_model.py's own courier-root
-    resolution, never a re-derived traversal) -> waits until the operator is
-    not mid-input (12e) -> pops a native `tmux display-popup` over the
-    operator's CURRENT window (12c) -> reads keypresses, accepting ONLY the
-    defined option keys, no default/dismiss/timeout (12d) -> sends the
-    answer back over the courier to the asking session (`courier.py send
-    --in-reply-to`).
+    watch loop -> finds a new question request sitting in the reserved
+    `:session:operator` mailbox (tools/courier.py's orchard transport —
+    `$XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/operator.<ts>.json`,
+    one file per asker per project, scanned via tools/courier.py's own
+    orchard_root() resolution, never a re-derived traversal) -> waits until
+    the operator is not mid-input (12e) -> pops a native `tmux display-popup`
+    over the operator's CURRENT window (12c) -> reads keypresses, accepting
+    ONLY the defined option keys, no default/dismiss/timeout (12d) -> sends
+    the answer back over the courier to the asking session (`courier.py
+    reply --in-reply-to`) and deletes the handled mailbox file so it is
+    never re-popped.
 
 None of this is parameterizable by the asking agent (12f): `courier.py ask` has
 no flag that skips deferral or widens the accepted keys — those rules live
@@ -53,13 +56,19 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import sidebar_model  # noqa: E402
+import courier  # noqa: E402 — reuse its orchard_root()/XDG_RUNTIME_DIR resolution
+                 # instead of re-deriving it (sidebar_model.py, its predecessor
+                 # here, is retired)
 
 _TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
 _COURIER_PY = os.path.join(_TOOLS_DIR, "courier.py")
 
 # Sender identity this script uses when it answers a question over the courier —
 # it is not an agent session, so it has no CLAUDE_CODE_SESSION_ID of its own.
+# The orchard `reply` command derives its sender via courier.py's whoami()
+# (CLAUDE_CODE_SESSION_ID), so this identity is injected into the subprocess's
+# environment rather than passed as a flag (unlike the retired legacy `send`,
+# `reply` takes no --from at all).
 BROKER_SENDER = "question-broker"
 
 DEFAULT_POLL_SECONDS = 1.0
@@ -283,46 +292,72 @@ def is_operator_busy(now: float, last_submit_ts: float | None,
     return True
 
 
-def pending_questions(bus_roots: list[Path], seen_ids: set[str]) -> list[dict]:
-    """Scan every courier root for question broadcasts not in `seen_ids`.
+def _orchard_projects_root() -> Path | None:
+    """`$XDG_RUNTIME_DIR/orchard/projects` — the directory holding one
+    subdirectory per project slug, each possibly carrying a reserved
+    `operator.<ts>.json` mailbox (tools/courier.py orchard_send, `:session:
+    operator`). None when XDG_RUNTIME_DIR is unset, mirroring
+    courier.py's own orchard_receive_own()'s empty-on-unset behaviour
+    rather than that function's own hard sys.exit — the watch loop should
+    idle, not crash, when the runtime dir isn't there yet."""
+    if not os.environ.get("XDG_RUNTIME_DIR"):
+        return None
+    return courier.orchard_root() / "projects"
 
-    Non-destructive peek — mirrors tools/sidebar_model.py's own
-    _BusAggregator.scan(): messages are owned by their recipients, this
-    script only looks. A question fans out to every peer's inbox as one
-    copy per peer (each with a fresh envelope `id` but the SAME
-    `question_id`), so within a single call this also de-duplicates on
-    question_id — the caller only needs to fold the returned question_ids
-    into `seen_ids` once handled.
 
-    Returns dicts sorted by `ts`: {question_id, question, options, asker}.
+def pending_questions(projects_root: Path | None, seen_ids: set[str]) -> list[dict]:
+    """Scan every project's reserved operator mailbox for question requests
+    not in `seen_ids`.
+
+    Non-destructive peek: a discovered file is left on disk until answered
+    (`_handle_question` deletes it once handled, so it is never re-popped).
+    Each project gets its OWN `operator.<ts>.json` per asker
+    (`$XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/operator.<ts>.json`,
+    tools/courier.py orchard_send/cmd_ask) — a question is a directed
+    request, never a fan-out, so there is exactly one file per question, not
+    one-per-peer as the retired broadcast used to write. De-dup is still by
+    `question_id` (now nested in the envelope's `body`, not top-level) so a
+    question re-observed across polls before it is handled is not re-queued
+    — the caller folds the returned question_ids into `seen_ids` once
+    enqueued.
+
+    Returns dicts sorted by `ts`: {id, question_id, question, options,
+    asker, title, summary, multi, project, path}. `id` is the envelope's
+    OWN id — the field a reply's `--in-reply-to` must match
+    (tools/courier.py _find_orchard_reply), distinct from `question_id`
+    which only rides the body for bookkeeping. `path` is the mailbox file
+    to delete once the question has been handled.
     """
     found: dict[str, dict] = {}
-    for root in bus_roots:
-        if not root.is_dir():
+    if projects_root is None or not projects_root.is_dir():
+        return []
+    for project_dir in projects_root.iterdir():
+        if not project_dir.is_dir():
             continue
-        for session_dir in root.iterdir():
-            if not session_dir.is_dir():
+        for f in project_dir.glob("operator.*.json"):
+            try:
+                env = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
                 continue
-            for f in session_dir.glob("*.json"):
-                if f.name.startswith("."):
-                    continue
-                try:
-                    env = json.loads(f.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    continue
-                qid = env.get("question_id")
-                if not qid or qid in seen_ids or qid in found:
-                    continue
-                found[qid] = {
-                    "question_id": qid,
-                    "question": env.get("question"),
-                    "options": env.get("options") or [],
-                    "asker": env.get("from"),
-                    "ts": env.get("ts") or "",
-                    "title": env.get("title"),
-                    "summary": env.get("summary"),
-                    "multi": bool(env.get("multi", False)),
-                }
+            body = env.get("body")
+            if not isinstance(body, dict):
+                continue
+            qid = body.get("question_id")
+            if not qid or qid in seen_ids or qid in found:
+                continue
+            found[qid] = {
+                "id": env.get("id"),
+                "question_id": qid,
+                "question": body.get("question"),
+                "options": body.get("options") or [],
+                "asker": env.get("from"),
+                "ts": env.get("ts") or "",
+                "title": body.get("title"),
+                "summary": body.get("summary"),
+                "multi": bool(body.get("multi", False)),
+                "project": project_dir.name,
+                "path": f,
+            }
     return sorted(found.values(), key=lambda q: q["ts"])
 
 
@@ -595,13 +630,23 @@ def _handle_question(q: dict) -> None:
                             title=q.get("title"), summary=q.get("summary"),
                             multi=bool(q.get("multi", False)))
     if answer is None:
-        return  # tmux/popup failed — leave the ❓ signal standing, no crash
+        return  # tmux/popup failed — leave the mailbox file standing, no crash
     body = json.dumps(answer)
+    # `reply` (unlike the retired legacy `send`) takes no --from: its sender
+    # is always courier.py's own whoami() (CLAUDE_CODE_SESSION_ID), so the
+    # broker's identity rides the subprocess environment instead. --to is
+    # already the full `:session:<asker>` address (the request envelope's
+    # own `from`); --target-project is required since the broker watches
+    # every project's mailbox, not just the one its own cwd resolves to.
+    env = {**os.environ, "CLAUDE_CODE_SESSION_ID": BROKER_SENDER}
     subprocess.run(
-        [sys.executable, _COURIER_PY, "send", "--from", BROKER_SENDER,
-         "--to", q["asker"], "--in-reply-to", q["question_id"], "--body", body],
-        capture_output=True, text=True,
+        [sys.executable, _COURIER_PY, "reply",
+         "--to", q["asker"], "--in-reply-to", q["id"],
+         "--subject", "orchard:operator:message:response",
+         "--body", body, "--target-project", q["project"]],
+        capture_output=True, text=True, env=env,
     )
+    q["path"].unlink(missing_ok=True)  # delete-on-handled: never re-popped
 
 
 def watch(poll_interval: float = DEFAULT_POLL_SECONDS,
@@ -609,7 +654,7 @@ def watch(poll_interval: float = DEFAULT_POLL_SECONDS,
     seen_ids: set[str] = set()
     pending: list[dict] = []
     while True:
-        roots = sidebar_model.iter_courier_roots()
+        roots = _orchard_projects_root()
         for q in pending_questions(roots, seen_ids):
             seen_ids.add(q["question_id"])
             pending.append(q)

@@ -1,13 +1,37 @@
 #!/usr/bin/env python3
-"""Curses fleet sidebar — renders the tree built by sidebar_model, navigates
-via sidebar_nav.
+"""Curses fleet sidebar — reads the fleet, renders it, navigates via
+sidebar_nav. The ONLY sidebar (bus-finishing): the old courier-inbox reader
+(tools/sidebar_model.py) and the plain-text prototype reader
+(tools/sidebar_v3.py) are both retired and folded in here.
+
+The fleet model is read straight off the per-session event layout
+orchard_topic.py writes: `$XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/
+<sessionid>.<ts>.json`, one file per event, folded into one record per
+session (latest of each kind wins) — see `_fold_sessions()`, ported from
+sidebar_v3.py's `sessions()`. `build_model()`/`watch()` are this module's own
+now; there is no other backing store.
+
+NOT ported (no source in the new event grammar — orchard_topic.py's `post`
+verbs are lifecycle/status/delegation/outcome/task only — so nothing below
+fabricates a value for them):
+  - courier rows (the old model's collapsed inbox-sidecar row) — the new
+    grammar has no announce/inbox concept to collapse into one.
+  - open questions / question badges — a question now flows through the
+    :session:operator broker (tools/orchard-question-broker.py), not a
+    courier-observed WIRE GRAMMAR v1 message.
+  - phase ticks, waiting_on_operator, tokens/dollars, age/worked — the
+    corresponding Feature/Repo fields stay present (so the render code needs
+    no special-casing) but are always None/False; render_lines() and the
+    curses painters already degrade gracefully on an absent value — that was
+    true even under the old model, before its first orchid:phase/etc.
+    message arrived.
 
 Presentation is deliberately split from curses: `flatten()` turns a Fleet
 into a flat list of Row objects, and `render_lines()` turns those into plain
 text with NO curses calls at all — that pure function is what tests assert
 on. The curses app (`main`, run through `curses.wrapper`) is a thin loop that
-polls a background `sidebar_model.watch()` thread and draws each line with
-its status colour.
+polls a background `watch()` thread and draws each line with its status
+colour.
 
 VISUAL CONTRACT (bus-message-specifying B5, operator-approved, non-
 negotiable — SUPERSEDES the older sidebar-titling glyph/colour vocabulary):
@@ -43,15 +67,20 @@ STDLIB ONLY.
 from __future__ import annotations
 
 import curses
+import json
 import os
+import re
+import shutil
+import subprocess
 import sys
 import threading
+import time
 import unicodedata
 import zlib
 from dataclasses import dataclass, field
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import sidebar_model  # noqa: E402
 import sidebar_nav  # noqa: E402
 
 # --------------------------------------------------------------------------
@@ -127,10 +156,15 @@ SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 # Six-state status vocabulary (final, settled — sidebar-titling item 9,
 # revised again by the mock's visual contract): idle, waiting, and
 # awaiting_agent share the same hollow circle — there is no longer a
-# separate operator-wait glyph variant (superseded by the amber "?N" badge
-# and the question-detail lines, see `question_badge`/`_draw_question_detail`
-# — bus-message-specifying B5 item 7: "hollow circle only, no watch/timer
-# glyphs anywhere in row status").
+# separate operator-wait glyph variant (bus-message-specifying B5 item 7:
+# "hollow circle only, no watch/timer glyphs anywhere in row status").
+# "waiting"/"awaiting_agent" are part of the full vocabulary the mock
+# defines but are currently unreachable: the fleet model (below) only ever
+# derives working/done/failed/idle from the new event grammar, which has no
+# blocked/notify_user signal to distinguish a wait — see the module
+# docstring's "NOT ported" list. Kept here rather than pruned, since
+# STATUS_EMOJI.get() is used defensively and a future data source may yet
+# supply the signal.
 STATUS_EMOJI = {
     "working": SPINNER_FRAMES[7],
     "waiting": "○",
@@ -146,7 +180,6 @@ STATUS_EMOJI = {
 # "working" and has no "idle" counterpart glyph.
 SUBAGENT_GLYPH = "●"
 
-COURIER_GLYPH = "📬"
 NO_ACTIVITY_TEXT = "⋮ no activity ⋮"
 ELLIPSIS = "…"
 
@@ -334,18 +367,6 @@ def phase_dot_suffix(running: int, queued: int) -> str:
 
 
 # --------------------------------------------------------------------------
-# Question badge / detail
-# --------------------------------------------------------------------------
-
-def question_badge(question_count: int) -> str | None:
-    return f"?{question_count}" if question_count > 0 else None
-
-
-def question_count_text(count: int) -> str:
-    return f"{count} question" + ("" if count == 1 else "s")
-
-
-# --------------------------------------------------------------------------
 # Footer stats — omitted entirely when the model doesn't (yet) expose them;
 # a later integration step wires the source, this step invents none of it.
 # --------------------------------------------------------------------------
@@ -387,13 +408,283 @@ def role_emoji(role: str | None) -> str | None:
 
 
 # --------------------------------------------------------------------------
+# Fleet model — reads $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/
+# <sessionid>.<ts>.json (see module docstring for what is and isn't ported).
+# --------------------------------------------------------------------------
+
+ACTIVE_WINDOW_SECONDS = 60 * 60  # a project dir untouched this long is not shown
+_DELEGATION_STATE = {"schedule": "scheduled", "begin": "active", "end": "inactive"}
+
+_SESSION_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
+
+def _is_bare_uuid(text: str | None) -> bool:
+    return bool(text) and bool(_SESSION_UUID_RE.match(text))
+
+
+@dataclass
+class Subagent:
+    label: str
+
+
+@dataclass
+class Feature:
+    name: str
+    activity: str
+    status: str
+    waiting_on_operator: bool
+    subagents: list[Subagent] = field(default_factory=list)
+    status_word: str = ""
+    phase: str | None = None
+    progress_pct: int | None = None
+    subagents_running: int = 0
+    subagents_queued: int = 0
+    # role/model come straight off the identity/status snapshot every
+    # orchard_topic.py event carries; tokens/dollars/age/worked have no
+    # source in this grammar and stay None (see module docstring).
+    role: str | None = None
+    model: str | None = None
+    tokens: str | None = None
+    dollars: str | None = None
+    age: str | None = None
+    worked: str | None = None
+
+
+@dataclass
+class Repo:
+    name: str
+    activity: str
+    status: str
+    waiting_on_operator: bool
+    paused: bool = False
+    # True when the repo has at least one live session (a gardener session
+    # or any feature). A repo with no live session is skipped by flatten().
+    has_session: bool = True
+    features: list[Feature] = field(default_factory=list)
+    status_word: str = ""
+    phase: str | None = None
+    progress_pct: int | None = None
+    subagents_running: int = 0
+    subagents_queued: int = 0
+    role: str | None = None
+    model: str | None = None
+    tokens: str | None = None
+    dollars: str | None = None
+
+
+@dataclass
+class Fleet:
+    repos: list[Repo] = field(default_factory=list)
+
+
+def projects_root() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if not runtime:
+        return Path("/nonexistent")  # build_model()/watch() just see nothing
+    return Path(runtime) / "orchard" / "projects"
+
+
+def _repo_display_name(slug: str) -> str:
+    """`<owner>.<repo>` (courier.py's project_slug() format) -> `<repo>` —
+    the bare name sidebar_nav's gardener-window match expects. A slug with
+    no owner component (no git remote at post time) has no dot to split on
+    and is shown as-is."""
+    _owner, sep, repo = slug.partition(".")
+    return repo if sep else slug
+
+
+def _latest(rec: dict, key: str, ts: float) -> bool:
+    """True (and records ts) when this event is the newest of its kind for a session."""
+    if ts < rec.get(key, -1.0):
+        return False
+    rec[key] = ts
+    return True
+
+
+def _fold_sessions(project_dir: Path) -> dict[str, dict]:
+    """Fold one project's event files into one record per session — latest
+    of each kind wins. Folded from the retired sidebar_v3.py's sessions(),
+    unchanged: per-session event files are `<sessionid>.<ts>.json`;
+    `<sessionid>.marker` heartbeat files sit alongside them and are skipped
+    (no envelope to parse)."""
+    found: dict[str, dict] = {}
+    for f in project_dir.iterdir():
+        if f.name.startswith(".") or not f.name.endswith(".json") or not f.is_file():
+            continue
+        try:
+            env = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        sid = env.get("from", "").removeprefix(":session:")
+        if not sid:
+            continue
+        ts = f.stat().st_mtime
+        rec = found.setdefault(sid, {"sid": sid, "subs": {}})
+        if _latest(rec, "_snap", ts):
+            rec["identity"] = env.get("identity", rec.get("identity", {}))
+            rec["status"] = env.get("status", rec.get("status", {}))
+        subject = env.get("subject", "")
+        if subject.startswith("orchard:agent:lifecycle:") and _latest(rec, "_life", ts):
+            rec["state"] = subject.rsplit(":", 1)[-1]
+        elif subject == "orchard:agent:status" and _latest(rec, "_stat", ts):
+            rec["activity"] = env.get("body", "")
+        elif subject.startswith("orchard:agent:outcome:") and _latest(rec, "_out", ts):
+            rec["outcome"] = subject.rsplit(":", 1)[-1]
+        elif subject.startswith("orchard:task:outcome:") and _latest(rec, "_task", ts):
+            rec["task_outcome"] = subject.rsplit(":", 1)[-1]
+        elif subject.startswith("orchard:agent:delegation:"):
+            action, _, sub = subject[len("orchard:agent:delegation:"):].partition(":")
+            state = _DELEGATION_STATE.get(action)
+            if sub and state and _latest(rec, f"_sub_{sub}", ts):
+                rec["subs"][sub] = state
+    return found
+
+
+def _status_for(rec: dict) -> str:
+    """working/done/failed/idle, derived from the lifecycle+outcome signals
+    this grammar actually carries. No waiting/awaiting_agent variant exists
+    (no blocked/notify_user post verb), so those STATUS_EMOJI entries are
+    simply never produced here."""
+    if rec.get("outcome") == "fail" or rec.get("task_outcome") == "failed":
+        return "failed"
+    if rec.get("outcome") == "success" or rec.get("task_outcome") == "completed":
+        return "done"
+    if rec.get("state") in ("starting", "started", "stopping"):
+        return "working"
+    return "idle"
+
+
+def _row_label(rec: dict) -> str | None:
+    """The identity name/feature to show, or None if there is nothing
+    operator-facing yet (a bare session-UUID with no announced name or
+    feature is never rendered — sidebar-polish item 2)."""
+    identity = rec.get("identity") or {}
+    label = identity.get("name") or identity.get("feature")
+    if label:
+        return label
+    return None if _is_bare_uuid(rec["sid"]) else rec["sid"]
+
+
+def _apply_common(row: Feature | Repo, rec: dict) -> None:
+    """Copy the fields a session record and a Feature/Repo row share —
+    both dataclasses carry this exact field set, so one function serves
+    either (duck-typed on purpose)."""
+    identity = rec.get("identity") or {}
+    status = rec.get("status") or {}
+    row.activity = rec.get("activity", "")
+    row.status_word = row.activity
+    row.status = _status_for(rec)
+    row.waiting_on_operator = False  # no source in this grammar
+    row.role = identity.get("agent")
+    row.model = status.get("model")
+    subs = rec.get("subs", {})
+    row.subagents_running = sum(1 for s in subs.values() if s == "active")
+    row.subagents_queued = sum(1 for s in subs.values() if s == "scheduled")
+
+
+def _assemble_repo(dir_name: str, sess: dict[str, dict]) -> Repo:
+    repo = Repo(name=_repo_display_name(dir_name), activity="", status="idle",
+                waiting_on_operator=False)
+
+    gardener = next(
+        (sess[sid] for sid in sorted(sess)
+         if (sess[sid].get("identity") or {}).get("agent") == "gardener"),
+        None,
+    )
+    if gardener is not None:
+        _apply_common(repo, gardener)
+
+    for sid in sorted(sess):
+        rec = sess[sid]
+        if (rec.get("identity") or {}).get("agent") != "landscaper":
+            continue
+        label = _row_label(rec)
+        if label is None:
+            continue
+        feature = Feature(name=label, activity="", status="idle",
+                           waiting_on_operator=False)
+        _apply_common(feature, rec)
+        # subagents surfaced by the landscaper's own delegation traffic
+        # (orchard:agent:delegation:begin/end) — the only subagent source
+        # this grammar has (see module docstring: a child session that
+        # announces itself without a delegation:begin from its parent is
+        # not shown).
+        for sub_label, state in sorted(rec.get("subs", {}).items()):
+            if state == "active":
+                feature.subagents.append(Subagent(label=sub_label))
+        repo.features.append(feature)
+
+    repo.has_session = gardener is not None or bool(repo.features)
+    return repo
+
+
+def build_model(root: Path | None = None) -> Fleet:
+    """One snapshot of the fleet: every project directory touched within
+    ACTIVE_WINDOW_SECONDS (mirrors the retired sidebar_v3.py's own
+    active-window rule — a project with no recent event just isn't shown,
+    there is no separate hide/show registry consulted here), folded and
+    assembled into one Repo per directory."""
+    root = root or projects_root()
+    fleet = Fleet()
+    if not root.is_dir():
+        return fleet
+    now = time.time()
+    for d in sorted(root.iterdir()):
+        if not d.is_dir():
+            continue
+        if now - d.stat().st_mtime >= ACTIVE_WINDOW_SECONDS:
+            continue
+        fleet.repos.append(_assemble_repo(d.name, _fold_sessions(d)))
+    return fleet
+
+
+def watch(on_change, root: Path | None = None) -> None:
+    """Call on_change(fleet) whenever the projects root changes.
+
+    Prefers `inotifywait -m -r` on the root when it already exists and the
+    binary is available; falls back to a 2s re-scan otherwise — the same
+    fallback shape the retired sidebar_model.watch() used, pointed at the
+    new layout. Resilient to a projects root that does not exist yet:
+    build_model() on a missing root is just an empty Fleet, never a crash.
+    """
+    root = root or projects_root()
+
+    def rescan_and_notify() -> None:
+        on_change(build_model(root))
+
+    if shutil.which("inotifywait") and root.is_dir():
+        cmd = [
+            "inotifywait", "-m", "-r",
+            "-e", "create", "-e", "moved_to", "-e", "modify", "-e", "delete",
+            "--format", "%f", str(root),
+        ]
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        )
+        try:
+            rescan_and_notify()  # initial snapshot before the first event
+            for _ in proc.stdout:
+                rescan_and_notify()
+        finally:
+            proc.terminate()
+        return
+
+    # Fallback: polling re-scan every 2 seconds.
+    while True:
+        rescan_and_notify()
+        time.sleep(2)
+
+
+# --------------------------------------------------------------------------
 # Presentation model (pure, no curses)
 # --------------------------------------------------------------------------
 
 @dataclass
 class Row:
     depth: int
-    kind: str  # "repo" | "feature" | "subagent" | "courier"
+    kind: str  # "repo" | "feature" | "subagent"
     target: str  # exact tmux window name to navigate to on Enter
     label: str
     status: str | None
@@ -409,8 +700,6 @@ class Row:
     progress_pct: int | None = field(default=None)
     subagents_running: int = field(default=0)
     subagents_queued: int = field(default=0)
-    question_count: int = field(default=0)
-    first_question_subject: str | None = field(default=None)
     status_word: str = field(default="")
     # The originating Feature, kept for optional fields the model doesn't
     # guarantee yet (role, model, age, worked, tokens, dollars) — accessed
@@ -418,18 +707,9 @@ class Row:
     source: object = field(default=None, repr=False)
 
 
-def _courier_row(depth: int, target: str, courier: sidebar_model.Courier) -> Row:
-    return Row(
-        depth=depth, kind="courier", target=target, label=courier.label,
-        status=None, waiting_on_operator=False, is_subagent=False,
-    )
-
-
-def flatten(fleet: sidebar_model.Fleet) -> list[Row]:
+def flatten(fleet: Fleet) -> list[Row]:
     """Fleet -> flat list of Row, depth-first (repo, its features, their
-    subagents). A live parent's collapsed courier row (sidebar-polish item 5), if
-    any, is the FIRST row in that parent's group — before its features or
-    subagents.
+    subagents).
 
     A repo with no live session (`not repo.has_session`) is skipped entirely
     — header AND group — an empty project has nothing to show (sidebar-
@@ -448,8 +728,6 @@ def flatten(fleet: sidebar_model.Fleet) -> list[Row]:
             status=repo.status, waiting_on_operator=repo.waiting_on_operator,
             is_subagent=False, paused=repo.paused,
         ))
-        if repo.courier is not None:
-            rows.append(_courier_row(1, repo.name, repo.courier))
         features = sorted(repo.features, key=lambda f: f.status != "done")
         for feature in features:
             feature_target = f"{repo.name}{TARGET_SEPARATOR}{feature.name}"
@@ -460,12 +738,8 @@ def flatten(fleet: sidebar_model.Fleet) -> list[Row]:
                 phase=feature.phase, progress_pct=feature.progress_pct,
                 subagents_running=feature.subagents_running,
                 subagents_queued=feature.subagents_queued,
-                question_count=feature.question_count,
-                first_question_subject=feature.first_question_subject,
                 status_word=feature.status_word, source=feature,
             ))
-            if feature.courier is not None:
-                rows.append(_courier_row(2, feature_target, feature.courier))
             for sub in feature.subagents:
                 rows.append(Row(
                     depth=2, kind="subagent", target=feature_target, label=sub.label,
@@ -476,8 +750,6 @@ def flatten(fleet: sidebar_model.Fleet) -> list[Row]:
 
 def _row_text(row: Row) -> str:
     indent = "  " * row.depth
-    if row.kind == "courier":
-        return f"{indent}{COURIER_GLYPH} {row.label}"
     if row.kind == "subagent":
         # presence in the model IS the only verifiable subagent state — no
         # "idle" counterpart glyph exists (sidebar-titling item 4).
@@ -548,7 +820,7 @@ def clamp_scroll_offset(offset: int, selected: int, count: int, height: int) -> 
 
 
 def render_lines(
-    fleet: sidebar_model.Fleet,
+    fleet: Fleet,
     selected: int = -1,
     width: int = 32,
     offset: int = 0,
@@ -585,8 +857,7 @@ def render_lines(
             avail = max(width - len(marker) - len(indent), 0)
             glyph = STATUS_EMOJI.get(row.status, "○")
             pct = row.progress_pct if row.progress_pct is not None else 0
-            badge = question_badge(row.question_count)
-            body = compose_feature_row_text(glyph, row.label, pct, avail, badge)
+            body = compose_feature_row_text(glyph, row.label, pct, avail)
             lines.append(_truncate(f"{marker}{indent}{body}", width))
         else:
             lines.append(_truncate(marker + _row_text(row), width))
@@ -600,20 +871,20 @@ def render_lines(
 class _SharedFleet:
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._fleet = sidebar_model.Fleet()
+        self._fleet = Fleet()
 
-    def set(self, fleet: sidebar_model.Fleet) -> None:
+    def set(self, fleet: Fleet) -> None:
         with self._lock:
             self._fleet = fleet
 
-    def get(self) -> sidebar_model.Fleet:
+    def get(self) -> Fleet:
         with self._lock:
             return self._fleet
 
 
 def _watch_thread(shared: _SharedFleet) -> None:
     try:
-        sidebar_model.watch(shared.set)
+        watch(shared.set)
     except Exception:
         pass  # keep the UI alive on the last snapshot even if the watch dies
 
@@ -738,8 +1009,8 @@ def _init_agent_colours() -> list[int] | None:
 
 def _agent_colour_key(row: Row) -> str:
     """A stable identity per live agent row: repo/feature rows are unique by
-    target; sibling subagents/courier rows share a target, so label joins in."""
-    if row.kind in ("subagent", "courier"):
+    target; sibling subagent rows share a target, so label joins in."""
+    if row.kind == "subagent":
         return f"{row.target}/{row.label}"
     return row.target
 
@@ -910,9 +1181,8 @@ def _draw_feature_row(
     status = row.status
     glyph = STATUS_EMOJI.get(status, "○")
     pct = row.progress_pct if row.progress_pct is not None else 0
-    badge = question_badge(row.question_count)
-    layout = _feature_row_layout(glyph, row.label, pct, width, badge)
-    text = compose_feature_row_text(glyph, row.label, pct, width, badge)
+    layout = _feature_row_layout(glyph, row.label, pct, width, None)
+    text = compose_feature_row_text(glyph, row.label, pct, width)
     styles = _feature_row_cell_styles(layout, status, hue["accent"])
     fill_rgb = _feature_fill_colour(status, hue)
 
@@ -1048,20 +1318,6 @@ def _draw_working_decorations(stdscr, y: int, width: int, row: Row, colours: _Co
     return _draw_footer(stdscr, y, width, row.source, colours)
 
 
-def _draw_question_detail(stdscr, y: int, width: int, row: Row, colours: _ColourCache) -> int:
-    if row.question_count <= 0:
-        return y
-    _draw_guide_line(stdscr, y, width, question_count_text(row.question_count), colours, fg=AMBER)
-    y += 1
-    if row.first_question_subject:
-        prefix = GUIDE_CHAR + "   "
-        body = _truncate(f"⋮ why: {row.first_question_subject}", max(width - len(prefix), 0))
-        _safe_addstr(stdscr, y, 0, prefix, colours.pair(MUTED, dim=True))
-        _safe_addstr(stdscr, y, len(prefix), body, colours.pair(AMBER, dim=True))
-        y += 1
-    return y
-
-
 def _draw(
     stdscr, rows: list[Row], selected: int, offset: int,
     colour_pairs: dict[str, int], agent_colours: list[int] | None,
@@ -1090,14 +1346,10 @@ def _draw(
                 y = _draw_working_decorations(stdscr, y, max_x, row, colours)
             elif row.status == "done" and y < max_y:
                 y = _draw_done_footer(stdscr, y, max_x, row, colours)
-            if row.question_count > 0 and y < max_y:
-                y = _draw_question_detail(stdscr, y, max_x, row, colours)
             continue
 
         text = _truncate(_row_text(row), max_x)
         attr = colour_pairs.get(row.status, 0)
-        if row.kind == "courier":
-            attr |= curses.A_ITALIC | curses.A_DIM
         if agent_colours:
             attr |= agent_colours[_agent_colour_index(_agent_colour_key(row))]
         if row.status == "waiting" and row.waiting_on_operator:
@@ -1173,7 +1425,7 @@ def main(stdscr) -> None:
 # --------------------------------------------------------------------------
 
 def _run_dump() -> int:
-    fleet = sidebar_model.build_model()
+    fleet = build_model()
     for line in render_lines(fleet):
         print(line)
     return 0

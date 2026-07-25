@@ -42,6 +42,7 @@ from pathlib import Path
 from typing import NoReturn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # for the sibling courier.py
+import courier  # noqa: E402
 
 TOPIC_FAMILY = "repository"
 TELEMETRY_FAMILY = "telemetry"
@@ -132,7 +133,6 @@ def _identity() -> dict:
     """Immutable facts (the courier's identity operation) — never change for a session:
     agent role, feature, human name, parent. Session id already rides `from`."""
     try:
-        import courier
         ident = courier.identity_of()
     except Exception:
         return {}
@@ -149,7 +149,6 @@ def _status() -> dict:
     """Mutable metadata (the courier's status operation) — changes through the session:
     model, context occupancy, spend. Attached to every event so the latest is truth."""
     try:
-        import courier
         st = courier.status_of()
     except Exception:
         return {}
@@ -253,7 +252,14 @@ def do_post(rest: list[str]) -> None:
                "lifecycle, status, delegation, outcome, task", attempted, sid, repo)
 
     _attach_snapshot(envelope)
-    print(write_message(topics_root() / TOPIC_FAMILY / repo, sid, envelope))
+    # NEW layout (this step): the event lands in the per-session project feed
+    # sidebar_v3 reads, not the old topics/repository/<repo>/ directory — same
+    # convention courier.py's own orchard transport uses (project_slug() ->
+    # project_dir() -> orchard_deliver(), which does the atomic write, the
+    # `<sid>.marker` touch, and the parent-dir mtime bump in one place, so
+    # this script and courier.py can never drift on that convention).
+    slug = courier.project_slug()
+    print(courier.orchard_deliver(courier.project_dir(slug), sid, envelope))
 
 
 def main() -> None:
