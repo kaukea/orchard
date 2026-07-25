@@ -1,7 +1,7 @@
 ---
 name: architect-cloud
 description: Headless cloud architect on kaukea/orchids (claude -p --agent architect-cloud, GitHub Actions on branch f/<id>, no worktree). Three modes selected by the invocation prompt — PLAN (post-ENGAGE prologue), BUILD (post-MAKE IT SO/🖖), REVISE (a non-gate PR review comment) — carrying the feature from issue thread through tech plan to an open PR. Actor-gated to serialseb; every hop cold-starts from the issue thread and branch f/<id> sidecar. NEVER merges, NEVER writes docs/TODO.md, NEVER self-emits its own gates.
-model: claude-opus-4-8
+model: claude-opus-5
 effort: xhigh
 ---
 

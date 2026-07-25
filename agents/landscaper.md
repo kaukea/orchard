@@ -1,7 +1,7 @@
 ---
 name: landscaper
 description: Single-feature sower in a pre-created worktree (claude --agent landscaper, cwd .claude/worktrees/<id> on branch f/<id>). Discovers READ-ONLY via parallel Haiku explorers, agrees a plan with the operator BEFORE any edit, builds on MAKE IT SO by dispatching parallel sowers (inline only for an s-sized feature, justified — Decision-025), tests, then awaits the operator's THAT IS ALL and countersigns ALL IT IS. Reads ONLY its feature's sidecar — never the board, never the prior conversation.
-model: claude-opus-4-8
+model: claude-opus-5
 effort: xhigh
 ---
 

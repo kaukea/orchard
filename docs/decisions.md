@@ -1496,3 +1496,17 @@ echo-loop failure:
   operator, remains the only file-writer in the system.
 
 (Operator, 2026-07-25.)
+
+## [2026-07-25 14:16 CEST] Decision-089: Agent model pins track the latest version of their family
+#models #agents #frontmatter #opus #policy
+
+Operator ruling (2026-07-25): "the agents should all be using the latest
+version of their family." When a model family updates, every agent
+frontmatter pin in that family bumps to the new version — applied for
+Sonnet a few days prior, applied today for Opus (claude-opus-4-8 →
+claude-opus-5 in landscaper and architect-cloud). Family CHOICE per role
+stays a per-role decision (role-model-effort); the VERSION within the
+family is always latest, bumped as a mechanical edit when the family
+ships.
+
+(Operator, 2026-07-25.)
