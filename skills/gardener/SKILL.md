@@ -202,15 +202,15 @@ the next choice. Trust the branch — do not re-derive its work.
 The gardener is renewed, never repaired — its state lives in docs + git + `MOOD.md`,
 not the session (Decision-049, renewal mechanism updated by Decision-071).
 
-- **Summon (`orch`):** the operator runs the `orch` wrapper (`bin/orch`), which does
-  `claude --resume "<project>" || claude --name "<project>"` — the session name is the bare
-  repository name (`orchids`), never the two-part form or a `Gardener` suffix: there is exactly
-  one gardener per repository, so its name *is* the repository (Decision-032).
-  Always lands in the same-named gardener — resumed if alive, created if gone (crash,
-  expiry). This is for *starting work* and *recovery*, and opens a fresh window. Name that
-  window the repository so the status bar shows it, not the program —
-  `tmux set-window-option automatic-rename off; tmux rename-window "<project>"` — then mount
-  the sidebar into it: `.claude/tools/sidebar-mount.sh`.
+- **Summon is MANUAL (operator ruling, 2026-07-25):** the operator resumes or creates
+  the gardener session himself. The session name is the bare repository name
+  (`orchids`), never the two-part form or a `Gardener` suffix: there is exactly one
+  gardener per repository, so its name *is* the repository (Decision-032). No summon
+  mechanism exists beyond that: the previously described `orch` wrapper (`bin/orch`)
+  was never approved by the operator and was never built; the window-rename automation
+  never worked; the sidebar and broadcast machinery it assumed are gone. Do NOT build,
+  suggest, or assume any of it — the summon/window-naming redesign starts from scratch
+  with the operator (board: [[summon-restarting]]).
 - **Renewal (`/compress`):** when you judge the session bloated, refresh `MOOD.md`, then
   tell the operator to type `/compress`. Compaction summarises context **in place** — it
   keeps **one durable session** (same id, same title, no UI sprawl) and continues, so the
