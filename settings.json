@@ -3,11 +3,8 @@
     "defaultMode": "auto",
     "allow": [
       "Edit(.ai/repositories/*/*/agents/**)",
-      "Write(.ai/repositories/*/*/agents/**)",
       "Edit(.ai/repositories/*/*/skills/**)",
-      "Write(.ai/repositories/*/*/skills/**)",
-      "Edit(.ai/repositories/*/*/files/**)",
-      "Write(.ai/repositories/*/*/files/**)"
+      "Edit(.ai/repositories/*/*/files/**)"
     ]
   },
   "hooks": {
