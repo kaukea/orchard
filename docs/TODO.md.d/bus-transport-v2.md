@@ -1,6 +1,104 @@
 - created: 2026-07-25
 - created_by: Sebastien Lambla
 - created_during: orchestrator session (carried from the bus-message-specifying close)
+- completed: 2026-07-25
+- completed_during: architect session f/bus-transport-v2
+
+## Result (architect close, 2026-07-25)
+
+Result: DONE — this feature delivered the sidebar DATA TRANSPORT slice of
+bus-transport-v2 (the "bus equivalence for the side display"). Branch
+`f/bus-transport-v2`. TESTED: 26 unit tests (`tests/test_orchard_topic.py`) pass
++ LIVE on-screen acceptance by the operator — a burst of events walked a session
+line through its full lifecycle on his `sidebar_v3`; confirmed moving, and legible
+once the feature/task name was added.
+
+WHAT WAS BUILT:
+- `tools/orchard_topic.py` — the sanctioned topic POSTER. `post <family> ...`
+  over FIVE families: `lifecycle <starting|started|stopping|stopped>`,
+  `status <=2 words>`, `delegation <schedule|begin|end> <subagent>`,
+  `outcome <success|fail>` (agent-level), `task <completed|failed>` (task-level,
+  ORCHESTRATOR-ONLY). Every event carries the two fixed operations the bus answers
+  itself and the agent never sees — identity (immutable) + status (mutable), from
+  bus.py's identity_of/status_of. Validation is absolute; a violation refuses +
+  records telemetry + bounces a rejection to the sender over the bus. Atomic write
+  (`.<sid>.<ts>` -> rename) into `$XDG_RUNTIME_DIR/orchard/topics/repository/<repo>/`,
+  repo via --git-common-dir (worktrees fold to one project), advancing the nested
+  per-project mtime.
+- `tools/sidebar_v3.py` — brought into the repo (was operator-pocketed) and grown
+  from a bare projects list into the FUNCTIONAL per-session view: one line per
+  session = feature/task · agent·model · lifecycle state · 2-word status · outcome,
+  subtasks nested with scheduled/active/inactive. Reads only topic files; wakes no agent.
+- `tools/feature-scoped tests` — 26 cases over all families, the orchestrator-only
+  rule, and every reject path + telemetry.
+
+GOVERNANCE (operator ruling, direct in-pane 2026-07-25): the orchestrator that
+launched this feature is TAINTED — its relays and its sidecar commits on main
+(5af7997..abbebd9) are NOT authoritative. This slice was built ONLY on the
+operator's direct words + real pre-existing code. The full live-dictated design is
+in the workstream log.
+
+### Follow-up tasks — return to a FRESH orchestrator (not written to the board by me)
+1. THE RELAY / request-response bus ("finishing the bus off"): `:session:` unicast
+   with manual auth + delete-on-read; the CROSS-REPO addressing substrate (does not
+   exist — bus is per-repo under each git dir); then retire v1's fan-out. Operator
+   roadmap: request/response · verify nested mtime · handle internal subagents, plus
+   cross-repo (panopticon, seb.throwy, SignMc). Its own feature(s).
+2. PRETTY SIDEBAR phase: reformat/animate/colorise sidebar_v3 on this data
+   foundation — project->feature->task grouping for concurrent features; the 5-phase
+   accordion (active phase open / others closed; soft-red/green + filled/empty circle;
+   no spinner on the open feature; collapse to name+emoji on outcome; subtasks FYI,
+   no colour). The 5 phases are a UI MAPPING of the raw states, NEVER bus data.
+3. FAN-OUT CUT-OVER: DEFERRED until sidebar_v3 reaches parity — the tracked
+   sidebar_model.py reads bus INBOXES for identity/status, so killing the fan-out
+   first blinds it. Then replace v1's fan-out announce/broadcast with topics
+   (+ unicast-to-parent), killing the token leak. depart fan-out is already safe to
+   remove; test_bus.py broadcast + test_bus_traffic role tests need updating.
+
+## Changelog entry
+
+Added a sanctioned agent-activity transport for the fleet sidebar. Agents post
+lifecycle, status, delegation and outcome events (and the orchestrator a
+task-outcome) through one script, `orchard_topic.py`, into user-wide topic
+directories — validated absolutely, each event carrying the agent's identity and
+live status, never touching another agent's inbox. A new `sidebar_v3.py` reads
+those topics to show, per project, what each session is doing and its
+queued/active subtasks, waking no agent.
+
+## Readme delta
+
+Developer-tooling note (not app behaviour): `tools/orchard_topic.py post
+<lifecycle|status|delegation|outcome|task> ...` is the only sanctioned writer of a
+project topic; `tools/sidebar_v3.py [--once]` renders the active projects and their
+sessions from those topics.
+
+## Decision entries
+
+Decision-NNN #bus #transport #sidebar — The project topic is DATA, not UI. Agent
+events carry raw state (lifecycle/status/delegation/outcome) plus the two fixed
+operations the bus answers itself and the agent never sees: IDENTITY (immutable —
+session, agent, feature, name, parent) and STATUS (mutable — model, tokens, spend).
+The 5-phase display is a UI-side MAPPING of the raw states, never a field on the
+bus. (Operator, 2026-07-25.)
+
+Decision-NNN #bus #transport — A task is complete only when the ORCHESTRATOR says
+so: `orchard:task:outcome:completed|failed` is orchestrator-only, enforced by the
+sender's identity at the script; agent-level `outcome:success|fail` is separate.
+(Operator, 2026-07-25.)
+
+Decision-NNN #sidebar #topics — A project = the git repo (via --git-common-dir), so
+every worktree of a repo posts to one topic directory; the first poster is the
+orchestrator and becomes the project header; a project appears only when someone
+posts to it. (Operator, 2026-07-25.)
+
+## Architecture delta (trigger fired: component added + new data flow)
+
+New component pair: `orchard_topic.py` (sanctioned topic poster / event producer)
+and `sidebar_v3.py` (topic consumer). New data flow: agents -> user-wide
+`$XDG_RUNTIME_DIR/orchard/topics/repository/<repo>/` -> the sidebar, decoupled from
+the inbox bus (no fan-out, no agent woken). Coexists with the legacy inbox transport
+until the fan-out cut-over (follow-up 3). Housekeeper: reflect the topic-transport
+component + data flow in ARCHITECTURE.md.
 
 ## Blockers
 
