@@ -55,12 +55,72 @@
   `sidebar_model._read_status` parameterized duplication; (b) remove the
   legacy `orchid:activity` parse fallback after one transition release.
 
+## Findings — THE DICTATED DESIGN (operator, 2026-07-25 night, authoritative)
+
+Dictated live across the 01:55 recovery session and this one; SUPERSEDES the
+round-9 sketch where they differ (topic list, daemon signing). This is the
+frame every iteration builds inside — implement ONLY the iteration below.
+
+- TOPICS: any component may create one; no fixed list, nothing daemon-signed
+  (daemon withdrawn → cooperative enforcement follows). Family/name for
+  projects: `repository/<project>`. Root is USER-wide (not machine-wide, not
+  in any repo's git dir): `$XDG_RUNTIME_DIR/orchard/topics/<family>/<name>/`.
+- THE ONE SCRIPT: every bus interaction goes through ONE Python script. It
+  enforces the write location, the message content, the Subject, the From by
+  detecting the session id (`:session:<id>`), and the To from the agent's
+  up-front instructions (`:topic:repository/<project>`). A type not
+  permitted on a topic is rejected at accept time.
+- COLONS ARE LOAD-BEARING: `:session:<id>`, `:topic:<name>`; subscribe
+  grammar `orchard:bus:subscribe:<topic>` / `orchard:bus:unsubscribe:<topic>`
+  (subscribe = create the agent's topic folder + monitor; unsubscribe =
+  delete all of it, discard remaining content). Not this iteration — recorded
+  so nothing is invented differently later.
+- ACTIVITY: every lifecycle/status/agent change posts a MESSAGE to the
+  project topic; the topic directory's mtime therefore advances on every
+  write and IS the sidebar's activity signal (operator-exempt from the
+  no-filesystem-sync rule; the exemption covers the folder time only).
+- AGENT SIDE: a small table — when X happens, ask your bus to post Y. The
+  bus sidecar discovers all metadata itself; the parent agent does nothing
+  and never learns a path, a format, or an ordering rule.
+- MESSAGE TYPES: FOUR planned; TWO named so far — `appeared` (an agent has
+  started) and `completed` (it has reached stopped). The other two are
+  UNNAMED: do not invent them; their absence is an iteration wall.
+- CONSUMER: `tools/sidebar_v3.py` (untracked on main, operator-pocketed)
+  already reads the topic dirs' mtimes with a 60-minute active window. Do
+  not modify it in this iteration.
+- STOPGAP TO SUPERSEDE: `tools/orchard_topic.py` on main is a bare one-arg
+  mtime touch (`post`, no type, no message) — it cannot carry the
+  differences between events and is NOT the design; reshape or replace it.
+- STANDING CONSTRAINTS (operator): no log files; never close shared files;
+  no filesystem-as-synchronization beyond the folder-mtime exemption; build
+  exactly the requested iteration, nothing speculative.
+- PERMISSION REALITY: bus subagents' Bash calls ride the auto-mode
+  classifier (nothing bus-related is allowlisted); a bus was already denied
+  running the stopgap once. Surface permission walls to the operator —
+  never self-allowlist (the classifier blocks it, correctly).
+
 ## Proposal
 
-To shape when metronome's shape is known, or if the operator pulls a slice
-forward. The transport is the layer ABOVE v1's vocabulary: v1 is what a
-message SAYS; v2 is who it reaches, on what topic, sealed how, admitted by
-whom. Nothing here is built until the operator rules a build.
+The transport is the layer ABOVE v1's vocabulary: v1 is what a message SAYS;
+v2 is who it reaches, on what topic, sealed how, admitted by whom. The
+operator is feeding this design ONE ITERATION AT A TIME — the architect
+builds the iteration below and NOTHING past it; later slices (subscribe
+verbs, `:session:` addressing, the two unnamed types, encryption, cloud leg)
+arrive as their own iterations when the operator opens them.
+
+ITERATION 1 (open, operator-ordered): the one script's POST path for the
+project topic, so the sidebar shows agents' work while it happens.
+- `post` takes the message type — `appeared` | `completed` — and REJECTS
+  anything else by naming what the topic admits.
+- It writes a real message file (atomic, mirroring `bus.py deliver`'s
+  partial-then-rename) into `$XDG_RUNTIME_DIR/orchard/topics/repository/
+  <project>/`, carrying From `:session:<detected id>`, To
+  `:topic:repository/<project>`, Subject `<type>`, ts. The directory mtime
+  advances as the side effect of the write — never a bare `utime`.
+- Project discovered from the repository the call runs in; session id from
+  the environment; callers pass nothing but the type.
+- The bus contract's table (agents/bus.md) keeps exactly the two named
+  moments: announce → post `appeared`; depart → post `completed`.
 
 TOMORROW (operator, 2026-07-25 end-of-day — pulled forward, this is next
 session's first work): "refine and implement vocab v2 and make sure cross-repo
@@ -78,7 +138,15 @@ implement it, and prove cross-repo messaging end to end.
 
 ## Testing
 
-To agree at dispatch. The assured-scenario gate carried from
-[[bus-message-specifying]] round 18 applies: an agent must learn a peer's
-completion through the bus alone, no git/filesystem polling — enabled by
-[[bus-close-cleanup]].
+For iteration 1 (to confirm with the operator at the plan gate):
+- Fixture: valid types write an enforced message file (fields present,
+  atomic write observed); invalid types rejected naming the admitted set;
+  no session id / outside a repo → hard exit.
+- LIVE ACCEPTANCE, on the operator's screen: the mounted sidebar lists the
+  project with a fresh age while a real session posts — behaviour observed
+  end-to-end, not fixtures alone. An artifact that renders but displays
+  nothing is a FAIL (operator ruling, 2026-07-25).
+
+Carried for later iterations: the assured-scenario gate from
+[[bus-message-specifying]] round 18 — an agent learns a peer's completion
+through the bus alone, no git/filesystem polling ([[bus-close-cleanup]]).

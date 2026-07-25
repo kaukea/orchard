@@ -97,7 +97,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `bug · cancelled · · complete · process ·` [~~Architect skips its delegation contract: builds without dispatching builders~~](TODO.md.d/architect-delegation.md) ~handover-contract
 - `feature · done · · complete/interactive · process ·` [Message bus: repo-scoped agent-to-agent messaging via a bus sidecar](TODO.md.d/message-bus.md) ~hook-choreography ~cross-repo-inbox
 - `refactor · functional · · complete/interactive · process ·` [Bus message specifying: tighten the vocabulary, fix what each agent sends](TODO.md.d/bus-message-specifying.md) ~message-bus ~fleet-documenting ~sidebar-witnessing ~sidebar-titling ~orchard-renaming ~bus-transport-v2
-- `feature · todo · · queued · process ·` [Bus transport v2: addressed messages, allow-listed topics, env-boundary encryption](TODO.md.d/bus-transport-v2.md) ⊘metronome ~bus-message-specifying ~bus-close-cleanup ~message-bus
+- `feature · todo · · plan-ready · process ·` [Bus transport v2: the dictated topic design, fed one iteration at a time](TODO.md.d/bus-transport-v2.md) ~bus-message-specifying ~bus-close-cleanup ~message-bus
 - `bug · todo · critical · plan-ready · process ·` [Bus close actually cleans up: wake the bus to close, never kill its monitor](TODO.md.d/bus-close-cleanup.md) ~agent-closing ~bus-singleton ~window-closing-owning ~message-bus ~bus-message-specifying
 - `bug · todo · critical · plan-ready · process ·` [Bus singleton: exactly one bus sidecar per agent, as designed](TODO.md.d/bus-singleton.md) ~message-bus ~sidebar-polish ~agent-closing
 - `feature · todo · nice-to-have · queued · process ·` [Bus recycling: a deep bus warns its host and hands over to a fresh one](TODO.md.d/bus-recycling.md) ~bus-singleton ~message-bus
