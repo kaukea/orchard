@@ -1,0 +1,5 @@
+Exit interview (orchard-renaming, distilled by gardener from the dead landscaper's log):
+- Migration authored inline by the landscaper, not a sower — integration keystone needing the full rename map (Decision-025 justification recorded).
+- Migration NOT self-applied in the authoring clone (would move live the-works/bus under the running courier); watermark advanced to suppress the pending hook. Ships for consumer repos.
+- CLOSE GAP: the gate-word groundskeeper dispatch died with the landscaper — no close ran until operator noticed; recovery dispatch + repair were manual (board task close-dispatching).
+- RECOVERY DEVIATION: the recovery groundskeeper first landed the close correctly (fast-forward), then reset main onto the remote echo commit and discarded its own work; operator-gated repair restored and linearized (rebase onto 1c81106) after the Baseline no-merge-commit rule declined the merge shape.
