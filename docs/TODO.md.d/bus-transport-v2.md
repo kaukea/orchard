@@ -85,6 +85,15 @@ frame every iteration builds inside — implement ONLY the iteration below.
 - MESSAGE TYPES: FOUR planned; TWO named so far — `appeared` (an agent has
   started) and `completed` (it has reached stopped). The other two are
   UNNAMED: do not invent them; their absence is an iteration wall.
+- EVENTS ONLY, FLAT (operator, 2026-07-25 05:1x): an agent may advertise
+  ONLY the events in the operator's document — nothing else rides the bus;
+  status/phase/subagent-progress chatter serves no purpose and is OUT
+  (extension of the event set only as needed to fill gaps, operator-ruled).
+  A topic directory is FLAT — event files only, no subtrees. The only
+  identity an agent gives is its session id, which IS the filename of the
+  last event it posted: posting writes the event to
+  `<topic>/<session-id>` (atomic tmp + rename, so the latest event
+  replaces the previous one and the rename bumps the directory mtime).
 - CONSUMER: `tools/sidebar_v3.py` (untracked on main, operator-pocketed)
   already reads the topic dirs' mtimes with a 60-minute active window. Do
   not modify it in this iteration.
