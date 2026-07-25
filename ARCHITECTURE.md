@@ -236,13 +236,10 @@ $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
   and draws it, `sidebar_model.py`/`sidebar_v3.py` deleted), `sidebar_nav.py`
   (navigation), `sidebar-mount.sh` (mount), `feature_name.py` (ledger name
   resolution), `orchard-question-broker.py` + `orchard-question-broker-mount.sh`
-  (the ask popup broker, above). `orchard_registry.py` (repo
-  registration/hide-show persistence, `~/.config/orchids/sidebar-registry.json`)
-  still backs the `/orchard show|hide` skill (`skills/orchard/`), but
-  `sidebar.py`'s own `build_model()` does not consult it — every directory
-  under the projects root is folded unconditionally, filtered only by
-  whether it has a live session (see Retention above); reconnecting hide/show
-  to the new renderer is unresolved, not confirmed either way here.
+  (the ask popup broker, above). Hide/show visibility is retired (operator
+  ruling, 2026-07-25): `sidebar.py`'s `build_model()` folds every directory
+  under the projects root unconditionally, filtered only by whether it has a
+  live session (see Retention above).
 
 ## The sidecar contract
 

@@ -80,7 +80,7 @@ To confirm at the plan gate:
 ## Result
 
 Result: done — code complete and tested; awaiting operator `THAT IS ALL`.
-- Branch `f/bus-finishing` · HEAD `f67d818` (Base `149131b`).
+- Branch `f/bus-finishing` (HEAD = branch tip; Base `149131b`).
 - Stage 1 (mechanics): new orchard flat+markers transport in `tools/courier.py` under
   `$XDG_RUNTIME_DIR/orchard/{projects/<repo>.<project>,topics/<name>}/`
   (`<sessionid>.<ts>.json` + `<sessionid>.marker`); `:session:`/`:topic:` addressing;
@@ -96,7 +96,7 @@ Result: done — code complete and tested; awaiting operator `THAT IS ALL`.
   `:session:<parent>` signal, singleton, self-message-wake close). Subjects = closed
   22-string corpus, exact-match. Sidebar retention = colour (working / done-green /
   fail-red / stale-gray), persists until restart.
-- Tested: full suite **348 passed** (pytest, isolated `XDG_RUNTIME_DIR`/`XDG_CACHE_HOME`)
+- Tested: full suite **332 passed** (pytest, isolated `XDG_RUNTIME_DIR`/`XDG_CACHE_HOME`)
   — assured cross-repo scenario (two repos, one runtime dir, B receives A via the
   courier alone), request/reply + delete-on-read, exact-subject accept/reject,
   marker+parent mtime, compaction archive-and-sweep, sidebar build/render from the new
@@ -122,10 +122,11 @@ Result: done — code complete and tested; awaiting operator `THAT IS ALL`.
    ends); the operator-answer allowlist bypass (a reply from `:session:operator` is the
    trusted operator answer, exempt from the cross-project gate); focus reclaimed by
    observing `closed`. The current mailbox-scanning broker is a working bridge only.
-3. REGRESSION to re-wire: the `/orchard hide|show` registry (`tools/orchard_registry.py`)
-   is no longer read by the consolidated `sidebar.py` — `build_model()` folds every
-   project dir unconditionally, so hide/show is silently a no-op. Small fix (filter the
-   project dirs by the registry in `build_model`); surfaced to the operator at close.
+3. hide/show REMOVED (operator ruling 2026-07-25): deleted `tools/orchard_registry.py`,
+   `tests/test_orchard_registry.py`, and the `/orchard` skill (`skills/orchard/`); the
+   consolidated `sidebar.py` shows every project unconditionally. `sidebar-registry.json`
+   now serves ONLY the courier's cross-project messaging allowlist — its filename is now a
+   misnomer; renaming it (+ courier's `ORCHARD_REGISTRY_PATH`) is a minor follow-up.
 4. Minor debts: reject-telemetry still writes the old `topics/telemetry/<repo>/` layout;
    sidebar `progress_pct` unpopulated (done rows show `0%`); `failed` shown via the
    ❌ glyph, no red RGB.
@@ -145,7 +146,8 @@ known or rejected, with variable data in the body. The fleet sidebar is one prog
 (`sidebar.py`) reading that tree, and staleness shows as colour (done green, failed red,
 not-heard-from gray) rather than rows appearing and vanishing. The transitional `bus.py`
 shim is retired; `courier.py` is the single script. Telemetry ≤120 minutes stays live;
-older messages archive to `~/.cache/orchard/archives/`.
+older messages archive to `~/.cache/orchard/archives/`. The per-repo sidebar hide/show
+(`/orchard`) is retired — the bar now shows every registered project.
 
 ## Readme delta
 
