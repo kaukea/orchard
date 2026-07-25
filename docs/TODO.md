@@ -59,7 +59,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
     - `feature · todo · · blocked-on-answers · process · gh#195` [Pretty sidebar: accordion phases, outcome colours, collapse — on the topic data](TODO.md.d/pretty-sidebar.md) ~bus-transport-v2 ~sidebar-polish ~sidebar-spacing-and-glyphs
   - `bug · done · · complete/interactive · process · gh#34` [Session and feature naming: short, descriptive, visible — sidebar prerequisite](TODO.md.d/session-naming.md)
   - `feature · todo · · working · process · gh#43` [Handover contract: build-ready sidecars, questions front-loaded before launch](TODO.md.d/handover-contract.md) ~architect-delegation ~injection-integrity
-  - `feature · done · · complete/interactive · process · gh#44` [Cloud architect: automate the analyzable share of the landscaper's job](TODO.md.d/cloud-architect.md) ~handover-contract ⊘app-identifying
+  - `feature · done · · complete/interactive · · gh#44` [Cloud architect: automate the analyzable share of the landscaper's job](TODO.md.d/cloud-architect.md) ~handover-contract ⊘app-identifying
     - `bug · todo · · queued · process ·` [Cloudpath naming: cloud claude -p launches adopt --name per the contract](TODO.md.d/cloudpath-naming.md) ~session-naming
     - `feature · todo · · queued · process ·` [Hops measuring: hop wall-time recorded, resolved id and branch passed to dispatch](TODO.md.d/hops-measuring.md) ~telemetry-collecting
     - `bug · todo · · queued · process ·` [Intake deduping: board_gh pull binds matching issues instead of stubbing](TODO.md.d/intake-deduping.md) ~github-board-sync ~ingest-echo-loop
