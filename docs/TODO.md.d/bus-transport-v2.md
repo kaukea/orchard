@@ -93,9 +93,15 @@ frame every iteration builds inside — implement ONLY the iteration below.
 - AGENT SIDE: a small table — when X happens, ask your bus to post Y. The
   bus sidecar discovers all metadata itself; the parent agent does nothing
   and never learns a path, a format, or an ordering rule.
-- MESSAGE TYPES: FOUR planned; TWO named so far — `appeared` (an agent has
-  started) and `completed` (it has reached stopped). The other two are
-  UNNAMED: do not invent them; their absence is an iteration wall.
+- MESSAGE TYPES: FOUR planned; the operator has DESCRIBED two moments —
+  an agent has appeared (which it does on starting) and has completed
+  (when it has reached stopped) — but has NAMED none of them. The tokens
+  `appeared`/`completed` used earlier in this record were agent-minted
+  from that sentence, not operator names; the actual type names (or their
+  mapping onto the round-9 document's types: status · outcome · lifecycle
+  · delegation · operator-relay · subscribe/unsubscribe) await the
+  operator's ruling. The other two moments are entirely unnamed: do not
+  invent any of this; it is an iteration wall.
 - HIERARCHY (operator, 2026-07-25): project = the git repo; feature =
   (branch, orchestrator session id); any other agent = (name, session id,
   parent when needed).
