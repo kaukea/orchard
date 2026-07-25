@@ -91,11 +91,18 @@ def idle_text(seconds: float) -> str:
     return "now" if minutes < 1 else f"{minutes}m"
 
 
+def _truncate(text: str, width: int) -> str:
+    return text if len(text) <= width else text[: width - 1] + "…"
+
+
 def _session_line(rec: dict) -> str:
     identity = rec.get("identity") or {}
     status = rec.get("status") or {}
+    # lead with WHAT the work is (feature/task), then who, then what it's doing
+    label = identity.get("name") or identity.get("feature")
     who = f"{identity.get('agent') or rec['sid'][:8]}·{_short_model(status.get('model'))}"
-    bits = [who]
+    bits = [_truncate(label, 42)] if label else []
+    bits.append(who)
     if rec.get("state"):
         bits.append(rec["state"])
     if rec.get("activity"):
