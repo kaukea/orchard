@@ -96,6 +96,17 @@ frame every iteration builds inside — implement ONLY the iteration below.
 - MESSAGE TYPES: FOUR planned; TWO named so far — `appeared` (an agent has
   started) and `completed` (it has reached stopped). The other two are
   UNNAMED: do not invent them; their absence is an iteration wall.
+- HIERARCHY (operator, 2026-07-25): project = the git repo; feature =
+  (branch, orchestrator session id); any other agent = (name, session id,
+  parent when needed).
+- CHANNELS (operator, 2026-07-25): (1) SendMessage between two RELATED
+  agents (parent↔child); (2) broadcast status on topics, for tracking and
+  telemetry; (3) SendMessage between UNRELATED agents is managed by
+  seb.house — delivered to its board 2026-07-25, out of scope here.
+- LIVENESS (operator, ruled so far): following an agent's liveness serves
+  exactly two scenarios — (1) the end of a feature's time, (2) displaying
+  nicely in the sidebar. Candidate additions offered to the operator are
+  UNRULED and not part of this design until he rules.
 - EVENTS ONLY, FLAT (operator, 2026-07-25 05:1x): an agent may advertise
   ONLY the events in the operator's document — nothing else rides the bus;
   status/phase/subagent-progress chatter serves no purpose and is OUT
