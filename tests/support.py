@@ -1,8 +1,8 @@
 """Fixture helpers for the sidebar test suite.
 
-Builds throwaway git repos with a courier laid out exactly as tools/courier.py
-and tools/sidebar_model.py expect, so build_model()/iter_courier_roots()
-resolve against them without touching any real repo's courier.
+Builds throwaway git repos with a legacy courier root laid out as tools/courier.py
+expects, so directed send/receive tests resolve against them without touching any
+real repo's courier.
 
 Not a test module itself (no test_/Test naming) — imported by the test_*.py
 files in this directory.
@@ -20,8 +20,6 @@ _TOOLS_DIR = os.path.join(
 if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
-import sidebar_model  # noqa: E402
-
 
 def make_repo(tmp_root: str) -> str:
     """git-init a fresh repo under tmp_root; return its path as a str."""
@@ -34,13 +32,14 @@ def make_repo(tmp_root: str) -> str:
 
 
 def courier_root_of(repo_path: str) -> Path:
-    """The courier root sidebar_model itself resolves for repo_path — asking
-    the module under test rather than re-deriving <repo>/.git/... by hand, so
-    the fixture can't drift from whatever git-common-dir resolution actually
-    does (symlinked temp dirs and all)."""
-    roots = sidebar_model.iter_courier_roots([repo_path])
-    assert roots, f"no courier root resolved for {repo_path}"
-    return roots[0]
+    """The legacy courier root for repo_path — <git-common-dir>/the-works/courier,
+    resolved the same way tools/courier.py's courier_root() does, without the
+    retired sidebar_model."""
+    common = subprocess.run(
+        ["git", "-C", repo_path, "rev-parse", "--git-common-dir"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    return (Path(repo_path) / common).resolve() / "the-works" / "courier"
 
 
 def identity_body(session_id, agent_type=None, worktree=None, feature_id=None,
