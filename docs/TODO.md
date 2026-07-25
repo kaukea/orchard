@@ -32,6 +32,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `feature · todo · · plan-ready · process · gh#12` [Sync suggests a reset when the package changed (upstream kauk)](TODO.md.d/sync-suggest-reset.md) ~package-select-tree ~kauk-skill-symlink-write
 - `feature · todo · · queued · process · gh#24` [kauk validates role declarations: validate stub now, taxonomy check later (upstream kauk)](TODO.md.d/kauk-validate-roles.md) ~role-dag-frontmatter
 - `refactor · todo · · queued · process · gh#186` [Delivery config review: markings out of .ai.toml into AGENTS.d (upstream kauk)](TODO.md.d/delivery-config-review.md) ~manifest-copy-ro ~install-detecting
+- `feature · todo · · queued · process ·` [Manifest adapting: kauk retires manifest.conf, orchids adapts to the shipped spec (upstream kauk)](TODO.md.d/manifest-adapting.md) ~manifest-by-convention ~manifest-copy-ro ~delivery-config-review
 - `feature · functional · · complete/interactive · · gh#13` [Cross-repo board view: GitHub issues + user-level Project, gardener-synced](TODO.md.d/github-board-sync.md) ~cross-repo-inbox ~external-blockers
   - `bug · done · · complete/interactive · process ·` [Sync ingest failing: board-sync's GitHub→board direction exits 1](TODO.md.d/sync-ingest-failing.md) ~github-board-sync ~field-projecting
   - `completion · done · · complete/interactive · process ·` [Field projecting: every sidecar field maps to GitHub or is created there](TODO.md.d/field-projecting.md) ~nested-tasks-projecting ~tags-and-labels
@@ -59,6 +60,11 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `bug · done · · complete/interactive · process · gh#34` [Session and feature naming: short, descriptive, visible — sidebar prerequisite](TODO.md.d/session-naming.md)
   - `feature · todo · · working · process · gh#43` [Handover contract: build-ready sidecars, questions front-loaded before launch](TODO.md.d/handover-contract.md) ~architect-delegation ~injection-integrity
   - `feature · done · · complete/interactive · process · gh#44` [Cloud architect: automate the analyzable share of the landscaper's job](TODO.md.d/cloud-architect.md) ~handover-contract ⊘app-identifying
+    - `bug · todo · · queued · process ·` [Cloudpath naming: cloud claude -p launches adopt --name per the contract](TODO.md.d/cloudpath-naming.md) ~session-naming
+    - `feature · todo · · queued · process ·` [Hops measuring: hop wall-time recorded, resolved id and branch passed to dispatch](TODO.md.d/hops-measuring.md) ~telemetry-collecting
+    - `bug · todo · · queued · process ·` [Intake deduping: board_gh pull binds matching issues instead of stubbing](TODO.md.d/intake-deduping.md) ~github-board-sync ~ingest-echo-loop
+    - `feature · todo · · blocked-on-answers · process ·` [Origin stamping: decide the origin writer, then stamp it](TODO.md.d/origin-stamping.md) ~github-board-sync
+    - `feature · todo · · queued · process ·` [Revise commenting: a comment input on the REVISE dispatch path](TODO.md.d/revise-commenting.md) ~delta-commenting
   - `completion · done · · complete/interactive · process ·` [callabloom: the cloud hops' named app identity](TODO.md.d/app-identifying.md) ~cloud-architect
   - `feature · todo · · blocked-on-answers · process · gh#196` [Branch protection as code: operator approval to merge, callabloom excepted](TODO.md.d/branch-protecting.md) ~app-identifying
   - `feature · todo · · blocked-on-answers · process · gh#197` [Mr. Rabbit: serialized merge ordering owns changelog order, closes the loop](TODO.md.d/merge-ordering.md) ~branch-protecting ~cloud-architect
