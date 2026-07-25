@@ -93,15 +93,20 @@ frame every iteration builds inside — implement ONLY the iteration below.
 - AGENT SIDE: a small table — when X happens, ask your bus to post Y. The
   bus sidecar discovers all metadata itself; the parent agent does nothing
   and never learns a path, a format, or an ordering rule.
-- MESSAGE TYPES: FOUR planned; the operator has DESCRIBED two moments —
-  an agent has appeared (which it does on starting) and has completed
-  (when it has reached stopped) — but has NAMED none of them. The tokens
-  `appeared`/`completed` used earlier in this record were agent-minted
-  from that sentence, not operator names; the actual type names (or their
-  mapping onto the round-9 document's types: status · outcome · lifecycle
-  · delegation · operator-relay · subscribe/unsubscribe) await the
-  operator's ruling. The other two moments are entirely unnamed: do not
-  invent any of this; it is an iteration wall.
+- THE EVENT LIST IS THE DOCUMENTED ONE (operator: "an agent can only
+  advertise the events in my document and only those; extension possible
+  as needed to fill gaps"): the lifecycle vocabulary already shipped by
+  the v1 rounds — `started · building · testing · done · finished ·
+  blocked · abandoned` (`LIFECYCLE_STATES` in bus.py; wire grammar,
+  agents/bus.md; rounds record in [[bus-message-specifying]]). The two
+  moments he described map onto it: an agent appears = `started`; has
+  completed / reached stopped = the terminal states. The earlier
+  `appeared`/`completed` tokens in this record were agent-minted and are
+  DEAD — the topic speaks the documented list.
+  OPEN (his, unreconciled — do not resolve): he also said "four different
+  messages" for the sidebar; the documented list has seven states. Which
+  states the project topic admits and what the sidebar's filter reads is
+  his reconciliation to make.
 - HIERARCHY (operator, 2026-07-25): project = the git repo; feature =
   (branch, orchestrator session id); any other agent = (name, session id,
   parent when needed).
