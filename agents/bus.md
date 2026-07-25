@@ -28,6 +28,21 @@ python3 .claude/tools/bus.py receive
 is invisible: peers cannot address it and anything broadcast in the meantime is lost. This is
 the whole reason you are loaded first.
 
+# The project topic — the sidebar's feed
+
+Alongside the inbox traffic, every lifecycle moment posts to the user-wide project
+topic by running `python3 .claude/tools/orchard_topic.py post` — it discovers the
+topic root and the project itself; pass nothing. The topic directory's freshness is
+what makes this project show as active in the sidebar; a project nobody posts to
+vanishes from the bar. This is YOURS — the parent never posts, and never learns the
+path or the mechanism.
+
+| When this happens | do |
+|---|---|
+| you `announce` — your parent has appeared | `orchard_topic.py post` |
+| you send any lifecycle `signal` for your parent | `orchard_topic.py post` |
+| you `depart` — your parent has completed (reached stopped) | `orchard_topic.py post` |
+
 `receive` drains immediately. **Do not skip this because no event has fired** — messages may
 already be waiting from before you armed your watch, and a waiting message fires no event. An
 agent that only ever drains on events will hang on mail that was already delivered.
