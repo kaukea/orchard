@@ -54,6 +54,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
     - `bug · todo · · queued · process ·` [Sidebar witnessing: ghost rows persist, silent live agents invisible — the ephemeral-bus observer gap](TODO.md.d/sidebar-witnessing.md) ~sidebar-polish ~bus-singleton ~message-bus
     - `bug · functional · · complete/interactive · process ·` [Sidebar titling: renderer items shipped in main; pane-title tail folds into the naming rework](TODO.md.d/sidebar-titling.md) ~sidebar-polish ~sidebar-spacing-and-glyphs ~orchestrator-identity
     - `bug · todo · · queued · process ·` [Popup adopting: agents bypass the built choice questions and do-not-interrupt](TODO.md.d/popup-adopting.md) ~popup-finishing ~operator-interacting
+    - `feature · todo · · blocked-on-answers · process ·` [Pretty sidebar: accordion phases, outcome colours, collapse — on the topic data](TODO.md.d/pretty-sidebar.md) ~bus-transport-v2 ~sidebar-polish ~sidebar-spacing-and-glyphs
   - `bug · done · · complete/interactive · process · gh#34` [Session and feature naming: short, descriptive, visible — sidebar prerequisite](TODO.md.d/session-naming.md)
   - `feature · todo · · working · process · gh#43` [Handover contract: build-ready sidecars, questions front-loaded before launch](TODO.md.d/handover-contract.md) ~architect-delegation ~injection-integrity
   - `feature · done · · complete/interactive · process · gh#44` [Cloud architect: automate the analyzable share of the architect's job](TODO.md.d/cloud-architect.md) ~handover-contract ⊘app-identifying
@@ -97,7 +98,9 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `bug · cancelled · · complete · process ·` [~~Architect skips its delegation contract: builds without dispatching builders~~](TODO.md.d/architect-delegation.md) ~handover-contract
 - `feature · done · · complete/interactive · process ·` [Message bus: repo-scoped agent-to-agent messaging via a bus sidecar](TODO.md.d/message-bus.md) ~hook-choreography ~cross-repo-inbox
 - `refactor · functional · · complete/interactive · process ·` [Bus message specifying: tighten the vocabulary, fix what each agent sends](TODO.md.d/bus-message-specifying.md) ~message-bus ~fleet-documenting ~sidebar-witnessing ~sidebar-titling ~orchard-renaming ~bus-transport-v2
-- `feature · todo · · plan-ready · process ·` [Bus transport v2: the dictated topic design, fed one iteration at a time](TODO.md.d/bus-transport-v2.md) ~bus-message-specifying ~bus-close-cleanup ~message-bus
+- `feature · done · · complete/interactive · process ·` [Bus transport v2: the dictated topic design, fed one iteration at a time](TODO.md.d/bus-transport-v2.md) ~bus-message-specifying ~bus-close-cleanup ~message-bus
+- `feature · todo · · blocked-on-answers · process ·` [Bus relay: request/response unicast, delete-on-read, across repositories](TODO.md.d/bus-relay.md) ~bus-transport-v2 ~cross-repo-bus ~message-bus
+- `refactor · todo · · blocked-on-answers · process ·` [Fan-out cut-over: topic posts replace v1 inbox broadcasts](TODO.md.d/fanout-cutover.md) ~bus-transport-v2 ~message-bus ~bus-close-cleanup
 - `bug · todo · critical · plan-ready · process ·` [Bus close actually cleans up: wake the bus to close, never kill its monitor](TODO.md.d/bus-close-cleanup.md) ~agent-closing ~bus-singleton ~window-closing-owning ~message-bus ~bus-message-specifying
 - `bug · todo · critical · plan-ready · process ·` [Bus singleton: exactly one bus sidecar per agent, as designed](TODO.md.d/bus-singleton.md) ~message-bus ~sidebar-polish ~agent-closing
 - `feature · todo · nice-to-have · queued · process ·` [Bus recycling: a deep bus warns its host and hands over to a fresh one](TODO.md.d/bus-recycling.md) ~bus-singleton ~message-bus

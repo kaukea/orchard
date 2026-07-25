@@ -107,6 +107,12 @@ retires). The sidebar renders the approved cockpit grammar: solid hue
 headers, one-line feature rows over a progress fill, phase checklist,
 identity line, subagent dots, `?N` question badges, and zero-token footers.
 
+**Topic transport (bus-transport-v2).** Developer-tooling note (not app
+behaviour): `tools/orchard_topic.py post
+<lifecycle|status|delegation|outcome|task> ...` is the only sanctioned writer
+of a project topic; `tools/sidebar_v3.py [--once]` renders the active projects
+and their sessions from those topics.
+
 Fix a lesson once, and every repo knows it on the next sync.
 
 **Discipline that holds.** The `workflow` and `workflow-complete` pair enforce
