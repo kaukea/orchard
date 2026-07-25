@@ -4,9 +4,12 @@
 
 ## Blockers
 
-- Design-with-operator gate: the memory record is explicit that the naming
-  approach is rejected and a better scheme is designed WITH him before any
-  build. Nothing here is buildable until that design session happens.
+- THE MESSAGE-BUS WORK (operator clarification, 2026-07-25): summon/window
+  automation "is not technically possible until the message bus work is
+  done" — the courier arc ([[bus-relay]]; [[fanout-cutover]]) gates this.
+  Manual summon is his deliberate interim choice, not a failure state.
+- Design-with-operator gate: the naming approach on record is rejected; the
+  scheme is designed WITH him when the courier gate opens.
 
 ## Questions
 

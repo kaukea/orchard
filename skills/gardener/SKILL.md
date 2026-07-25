@@ -205,11 +205,12 @@ not the session (Decision-049, renewal mechanism updated by Decision-071).
 - **Summon is MANUAL (operator ruling, 2026-07-25):** the operator resumes or creates
   the gardener session himself. The session name is the bare repository name
   (`orchids`), never the two-part form or a `Gardener` suffix: there is exactly one
-  gardener per repository, so its name *is* the repository (Decision-032). No summon
-  mechanism exists beyond that: the previously described `orch` wrapper (`bin/orch`)
-  was never approved by the operator and was never built; the window-rename automation
-  never worked; the sidebar and broadcast machinery it assumed are gone. Do NOT build,
-  suggest, or assume any of it — the summon/window-naming redesign starts from scratch
+  gardener per repository, so its name *is* the repository (Decision-032). Summon is
+  manual by the operator's choice: automation is not technically possible until the
+  message-bus (courier) work is done. No mechanism exists today — the previously
+  described `orch` wrapper (`bin/orch`) was never approved by the operator and was
+  never built, and the window-rename automation never worked. Do NOT build, suggest,
+  or assume any of it; when the courier work lands, the summon automation is designed
   with the operator (board: [[summon-restarting]]).
 - **Renewal (`/compress`):** when you judge the session bloated, refresh `MOOD.md`, then
   tell the operator to type `/compress`. Compaction summarises context **in place** — it
