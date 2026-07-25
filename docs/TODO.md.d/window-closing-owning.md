@@ -49,3 +49,13 @@ broadcasts observed, window gone, worktree removal proceeds only after
 on-closed. A deliberately-hung agent is killed at five seconds, the death
 broadcast lands, its sidebar row evicts, and the close completes. The
 sidebar-polish build's untested exit-grace path gets its live pass here.
+
+## Reframed by Decision-081 (2026-07-25)
+
+Operator ruling: supervision kills are REMOVED — killing corrupts state and
+hides bugs, so no agent ever kills another's process, pane, window, or
+files. The kill-listener half of this task's premise (the five-second
+killer, the kill-broadcast) is dead; what remains in scope is the first
+half only — every agent closes ITSELF, and anything a dead agent leaves
+behind is reported to the operator rather than reaped. Re-bloom against
+Decision-081 before build.

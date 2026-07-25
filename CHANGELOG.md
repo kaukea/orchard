@@ -136,6 +136,18 @@ _base: `f65ad36`_
   (one path per line) or the `ORCHIDS_SIDEBAR_REPOS` environment variable; with
   neither, it shows the current repository.
 
+### 🧹 Removals
+
+- 🧹 Supervision kills are gone (Decision-081): the orchestrator no longer
+  reaps dead architect windows nor kills agents that outlive a grace period,
+  and the exit-grace contract built for that kill — `announce
+  --exit-grace-seconds` and `signal --on-behalf-of` — is removed from
+  `bus.py`, its tests, and every agent contract. Agents close themselves;
+  whatever a dead agent leaves behind is reported to the operator instead of
+  being cleaned up unilaterally. The housekeeper's worktree-and-branch
+  removal is now the absolute last act of a close, after every other step
+  including the sudo-grant revocation.
+
 ### 🐛 Bug fixes
 
 - 🐛 Six fleet-sidebar defects fixed — above all, the sidebar now actually appears:

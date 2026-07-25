@@ -102,7 +102,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `bug · todo · critical · plan-ready · process ·` [Bus singleton: exactly one bus sidecar per agent, as designed](TODO.md.d/bus-singleton.md) ~message-bus ~sidebar-polish ~agent-closing
 - `feature · todo · nice-to-have · queued · process ·` [Bus recycling: a deep bus warns its host and hands over to a fresh one](TODO.md.d/bus-recycling.md) ~bus-singleton ~message-bus
 - `housekeeping · todo · idea · queued · process ·` [Fleet documenting: agent wiki pages; channels with JSON Schemas](TODO.md.d/fleet-documenting.md) ~message-bus ~operator-interacting ~digest-identity
-- `bug · todo · critical · plan-ready · process ·` [Window closing owning: agents close themselves; a listener kills at five](TODO.md.d/window-closing-owning.md) ~sidebar-polish ~bus-singleton ~agent-closing
+- `bug · todo · critical · working · process ·` [Window closing owning: agents close themselves — kill listener removed by Decision-081](TODO.md.d/window-closing-owning.md) ~sidebar-polish ~bus-singleton ~agent-closing
 - `bug · todo · · queued · process ·` [Focus returning: a finish always selects the orchestrator window, the view follows only in-session](TODO.md.d/focus-returning.md) ~tmux-topology ~window-closing-owning
 - `bug · todo · · queued · process ·` [Orchestrator identity: one per repo, single instance, session named after the project](TODO.md.d/orchestrator-identity.md) ~session-naming ~sidebar-titling
 - `feature · todo · critical · plan-ready · process ·` [Intake enforcing: typed requests in, board writes denied](TODO.md.d/intake-enforcing.md) ~message-bus ~bus-singleton ~fleet-documenting

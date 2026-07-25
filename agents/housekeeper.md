@@ -83,18 +83,19 @@ the former `workflow-complete` procedure.
    after the final SHA exists) — on EVERY
    close, mandatory (Decision-065). On push failure the local close still stands and is
    authoritative; report the error verbatim and roll nothing back.
-8. **Remove the worktree** (`git worktree remove .claude/worktrees/<id>`) **and delete the
+8. **Revoke the up-front sudo grant** if one is still active.
+9. **Remove the worktree** (`git worktree remove .claude/worktrees/<id>`) **and delete the
    branch ref** `f/<id>` (`archive/<id>` tag is the tombstone; an untagged `f/*` is open work
-   and is never deleted). **HARD PRECONDITION (Decision-068): never remove the
-   worktree before the architect's `on-closed` lifecycle broadcast (or the
-   supervisor's kill-broadcast on its behalf) has been observed** — deleting files
-   under a still-closing agent is exactly what broke self-teardowns (operator
-   causality finding, 2026-07-22); retry-until-free was insufficient. You are
-   dispatched in parallel with the close, so do every earlier step freely, then WAIT
-   for the on-closed signal before this one (poll the bus state files or the window's
-   absence; up to ~3 minutes), and report verbatim if it never comes — never
-   force-remove a worktree with live uncommitted state.
-9. **Revoke the up-front sudo grant** if one is still active.
+   and is never deleted). **This is the ABSOLUTE LAST act of the close — nothing runs after
+   it** (operator ruling, 2026-07-25): every other step, check, and report is finished before
+   the tree is touched. **HARD PRECONDITION (Decision-068): never remove the
+   worktree before the architect's own `on-closed` lifecycle broadcast has been
+   observed** — deleting files under a still-closing agent is exactly what broke
+   self-teardowns (operator causality finding, 2026-07-22); retry-until-free was
+   insufficient. You are dispatched in parallel with the close, so do every earlier
+   step freely, then WAIT for the on-closed signal before this one (poll the bus state
+   files or the window's absence; up to ~3 minutes), and report verbatim if it never
+   comes — never force-remove a worktree with live uncommitted state.
 
 # Return (typed result to the orchestrator)
 outcome (`merged` | `abandoned`) · `archive/<id>` SHA · the squash title · what was pushed

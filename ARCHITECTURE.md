@@ -22,7 +22,7 @@ build approval are human-only, always.
 
 | Role | Model | Dispatch | Scope & boundary |
 |---|---|---|---|
-| orchestrator | opus | top-level session (`claude --agent orchestrator`) | Knows the board, prioritises, holds MOOD, hands ONE feature to an architect on explicit operator go. Never codes; never opens a sidecar in steady state. Authors only the workflow component, directly on `main`. Enforces the exit-grace lifecycle contract: kills a session that overruns its own declared window past its terminal signal, broadcasting that signal on its behalf. |
+| orchestrator | opus | top-level session (`claude --agent orchestrator`) | Knows the board, prioritises, holds MOOD, hands ONE feature to an architect on explicit operator go. Never codes; never opens a sidecar in steady state. Authors only the workflow component, directly on `main`. Never kills, reaps, or removes another agent's process, pane, window, or files — lingering state is reported to the operator, who rules on it. |
 | bloomer | fable-5 | own pane inside the orchestrator's window (`tools/bloomer-launch.sh` / `bloomer-teardown.sh`) | The Decision-027 intake-measurement instrument: turns a two-to-three-sentence functional spec into a converged WHAT. Question selection and stopping are owned by the statistical engine `tools/bloom_engine.py` (EIG + IRT/Fisher-information selection, SE-threshold stop; item parameters flagged uncalibrated); phrasing and parsing by the LLM. Asks only on measured low confidence, records voluntary deferrals, and reports a graduated confidence band over the bus — the orchestrator executes any launch. Single-writer on its task's sidecar. Scheduled backlog-prep passes stay with the demoted predecessor definition until the repoint follow-up. |
 | architect | opus | worktree session (`.claude/worktrees/<id>`, branch `f/<id>`) | One feature; its sidecar is the whole scope. Read-only discovery (parallel explorers) → plan agreed with the operator → **no file edit before MAKE IT SO** → builds/tests → on the operator's `THAT IS ALL`, countersigns and signals `finished` on the bus. Never reads the board or prior conversation. |
 | builder | sonnet | headless subagent from the architect | Exactly one step-spec; returns typed diff + self-test. |
@@ -89,13 +89,13 @@ session ──spawns──> bus sidecar ──announce──> every peer's inbox
   over the bus (`send --in-reply-to`) — none of that policy is exposed to the
   asking agent. A `Notification` harness hook backstops harness-native prompts
   that bypass this path.
-- **Exit-grace lifecycle contract**: an agent declares `exit_grace_seconds`
-  (default 10) on its first announce — how long it needs, after signaling
-  `finished`/`abandoned`, to release its bus and exit. The orchestrator kills a
-  process that overruns its own declared window and broadcasts the terminal
-  signal on its behalf (`signal --on-behalf-of`) so the sidebar still evicts its
-  row. Distinct from the bus-singleton task (which reaps stray bus-sidecar
-  folders specifically, not whole agent processes).
+- **No supervision kills** (operator ruling, 2026-07-25): no agent ever kills,
+  reaps, or removes another agent's process, pane, window, or files — killing
+  corrupts state and hides bugs. Agents start and stop themselves (self-teardown
+  is each agent's own last act); whatever a dead agent leaves behind is reported
+  to the operator as observed state, never cleaned up unilaterally. A lifecycle
+  `signal` is always attributed to the caller's own session — signing as another
+  session does not exist.
 - **Membership** is established by hooks, not prompts: `SessionStart` creates the
   inbox, `SessionEnd` broadcasts a departure and removes it — so a send to a
   finished agent fails immediately instead of vanishing into an unwatched folder.
@@ -148,9 +148,8 @@ bus (per repo) ──observed──> sidebar_model ──Fleet──> sidebar.py
   (ask any agent, or `/orchard hide <name>`/`show`) and persists across remounts.
   `$ORCHIDS_SIDEBAR_REPOS` survives only as an explicit manual override. State is
   attributed by message sender and accumulated in memory, so it survives the
-  bus's ephemerality; a sender's state is evicted once its terminal lifecycle
-  signal is observed (paired with the exit-grace contract above so a killed
-  agent's row still clears). Updates are event-driven (inotify), never polled.
+  bus's ephemerality; a sender's state is evicted once its own terminal lifecycle
+  signal is observed. Updates are event-driven (inotify), never polled.
 - **Renders the approved display grammar** (fixed visual contract: the blessed
   mock archived with the bus-message-specifying stream). Repo headers are solid
   per-repo hue blocks; a feature is ONE line — its name drawn over the progress

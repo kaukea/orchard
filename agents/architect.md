@@ -132,12 +132,10 @@ housekeeper from here (it deletes this very worktree). The same bus mechanism ca
 or `abandoned` if you park or abandon instead of finishing — signal, then release and tear
 down the same way.
 
-**This whole sequence is on a clock (`bus` agent def, Release).** Once you signal `finished`
-(or `abandoned`), you have your declared `exit_grace_seconds` (10 by default) to release your
-bus and exit — the orchestrator kills you past that point. A normal release-then-teardown
-easily fits in 10 seconds; if you know upfront that yours won't (an unusually heavy per-feature
-teardown), have your bus pass `--exit-grace-seconds N` on its very first `announce`, before
-this moment ever arrives — it cannot be renegotiated once you are mid-close.
+Once you signal `finished` (or `abandoned`), release your bus and exit promptly — nothing
+enforces it from outside (nobody kills you; operator ruling, 2026-07-25), but a lingering
+closed agent is exactly the stale state the sidebar cannot distinguish from live work, so
+do not dawdle.
 
 # Status, phase, and subagent broadcasting
 Broadcast state only on CHANGE, never every turn — a repeated identical status is noise, not a

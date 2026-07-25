@@ -62,9 +62,9 @@ every live agent's bus sidecar wakes on every copy.
 
 | Format | Sent by | Defined in |
 |---|---|---|
-| `announce` — identity envelope (session id, feature, `exit_grace_seconds`) | bus sidecar at session start | `bus.py announce` |
+| `announce` — identity envelope (session id, feature) | bus sidecar at session start | `bus.py announce` |
 | `depart` — departure broadcast | bus sidecar at session end | `bus.py depart` |
-| `signal --state started·building·testing·done·finished·blocked·abandoned` | agent (to parent, else broadcast); `--on-behalf-of` is orchestrator-only | `bus.py signal` |
+| `signal --state started·building·testing·done·finished·blocked·abandoned` | agent (to parent, else broadcast), always as itself | `bus.py signal` |
 | `orchid:activity:<free text>` | **agents directly** (`bus.py broadcast`, "never spend a bus-agent turn on it") | orchestrator/architect/bloomer/groomer definitions |
 | `orchid:subagent:start:<label>` / `orchid:subagent:done:<label>` | agent via its bus sidecar | orchestrator/architect definitions |
 | `ask --question --option… [--multi]` — blocking question broker; replies `{index}`, `{indices}`, or `{continue}` | agent | `bus.py ask` |

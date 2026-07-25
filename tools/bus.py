@@ -33,15 +33,9 @@ Usage:
   bus.py receive [id]                          drain: JSON array, oldest first
   bus.py identity                              immutable facts about this session
   bus.py status                                mutable state: occupancy and spend
-  bus.py announce [--exit-grace-seconds N]     broadcast identity (session start);
-                                                N = seconds this agent needs to
-                                                finish + exit once it starts
-                                                leaving (default 10)
+  bus.py announce                              broadcast identity (session start)
   bus.py depart                                broadcast departure (session end)
   bus.py signal --state S [--to ID]            lifecycle push (to parent, else broadcast)
-  bus.py signal --state S --on-behalf-of ID     same, but `from` is ID, not the caller —
-                                                orchestrator-only, for signaling a
-                                                killed agent's own terminal state
   bus.py ask --question Q --option A --option B [...] [--multi]
              [--title T] [--summary S]
                                                 broadcast a question (sidebar-polish item 12,
@@ -327,20 +321,11 @@ def usage_entries(path: Path):
             yield usage, message.get("model")
 
 
-DEFAULT_EXIT_GRACE_SECONDS = 10
-
-
-def identity_of(exit_grace_seconds: int = DEFAULT_EXIT_GRACE_SECONDS) -> dict:
+def identity_of() -> dict:
     """Immutable facts, fixed for this session's whole life.
 
     Model and effort are deliberately absent: they can change mid-session, so they
     are not identity, and pinning them here would bake in a value that goes stale.
-
-    `exit_grace_seconds` is the one exception to "immutable" in spirit rather than
-    mechanism: an agent declares it once, at announce time, as how long it needs
-    to send its two closing messages and exit after it starts finishing — the
-    orchestrator's lifecycle contract (docs/TODO.md.d/sidebar-polish.md item 2)
-    grants this instead of the default 10s before killing the process.
     """
     top = git("rev-parse", "--show-toplevel")
     worktree = Path(top).name if top else None
@@ -357,7 +342,6 @@ def identity_of(exit_grace_seconds: int = DEFAULT_EXIT_GRACE_SECONDS) -> dict:
         # (Decision-032).
         "name": _feature_name(feature_id, root=top) if feature_id else None,
         "parent_session": os.environ.get("ORCHID_PARENT_SESSION") or None,
-        "exit_grace_seconds": exit_grace_seconds,
     }
 
 
@@ -523,7 +507,7 @@ def announcement(body: dict, sender: str):
 def cmd_announce(args) -> None:
     me = whoami()
     inbox(me).mkdir(parents=True, exist_ok=True)
-    reached = fan_out(me, announcement(identity_of(args.exit_grace_seconds), me))
+    reached = fan_out(me, announcement(identity_of(), me))
     print(f"announced to {reached} agent(s)")
 
 
@@ -537,21 +521,14 @@ def cmd_signal(args) -> None:
     """A lifecycle signal is a push, like announce/depart: it carries the data
     itself, not a request for it. Directed at the parent when its inbox is
     known and live, so only the conductor acts on it; broadcast otherwise, so
-    the signal is not silently lost.
-
-    `--on-behalf-of` is the one exception to "you signal for yourself": the
-    orchestrator's exit-grace enforcement (docs/TODO.md.d/sidebar-polish.md
-    item 2) kills an agent that overran its declared grace period, and the
-    killed process can no longer send its own terminal signal — the
-    orchestrator sends it FOR it, `from` set to the killed session's id, so
-    the sidebar's evict-on-observed-terminal-signal logic still fires on that
-    agent's own row (attribution there is strictly by envelope `from`).
+    the signal is not silently lost. You signal for yourself, always — the
+    envelope `from` is the caller's own session, never someone else's.
     """
     if args.notify_user and args.state not in SIGNAL_NOTIFY_STATES:
         args.parser.error(
             f"bus: --notify-user is only legal with --state {'|'.join(SIGNAL_NOTIFY_STATES)}"
         )
-    sender = args.on_behalf_of or whoami()
+    sender = whoami()
     feature = args.feature or identity_of()["feature_id"]
     body = {"kind": "lifecycle", "state": args.state, "feature_id": feature}
     if args.state == "blocked" and args.blocked_on:
@@ -804,13 +781,7 @@ def main() -> None:
     sub.add_parser("whoami").set_defaults(func=lambda a: print(whoami()))
     sub.add_parser("list").set_defaults(func=cmd_list)
     sub.add_parser("root").set_defaults(func=lambda a: print(bus_root()))
-    s = sub.add_parser("announce")
-    s.add_argument("--exit-grace-seconds", dest="exit_grace_seconds", type=int,
-                   default=DEFAULT_EXIT_GRACE_SECONDS,
-                   help="seconds this agent needs, after it starts finishing, to "
-                        "send its two closing messages and exit before the "
-                        "orchestrator kills it (default 10)")
-    s.set_defaults(func=cmd_announce)
+    sub.add_parser("announce").set_defaults(func=cmd_announce)
     sub.add_parser("depart").set_defaults(func=cmd_depart)
     sub.add_parser("identity").set_defaults(
         func=lambda a: print(json.dumps(identity_of(), indent=2)))
@@ -844,11 +815,6 @@ def main() -> None:
                         "a peer awaited)")
     s.add_argument("--notify-user", dest="notify_user", action="store_true",
                    help="the sending agent intends this for the user to see")
-    s.add_argument("--on-behalf-of", dest="on_behalf_of", metavar="SESSION_ID",
-                   help="signal as this session id instead of the caller — the "
-                        "orchestrator's escape hatch to broadcast an `abandoned` "
-                        "terminal signal for an agent it just killed after its "
-                        "exit-grace period ran out, so the sidebar still evicts it")
     s.set_defaults(func=cmd_signal, parser=s)
 
     s = sub.add_parser("ask")

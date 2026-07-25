@@ -1349,3 +1349,20 @@ push. The push is a non-optional final step of every close here, whether the
 housekeeper runs it or the orchestrator drives the close directly; the same
 applies to any docs/board commit made after a close. Not a per-feature
 judgment — a fixed obligation.
+
+## [2026-07-25 CEST] Decision-081: Supervision kills are removed — no agent kills another; tree removal is the close's last act
+#lifecycle #groundkeeper #close #bus #teardown #housekeeper
+
+Operator ruling (2026-07-25, dictated): the groundkeeper killing things
+makes everything worse — it can corrupt state and it hides bugs — so the
+kill functionalities are removed outright. No agent kills, reaps, or
+removes another agent's process, pane, window, or files; agents start and
+stop themselves (self-teardown remains each agent's own last act), and
+whatever a dead agent leaves behind is reported to the operator, who rules
+on it. Removed with the kill: the exit-grace lifecycle contract
+(`exit_grace_seconds` on announce) and `signal --on-behalf-of`, which
+existed only to time the kill and to sign for the killed. Worktree-and-
+branch removal moves to the ABSOLUTE END of the housekeeper's close —
+nothing runs after it. Supersedes the reap half of the 2026-07-21
+pane-hygiene ruling and the kill-listener half of window-closing-owning's
+premise.

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Message-bus choreography teardown action.
-# Called by the ORCHESTRATOR on the architect's `finished` signal to return the
-# operator's tmux client to the orchestrator pane and close the architect's window.
+# Run by the ARCHITECT ITSELF as its very last act (self-teardown, Decision-041):
+# returns the operator's tmux client to the orchestrator pane, then closes the
+# architect's OWN window — the caller's session ends with it. Nobody runs this
+# against another agent: supervision kills are removed (operator ruling, 2026-07-25).
 # Replaces the retired Stop hook — no transcript reading, no stdin, no scratch-file logging.
 # Best-effort: every tmux call is guarded, always exit 0.
 set -u
