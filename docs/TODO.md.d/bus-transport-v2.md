@@ -14,6 +14,17 @@
 
 ## Questions
 
+- PENDING OPERATOR APPROVAL — agent proposals withdrawn from the design
+  record (2026-07-25); NOT buildable until ruled:
+  (a) write mechanics: atomic tmp+rename per event write, so a reader never
+      observes a half-written event (the rename also advances the topic
+      directory's own mtime);
+  (b) whether the round-9 envelope fields (From/To/Subject) appear INSIDE
+      the event file, or are carried structurally (filename = from,
+      directory = to, content type = subject) — the events-only ruling
+      reads as structural, but the reconciliation is unruled;
+  (c) a timestamp inside the event (earlier agent addition `ts`) —
+      withdrawn; the file's own mtime may already serve.
 - Six from the security review, batched, all UNRULED except enforcement:
   enforcement model (RULED cooperative); global-state location (transient vs
   crash-survival tension); folder key type (public-key + signing?); first-agent
@@ -91,12 +102,14 @@ frame every iteration builds inside — implement ONLY the iteration below.
   (extension of the event set only as needed to fill gaps, operator-ruled).
   A topic directory is FLAT — event files only, no subtrees. The only
   identity an agent gives is its session id, which IS the filename of the
-  last event it posted: posting writes the event to
-  `<topic>/<session-id>` (atomic tmp + rename, so the latest event
-  replaces the previous one and the rename bumps the directory mtime).
-  Event CONTENT stops at: the event type, plus at most a generic parent
-  session id ("we stop there" — operator). No worktree, feature, model,
-  or any other identity field rides an event.
+  last event it posted — one file per session, the latest event replacing
+  the previous. Event CONTENT stops at: the event type, plus at most a
+  generic parent session id ("we stop there" — operator). No worktree,
+  feature, model, or any other identity field rides an event.
+  CORRECTION (2026-07-25): an earlier revision of this bullet also stated
+  atomic tmp+rename mechanics and mtime-by-rename as design — those were
+  UNAPPROVED agent additions, withdrawn to Questions pending the
+  operator's ruling.
 - CONSUMER: `tools/sidebar_v3.py` (untracked on main, operator-pocketed)
   already reads the topic dirs' mtimes with a 60-minute active window. Do
   not modify it in this iteration.
@@ -123,14 +136,15 @@ arrive as their own iterations when the operator opens them.
 ITERATION 1 (open, operator-ordered): the one script's POST path for the
 project topic, so the sidebar shows agents' work while it happens.
 - `post` takes the message type — `appeared` | `completed` — and REJECTS
-  anything else by naming what the topic admits.
-- It writes a real message file (atomic, mirroring `bus.py deliver`'s
-  partial-then-rename) into `$XDG_RUNTIME_DIR/orchard/topics/repository/
-  <project>/`, carrying From `:session:<detected id>`, To
-  `:topic:repository/<project>`, Subject `<type>`, ts. The directory mtime
-  advances as the side effect of the write — never a bare `utime`.
+  anything else (a type not permitted on the topic is rejected at accept
+  time — operator, round 9).
+- It writes the event to `$XDG_RUNTIME_DIR/orchard/topics/repository/
+  <project>/<session-id>` — the filename is the poster's session id; the
+  content is the event type plus at most the generic parent session id,
+  nothing else.
 - Project discovered from the repository the call runs in; session id from
-  the environment; callers pass nothing but the type.
+  the environment; callers pass nothing but the type (all metadata is
+  discovered — operator).
 - The bus contract's table (agents/bus.md) keeps exactly the two named
   moments: announce → post `appeared`; depart → post `completed`.
 
