@@ -3,13 +3,25 @@
 The script is invoked via subprocess (matches how it actually runs — an agent
 shells out to it), against a real git-init'd temp repo (see tests/support.py)
 so `git rev-parse --git-common-dir` resolves for real rather than being
-mocked. XDG_RUNTIME_DIR and CLAUDE_CODE_SESSION_ID are pinned per-test via a
-private tmp_path, so no real runtime dir or session is ever touched, and any
-bus bounce the reject path triggers lands inside the temp repo's own
-`.git/the-works/bus/` (cleaned up with tmp_path) rather than this repo's.
+mocked. XDG_RUNTIME_DIR, CLAUDE_CODE_SESSION_ID, CLAUDE_CODE_AGENT and
+ORCHID_PARENT_SESSION are pinned per-test via a private tmp_path (see
+`_run`), so no real runtime dir or session is ever touched, `bus.identity_of()`
+resolves deterministically, and any bus bounce the reject path triggers lands
+inside the temp repo's own `.git/the-works/bus/` (explicitly cleaned in the
+`repo` fixture's teardown) rather than this repo's.
+
+Every valid post now carries an `identity` block (from `bus.identity_of()`,
+via the producer's `_attach_snapshot`) alongside the fixed from/to/subject/
+body fields — the temp repos here have no linked worktree and no transcript
+under ~/.claude/projects, so `identity` resolves to just `{"agent": ...}`
+(plus `parent` when ORCHID_PARENT_SESSION is set) and `status` never
+resolves at all (bus.status_of() finds no transcript, so every key it would
+contribute is empty and _status() drops them all) — asserted absent below
+rather than guessed at.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -27,12 +39,26 @@ from support import make_repo  # noqa: E402
 
 _SCRIPT = os.path.join(_TOOLS_DIR, "orchard_topic.py")
 SID = "test-sid-0001"
+DEFAULT_AGENT = "architect"
 
 
-def _run(cwd, runtime_dir, args, sid=SID):
+def _run(cwd, runtime_dir, args, sid=SID, agent=DEFAULT_AGENT, parent=None):
+    """Shell out to the script with a deterministic identity environment.
+
+    CLAUDE_CODE_AGENT is pinned (default "architect", overridable for the
+    orchestrator-only `task` cases) and ORCHID_PARENT_SESSION is pinned to
+    `parent` or deleted outright — never left to whatever the real
+    environment happens to hold — so `bus.identity_of()` resolves the same
+    way on every run.
+    """
     env = dict(os.environ)
     env["XDG_RUNTIME_DIR"] = str(runtime_dir)
     env["CLAUDE_CODE_SESSION_ID"] = sid
+    env["CLAUDE_CODE_AGENT"] = agent
+    if parent is None:
+        env.pop("ORCHID_PARENT_SESSION", None)
+    else:
+        env["ORCHID_PARENT_SESSION"] = parent
     return subprocess.run(
         [sys.executable, _SCRIPT, "post", *args],
         cwd=cwd, env=env, capture_output=True, text=True, timeout=15,
@@ -49,7 +75,20 @@ def _telemetry_dir(runtime_dir, repo_name):
 
 @pytest.fixture
 def repo(tmp_path):
-    return make_repo(str(tmp_path))
+    """A throwaway git repo — plus teardown for the bus inbox a reject-path
+    bounce (orchard_topic.py's `reject()` shells out to `bus.py send`) writes
+    under the repo's own git-common-dir, so no bus state leaks past the test
+    even though tmp_path would eventually reclaim it anyway."""
+    path = make_repo(str(tmp_path))
+    yield path
+    common = subprocess.run(
+        ["git", "rev-parse", "--git-common-dir"], cwd=path,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    if common:
+        bus_dir = Path(common).resolve() / "the-works" / "bus"
+        if bus_dir.exists():
+            shutil.rmtree(bus_dir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -73,12 +112,24 @@ def test_lifecycle_post_writes_expected_envelope(repo, runtime_dir, state):
     assert result.stdout.strip() == str(written)
 
     envelope = json.loads(written.read_text(encoding="utf-8"))
-    assert envelope == {
-        "from": f":session:{SID}",
-        "to": f":topic:repository/{repo_name}",
-        "subject": f"orchard:agent:lifecycle:{state}",
-    }
+    assert envelope["from"] == f":session:{SID}"
+    assert envelope["to"] == f":topic:repository/{repo_name}"
+    assert envelope["subject"] == f"orchard:agent:lifecycle:{state}"
     assert "body" not in envelope
+    assert envelope["identity"]["agent"] == DEFAULT_AGENT
+    assert "status" not in envelope
+
+
+def test_lifecycle_post_carries_parent_when_orchid_parent_session_set(repo, runtime_dir):
+    result = _run(repo, runtime_dir, ["lifecycle", "started"], parent="parent-sid-9")
+    assert result.returncode == 0, result.stderr
+
+    repo_name = Path(repo).name
+    files = list(_topic_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    assert len(files) == 1
+    envelope = json.loads(files[0].read_text(encoding="utf-8"))
+    assert envelope["identity"]["agent"] == DEFAULT_AGENT
+    assert envelope["identity"]["parent"] == "parent-sid-9"
 
 
 def test_lifecycle_bad_state_is_rejected(repo, runtime_dir):
@@ -113,6 +164,8 @@ def test_status_post_writes_expected_envelope(repo, runtime_dir, text):
     assert envelope["body"] == text
     assert envelope["from"] == f":session:{SID}"
     assert envelope["to"] == f":topic:repository/{repo_name}"
+    assert envelope["identity"]["agent"] == DEFAULT_AGENT
+    assert "status" not in envelope
 
 
 def test_status_zero_words_is_rejected(repo, runtime_dir):
@@ -138,6 +191,114 @@ def test_status_three_words_is_rejected(repo, runtime_dir):
     assert envelope["body"]["attempted"] == ["post", "status", "three", "word", "text"]
 
 
+# --- delegation ----------------------------------------------------------
+
+@pytest.mark.parametrize("action", ["begin", "end"])
+def test_delegation_post_writes_expected_envelope(repo, runtime_dir, action):
+    result = _run(repo, runtime_dir, ["delegation", action, "builder"])
+    assert result.returncode == 0, result.stderr
+
+    repo_name = Path(repo).name
+    files = list(_topic_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    assert len(files) == 1
+
+    envelope = json.loads(files[0].read_text(encoding="utf-8"))
+    assert envelope["subject"] == f"orchard:agent:delegation:{action}:builder"
+    assert "body" not in envelope
+    assert envelope["identity"]["agent"] == DEFAULT_AGENT
+    assert "status" not in envelope
+
+
+def test_delegation_bad_action_is_rejected(repo, runtime_dir):
+    result = _run(repo, runtime_dir, ["delegation", "bogus", "builder"])
+    assert result.returncode != 0
+    assert result.stderr.strip().startswith("orchard-topic: rejected")
+
+    repo_name = Path(repo).name
+    assert not _topic_dir(runtime_dir, repo_name).exists()
+    tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    assert len(tfiles) == 1
+    envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
+    assert envelope["body"]["attempted"] == ["post", "delegation", "bogus", "builder"]
+
+
+# --- outcome ---------------------------------------------------------------
+
+@pytest.mark.parametrize("value", ["success", "fail"])
+def test_outcome_post_writes_expected_envelope(repo, runtime_dir, value):
+    result = _run(repo, runtime_dir, ["outcome", value])
+    assert result.returncode == 0, result.stderr
+
+    repo_name = Path(repo).name
+    files = list(_topic_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    assert len(files) == 1
+
+    envelope = json.loads(files[0].read_text(encoding="utf-8"))
+    assert envelope["subject"] == f"orchard:agent:outcome:{value}"
+    assert "body" not in envelope
+    assert envelope["identity"]["agent"] == DEFAULT_AGENT
+    assert "status" not in envelope
+
+
+def test_outcome_bad_value_is_rejected(repo, runtime_dir):
+    result = _run(repo, runtime_dir, ["outcome", "bogus"])
+    assert result.returncode != 0
+    assert result.stderr.strip().startswith("orchard-topic: rejected")
+
+    repo_name = Path(repo).name
+    assert not _topic_dir(runtime_dir, repo_name).exists()
+    tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    assert len(tfiles) == 1
+    envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
+    assert envelope["body"]["attempted"] == ["post", "outcome", "bogus"]
+
+
+# --- task (orchestrator-only) ---------------------------------------------
+
+@pytest.mark.parametrize("value", ["completed", "failed"])
+def test_task_post_by_orchestrator_writes_expected_envelope(repo, runtime_dir, value):
+    result = _run(repo, runtime_dir, ["task", value], agent="orchestrator")
+    assert result.returncode == 0, result.stderr
+
+    repo_name = Path(repo).name
+    files = list(_topic_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    assert len(files) == 1
+
+    envelope = json.loads(files[0].read_text(encoding="utf-8"))
+    assert envelope["subject"] == f"orchard:task:outcome:{value}"
+    assert "body" not in envelope
+    assert envelope["identity"]["agent"] == "orchestrator"
+    assert "status" not in envelope
+
+
+def test_task_post_by_non_orchestrator_is_rejected(repo, runtime_dir):
+    result = _run(repo, runtime_dir, ["task", "completed"], agent=DEFAULT_AGENT)
+    assert result.returncode != 0
+    assert result.stderr.strip().startswith("orchard-topic: rejected")
+    assert "orchestrator" in result.stderr
+
+    repo_name = Path(repo).name
+    assert not _topic_dir(runtime_dir, repo_name).exists()
+    tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    assert len(tfiles) == 1
+    envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
+    assert envelope["body"]["attempted"] == ["post", "task", "completed"]
+    assert "orchestrator" in envelope["body"]["reason"]
+
+
+def test_task_bad_value_is_rejected(repo, runtime_dir):
+    result = _run(repo, runtime_dir, ["task", "bogus"], agent="orchestrator")
+    assert result.returncode != 0
+    assert result.stderr.strip().startswith("orchard-topic: rejected")
+
+    repo_name = Path(repo).name
+    assert not _topic_dir(runtime_dir, repo_name).exists()
+    tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    assert len(tfiles) == 1
+    envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
+    assert envelope["body"]["attempted"] == ["post", "task", "bogus"]
+
+
 # --- other rejections --------------------------------------------------
 
 def test_unknown_family_is_rejected(repo, runtime_dir):
@@ -152,6 +313,7 @@ def test_unknown_family_is_rejected(repo, runtime_dir):
     envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
     assert envelope["subject"] == "orchard:agent:telemetry:rejected"
     assert envelope["body"]["attempted"] == ["post", "bogus", "thing"]
+    assert "task" in envelope["body"]["reason"]
 
 
 def test_bare_post_with_no_event_is_rejected(repo, runtime_dir):

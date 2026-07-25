@@ -41,6 +41,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import NoReturn
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # for the sibling bus.py
+
 TOPIC_FAMILY = "repository"
 TELEMETRY_FAMILY = "telemetry"
 LIFECYCLE_STATES = ("starting", "started", "stopping", "stopped")
@@ -126,6 +128,51 @@ def build_envelope(sid: str, repo: str, subject: str, body: object = None) -> di
     return envelope
 
 
+def _identity() -> dict:
+    """Immutable facts (the bus's identity operation) — never change for a session:
+    agent role, feature, human name, parent. Session id already rides `from`."""
+    try:
+        import bus
+        ident = bus.identity_of()
+    except Exception:
+        return {}
+    keep = {
+        "agent": ident.get("agent_type"),
+        "feature": ident.get("feature_id"),
+        "name": ident.get("name"),
+        "parent": ident.get("parent_session"),
+    }
+    return {k: v for k, v in keep.items() if v}
+
+
+def _status() -> dict:
+    """Mutable metadata (the bus's status operation) — changes through the session:
+    model, context occupancy, spend. Attached to every event so the latest is truth."""
+    try:
+        import bus
+        st = bus.status_of()
+    except Exception:
+        return {}
+    keep = {
+        "model": st.get("model"),
+        "context_tokens": st.get("context_tokens"),
+        "spend": st.get("spend"),
+    }
+    return {k: v for k, v in keep.items() if v}
+
+
+def _attach_snapshot(envelope: dict) -> dict:
+    """Ride the two fixed operations the bus answers itself (never the agent):
+    the immutable identity and the mutable status, so the consumer needs nothing else."""
+    identity = _identity()
+    if identity:
+        envelope["identity"] = identity
+    status = _status()
+    if status:
+        envelope["status"] = status
+    return envelope
+
+
 def _bus() -> Path:
     return Path(__file__).resolve().parent / "bus.py"
 
@@ -180,10 +227,30 @@ def do_post(rest: list[str]) -> None:
                    attempted, sid, repo)
         envelope = build_envelope(sid, repo, "orchard:agent:status",
                                   " ".join(words))
+    elif family == "delegation":
+        if len(args) != 2 or args[0] not in ("begin", "end"):
+            reject("delegation is `begin <subagent>` or `end <subagent>`",
+                   attempted, sid, repo)
+        envelope = build_envelope(
+            sid, repo, f"orchard:agent:delegation:{args[0]}:{args[1]}")
+    elif family == "outcome":
+        if len(args) != 1 or args[0] not in ("success", "fail"):
+            reject("outcome is `success` or `fail`", attempted, sid, repo)
+        envelope = build_envelope(sid, repo, f"orchard:agent:outcome:{args[0]}")
+    elif family == "task":
+        # A task is fully complete only when the ORCHESTRATOR says so — this
+        # task-level outcome is orchestrator-only, enforced by the sender's role.
+        if len(args) != 1 or args[0] not in ("completed", "failed"):
+            reject("task is `completed` or `failed`", attempted, sid, repo)
+        if _identity().get("agent") != "orchestrator":
+            reject("orchard:task:outcome may only be sent by the orchestrator",
+                   attempted, sid, repo)
+        envelope = build_envelope(sid, repo, f"orchard:task:outcome:{args[0]}")
     else:
-        reject(f"unknown event family {family!r}; allowed: lifecycle, status",
-               attempted, sid, repo)
+        reject(f"unknown event family {family!r}; allowed: "
+               "lifecycle, status, delegation, outcome, task", attempted, sid, repo)
 
+    _attach_snapshot(envelope)
     print(write_message(topics_root() / TOPIC_FAMILY / repo, sid, envelope))
 
 
