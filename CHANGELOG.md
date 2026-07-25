@@ -136,6 +136,17 @@ _base: `f65ad36`_
   (one path per line) or the `ORCHIDS_SIDEBAR_REPOS` environment variable; with
   neither, it shows the current repository.
 
+- 🌳 Fleet roles renamed to orchard names; message bus renamed courier.
+  Every agent role now wears an orchard name and glyph: orchestrator→gardener 🌳,
+  architect→landscaper 🌿, builder→sower 🌱, housekeeper→groundskeeper 🧹,
+  bus→courier 📮 (bloomer 🌸 unchanged). The message-bus transport was renamed
+  wholesale to **courier** (`tools/courier.py`; a transitional `tools/bus.py`
+  shim execs it for one release so live sessions are not cut off). The sidebar
+  identity line now renders each role's glyph, with wide-char-aware column
+  accounting. A dated migration converges consuming repos (drops dangling
+  old-name laydowns, moves `the-works/bus`→`courier` with a compat symlink).
+  No behaviour change; `orchid:`/`orchard:` namespaces untouched.
+
 ### 🧹 Removals
 
 - 🧹 Supervision kills are gone (Decision-081): the orchestrator no longer
@@ -155,6 +166,23 @@ _base: `f65ad36`_
   failing silently since the first build.
 
 ---
+
+#### 🎉 `f/orchard-renaming` → `archive/orchard-renaming`
+
+Every agent role now wears an orchard name and glyph: orchestrator→gardener 🌳,
+architect→landscaper 🌿, builder→sower 🌱, housekeeper→groundskeeper 🧹,
+bus→courier 📮 (bloomer 🌸 unchanged). The message-bus transport was renamed
+wholesale to **courier** (`tools/courier.py`; a transitional `tools/bus.py` shim
+execs it for one release so live sessions are not cut off). The sidebar identity
+line now renders each role's glyph, with wide-char-aware column accounting. A
+dated migration converges consuming repos (drops dangling old-name laydowns,
+moves `the-works/bus`→`courier` with a compat symlink). No behaviour change;
+`orchid:`/`orchard:` namespaces untouched. Location badges were deferred by
+ruling (not an agent-type distinction); legacy `groomer` and the `-cloud`
+variants were left untouched this pass.
+
+_Board: `docs/TODO.md.d/orchard-renaming.md` · Decisions 085/086/087 ·
+migration: `migrations/2026-07-25-orchard-role-rename.md`_
 
 #### 🐛 `f/sidebar-fixes` → `archive/sidebar-fixes`
 
