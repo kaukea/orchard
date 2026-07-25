@@ -27,7 +27,7 @@ build approval are human-only, always.
 | landscaper | opus | worktree session (`.claude/worktrees/<id>`, branch `f/<id>`) | One feature; its sidecar is the whole scope. Read-only discovery (parallel explorers) → plan agreed with the operator → **no file edit before MAKE IT SO** → builds/tests → on the operator's `THAT IS ALL`, countersigns and signals `finished` on the courier. Never reads the board or prior conversation. |
 | sower | sonnet | headless subagent from the landscaper | Exactly one step-spec; returns typed diff + self-test. |
 | groundskeeper | sonnet | headless, in the MAIN repo, dispatched on the landscaper's `finished` signal | The deterministic close: verify docs, tag, squash-merge, push, remove worktree + branch. Verifies documentation, never authors it. |
-| courier | haiku | one per session, loaded at session start | Not on the pipeline — the sidecar that connects a session to the message courier. Announces its parent, watches its inbox, relays messages up, sends on request. Owns the mechanism so no other role learns it. Does nothing else. |
+| courier | haiku | one per agent, no session id of its own (shares its parent's) | Not on the pipeline — the sidecar that connects an agent to the message transport. Watches its parent's session mailbox, relays arriving messages up, sends on request. Owns the mechanism so no other role learns it. Closes only via a self-message wake, never an external kill (Decisions 041/046/081). Does nothing else. |
 
 Isolation is per-dispatch (native worktrees), not a per-repo mode. One writer
 per task, always.
@@ -69,26 +69,68 @@ A cross-cutting channel between top-level sessions, orthogonal to the pipeline �
 no role depends on it to do its own job, and it belongs to no single agent type.
 
 ```
-session ──spawns──> courier sidecar ──announce──> every peer's inbox
-                          │
-   inbox events ──────────┘──SendMessage──> its own parent
+session ──spawns──> courier sidecar (shares parent's session id)
+                          │                        │
+        own mailbox scan ┘        orchard runtime tree:
+                                   $XDG_RUNTIME_DIR/orchard/{projects/<repo>.<project>,topics/<name>}/
+   arriving message ─────────────────────SendMessage───────> its own parent
 ```
 
 - **Address** = the session id (`CLAUDE_CODE_SESSION_ID`), never derived from
   location. Role and worktree are separate facts, not folded into the address.
-- **Transport** = one JSON file per message under
-  `$(git rev-parse --git-common-dir)/the-works/courier/<session-id>/`, so every
-  worktree of a repo shares one courier and nothing is committed. The set of folders
-  IS the registry; there is no broker for ordinary traffic.
-- **Exception: `courier.py ask`** (sidebar-polish, a lean trial) blocks for a reply —
-  the one deliberate departure from "no delivery guarantee," used to put a
-  question to the operator. `tools/orchard-question-broker.py` is a narrow,
-  token-free broker (a plain process, never an agent) that watches for question
-  envelopes, defers popping while the operator has input in flight, pops a
-  native tmux popup accepting only the defined option keys, and answers back
-  over the courier (`send --in-reply-to`) — none of that policy is exposed to the
-  asking agent. A `Notification` harness hook backstops harness-native prompts
-  that bypass this path.
+  A courier sidecar carries no session id of its own — it always resolves to
+  its parent's.
+- **Transport** = flat message files plus a per-session marker under the
+  USER-WIDE runtime tree `$XDG_RUNTIME_DIR/orchard/{projects/<repo>.<project>,
+  topics/<name>}/`, named `<sessionid>.<ts>.json` (+ `<sessionid>.marker`).
+  tmpfs, per-user, and crosses repos by construction — this replaces the
+  repo-scoped `the-works/courier/<sid>/` inboxes as the transport of record.
+- **Addressing**: `From` is always `:session:<id>`. `To` is `:session:<id>` (a
+  directed message — a cross-project delivery is gated by the
+  `~/.config/orchids/sidebar-registry.json` allowlist) or `:topic:<name>`. A
+  directed session message is delete-on-read; `request`/`reply` give a
+  blocking round trip.
+- **The fan-out is killed** — there is no broadcast to every inbox any more
+  (it was the token leak). Instead: status/lifecycle/outcome/delegation
+  telemetry are TOPIC posts (`orchard_topic.py post ...`) into the project
+  layout, which is the sidebar's feed; a lifecycle `signal` to a parent is a
+  DIRECTED `:session:<parent>` message (cross-repo via `ORCHID_PARENT_PROJECT`,
+  the same allowlist gating as any other cross-project `:session:` send); an
+  operator question is a directed request to the reserved `:session:operator`
+  mailbox. The old `orchid:*` broadcast WIRE GRAMMAR v1 is retired.
+- **Subjects** are a CLOSED corpus of 22 exact strings, validated by exact
+  membership — no regex, no `startswith`, no derivation:
+  `orchard:agent:{status, outcome:success|fail,
+  lifecycle:starting|started|stopping|stopped, delegation:schedule|begin|end,
+  message:request|response|content}`, `orchard:bus:{subscribe,unsubscribe}`,
+  `orchard:operator:message:{todo,instructions,request,response,content}`,
+  `orchard:task:outcome:{completed,failed}` (gardener-only, enforced in both
+  `courier.py` and `orchard_topic.py`). Variable data (a delegation subagent
+  id, a subscribed topic) lives in the BODY, never the subject.
+- **Liveness**: the per-session `<sessionid>.marker` mtime is the heartbeat —
+  every write touches the marker and bumps the parent project directory's
+  mtime too. Consumers scan or poll; an agent monitors its own session
+  mailbox. The courier is a per-agent singleton with NO session id of its
+  own (it shares its parent's), and its close is a self-message wake →
+  self-teardown, never an external kill (Decisions 041/046/081): the
+  `SessionEnd` hook only drops a wake message into the mailbox the courier's
+  own watch is already on — it never tears anything down on the courier's
+  behalf.
+- **Compaction**: messages older than 120 minutes are zipped into a
+  persistent archive under `$XDG_CACHE_HOME/orchard/archives/`, gated cheaply
+  by a `.compacted` sentinel file so the hot path costs one mtime check
+  (`tools/orchard_compact.py`).
+- **Exception: `courier.py ask`** blocks for a reply — the one deliberate
+  departure from "no delivery guarantee," used to put a question to the
+  operator. It sends a directed orchard request to `:session:operator`;
+  `tools/orchard-question-broker.py` is a narrow, token-free broker (a plain
+  process, never an agent, mounted per tmux server by
+  `tools/orchard-question-broker-mount.sh`) that drains that mailbox, defers
+  popping while the operator has input in flight, pops a native tmux popup
+  accepting only the defined option keys, and answers back over the same
+  request/reply mechanism (`in_reply_to`) — none of that policy is exposed to
+  the asking agent. A `Notification` harness hook backstops harness-native
+  prompts that bypass this path.
 - **No supervision kills** (operator ruling, 2026-07-25): no agent ever kills,
   reaps, or removes another agent's process, pane, window, or files — killing
   corrupts state and hides bugs. Agents start and stop themselves (self-teardown
@@ -96,37 +138,18 @@ session ──spawns──> courier sidecar ──announce──> every peer's i
   to the operator as observed state, never cleaned up unilaterally. A lifecycle
   `signal` is always attributed to the caller's own session — signing as another
   session does not exist.
-- **Membership** is established by hooks, not prompts: `SessionStart` creates the
-  inbox, `SessionEnd` broadcasts a departure and removes it — so a send to a
-  finished agent fails immediately instead of vanishing into an unwatched folder.
-- **Only top-level sessions** are members. Subagents belong to their spawner and
-  already have `SendMessage`.
-- **No delivery guarantee.** Messages are ephemeral, unacknowledged, and die with
-  the inbox. A sender expects no answer and chooses to retry, abandon, or error.
-- `orchid:identity` (broadcast once, immutable) and `orchid:status` (pulled,
-  mutable — context occupancy and token spend) are answered by the sidecar off the
-  parent's transcript, so they cost the parent no context and keep answering while
-  it is busy or wedged.
-- Agents **broadcast on a specified vocabulary** — WIRE GRAMMAR v1, canonical in
-  `agents/courier.md`, mechanically enforced by `courier.py` (any other `orchid:*` body is
-  rejected at send). Five classes, each with a declared consumer:
-  `orchid:status:<word>` (one/two agent-chosen doing-words, on change only),
-  `orchid:update:<sentence>` (log/cockpit-targeted), `orchid:phase:<phase>[:<k>/<n>]`
-  (the five-phase spine ideation→scoping→designing→building→releasing, from which
-  the sidebar derives a live percentage), `orchid:subagent:queue|start|done:<label>`
-  (counts are the message), and `orchid:interrupt:question:<subject>` (emitted only
-  by `courier.py ask`). Exactly three DERIVED interrupts may summon the operator —
-  QUESTION ⇐ ask, SUCCEEDED ⇐ done/finished, FAILED ⇐ abandoned/blocked+notify —
-  and `--notify-user` is illegal everywhere else. Sidecars never author wire text
-  of their own. `courier.py validate` audits recorded traffic against the grammar.
-  No new mechanism: plain broadcasts on the same courier.
+- **No delivery guarantee** outside `request`/`reply`/`ask`. An ordinary
+  directed send is ephemeral, unacknowledged, and delete-on-read; a sender
+  expects no answer and chooses to retry, abandon, or error.
+- `identity` (immutable) and `status` (mutable — context occupancy and token
+  spend) are answered by the sidecar off the parent's transcript, so they cost
+  the parent no context and keep answering while it is busy or wedged; the
+  same snapshot rides every `orchard_topic.py` event, so a topic consumer
+  needs nothing else.
 - **Operator approvals relay** as a distinct operator-origin class: an approval
   typed outside an agent's own window (e.g. in the gardener pane) is forwarded
   verbatim with an `operator_origin` flag, which a gate-waiting agent accepts as the
-  operator's own word — ordinary peer traffic never closes a gate (Decision-047). A
-  close reaches a courier as a **wake** (an inbound message resuming it), never a passive
-  timeout; on that wake the courier tears down its own inotify watch before departing
-  (Decisions 046, 041).
+  operator's own word — ordinary peer traffic never closes a gate (Decision-047).
 
 ## The fleet sidebar
 
@@ -135,35 +158,53 @@ A pinned left pane in every gardener and landscaper window, mounted at launch
 mount, all showing the same global picture.
 
 ```
-courier (per repo) ──observed──> sidebar_model ──Fleet──> sidebar.py (curses)
-                                                            │ Enter
-                                                            └─> sidebar_nav ──> tmux switch
+$XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
+                        │ build_model(): fold per-session events (identity/status snapshot on each)
+                        ▼
+                    Fleet/Repo/Feature/Subagent ──flatten──> sidebar.py (curses)
+                                                                │ Enter
+                                                                └─> sidebar_nav ──> tmux switch
 ```
 
-- **Reads the courier as a pure observer** across every repository the Orchard
-  registry (`~/.config/orchids/sidebar-registry.json`, `tools/orchard_registry.py`)
-  currently resolves as visible — never mutating a courier file. Installing orchids
-  in a repo (`.ai.toml` presence) registers it there and it appears in every
-  mounted sidebar immediately, no add command; hiding a repo is conversational
-  (ask any agent, or `/orchard hide <name>`/`show`) and persists across remounts.
-  `$ORCHIDS_SIDEBAR_REPOS` survives only as an explicit manual override. State is
-  attributed by message sender and accumulated in memory, so it survives the
-  courier's ephemerality; a sender's state is evicted once its own terminal lifecycle
-  signal is observed. Updates are event-driven (inotify), never polled.
+- **Consolidated into `tools/sidebar.py`** — the ONLY sidebar. It reads the
+  `projects/<repo>.<project>/` event layout directly; `sidebar_model.py` (the
+  old courier-inbox reader) and `sidebar_v3.py` (the topic-only prototype) are
+  DELETED. `build_model()` folds each project directory's event files into one
+  record per session (latest of each kind wins), then assembles the
+  Fleet/Repo/Feature/Subagent model — identity and role/model come off the
+  identity/status snapshot every `orchard_topic.py` event carries, not a
+  separate observation step. Updates are event-driven (inotify on the
+  projects root), polling-fallback otherwise.
+- **Retention is COLOUR, not removal.** Nothing ever ages off the bar: a
+  working session renders normally; a terminal outcome (success/fail, or the
+  gardener-only task outcome) becomes a PERSISTENT one-liner — green for
+  success, red for fail — that a later staleness check can no longer demote;
+  a session with no event inside the ~1 hour active window and no terminal
+  outcome yet renders GRAY ("not heard from in a while") instead of being
+  dropped. Rows persist until a process restart clears the tmpfs projects
+  tree — predictable, since a row never jumps in or out of the bar for no
+  reason.
 - **Renders the approved display grammar** (fixed visual contract: the blessed
   mock archived with the courier-message-specifying stream). Repo headers are solid
   per-repo hue blocks; a feature is ONE line — its name drawn over the progress
-  fill derived from the phase channel, right-aligned percentage, dim-amber `?N`
-  badge when questions wait (never red). One circle family carries state: ✓ done
-  (green, sorted to top, retained), ⠧ active, ○ waiting/todo — no watch or timer
-  glyphs. The live feature line carries the frame's single animated element, a
-  bidirectional lifted-band sweep; beneath it the small-caps phase label, the
-  NBSP-glued identity line (status word ⋮ role ⋮ model on the model colour ramp),
-  the five-phase checklist with inline subagent dots (● running, ○ queued —
-  count is the information; done subagents vanish), and dim guide-line footers
-  (age vs worked, tokens/dollars — deterministic zero-token local sources).
+  fill derived from the phase channel, right-aligned percentage. One circle
+  family carries state: ✓ done (green, sorted to top, retained), ⠧ active,
+  ○ waiting/todo — no watch or timer glyphs; a stale/failed row falls back to
+  the same muted/red treatment (see Retention above). The live feature line
+  carries the frame's single animated element, a bidirectional lifted-band
+  sweep; beneath it the small-caps phase label, the NBSP-glued identity line
+  (status word ⋮ role ⋮ model on the model colour ramp), the five-phase
+  checklist with inline subagent dots (● running, ○ queued — count is the
+  information; done subagents vanish), and dim guide-line footers (age vs
+  worked, tokens/dollars — deterministic zero-token local sources).
   Role-emoji and location-badge maps are data-driven so pending picks drop in
-  without code changes.
+  without code changes. The event grammar this model reads (`orchard_topic.py`'s
+  `lifecycle`/`status`/`delegation`/`outcome`/`task` verbs) carries no phase
+  tick, question badge, or age/worked/tokens/dollars signal yet — those row
+  fields stay in the model (so the renderer needs no special-casing once a
+  source lands) but currently always render at their empty default; the `?N`
+  question badge is retired outright (questions no longer reach a feature
+  row at all — see below).
   A scroll offset follows the selected row once the tree exceeds the pane's
   height. The project header is a static half-block colour-gradient bevel (the
   classic orchid family), flat light-gray instead for a paused project. Each
@@ -185,31 +226,23 @@ courier (per repo) ──observed──> sidebar_model ──Fleet──> sideba
 - **Mounted automatically** at the gardener's own boot, in addition to the
   existing per-landscaper-spawn mount — no manual step either way
   (`tools/sidebar-mount.sh`, idempotent).
-- Components in `tools/`: `sidebar.py` (renderer), `sidebar_model.py` (courier
-  reader), `sidebar_nav.py` (navigation), `sidebar-mount.sh` (mount),
-  `orchard_registry.py` (repo registration/visibility), `feature_name.py` (ledger
-  name resolution), `orchard-question-broker.py` (the courier-ask popup broker,
-  above). `/orchard show|hide` is a skill (`skills/orchard/`).
-
-## The topic transport (bus-transport-v2)
-
-Sanctioned agent-activity telemetry, decoupled from the inbox courier — no fan-out,
-no agent woken.
-
-```
-agents ──orchard_topic.py post──> $XDG_RUNTIME_DIR/orchard/topics/repository/<repo>/ ──read──> sidebar_v3.py
-```
-
-- **`tools/orchard_topic.py`** (event producer) — the only sanctioned writer of a
-  project topic: `post <lifecycle|status|delegation|outcome|task> …`, absolute
-  validation, violations refused + telemetry + a rejection bounced to the sender.
-  Every event carries the two courier-supplied operations (identity immutable, status
-  mutable); the project is the git repo via `--git-common-dir`, so all worktrees
-  post to one topic directory.
-- **`tools/sidebar_v3.py`** (topic consumer) — renders the active projects and
-  their sessions from the topic files alone; wakes no agent.
-- Coexists with the legacy inbox transport until the fan-out cut-over
-  ([[fanout-cutover]]).
+- **Operator questions** no longer surface as a row badge (above): they go
+  through the tmux popup broker, `tools/orchard-question-broker.py`, mounted
+  once per tmux server by `tools/orchard-question-broker-mount.sh`. The
+  broker reads `:session:operator` mailboxes directly — it is a CONSUMER of
+  the message transport, not a subject or a field on the sidebar's own event
+  grammar.
+- Components in `tools/`: `sidebar.py` (the ONLY renderer — folds the model
+  and draws it, `sidebar_model.py`/`sidebar_v3.py` deleted), `sidebar_nav.py`
+  (navigation), `sidebar-mount.sh` (mount), `feature_name.py` (ledger name
+  resolution), `orchard-question-broker.py` + `orchard-question-broker-mount.sh`
+  (the ask popup broker, above). `orchard_registry.py` (repo
+  registration/hide-show persistence, `~/.config/orchids/sidebar-registry.json`)
+  still backs the `/orchard show|hide` skill (`skills/orchard/`), but
+  `sidebar.py`'s own `build_model()` does not consult it — every directory
+  under the projects root is folded unconditionally, filtered only by
+  whether it has a live session (see Retention above); reconnecting hide/show
+  to the new renderer is unresolved, not confirmed either way here.
 
 ## The sidecar contract
 
@@ -257,7 +290,7 @@ symlink, everyone), `template` (install-time copy, then project-owned),
 agents/            five pipeline roles + courier sidecar (→ .claude/agents/)
 skills/<name>/     SKILL.md packages (→ .claude/skills/, per role)
 hooks/             courier-init.sh · courier-end.sh (→ .claude/hooks/)
-tools/             board_lint.py · board_stale.py · courier.py · orchard_topic.py · landscaper-teardown.sh · sidebar.py · sidebar_model.py · sidebar_nav.py · sidebar_v3.py · sidebar-mount.sh (→ .claude/tools/)
+tools/             board_lint.py · board_stale.py · courier.py · orchard_topic.py · orchard_compact.py · orchard-question-broker.py · landscaper-teardown.sh · sidebar.py · sidebar_nav.py · sidebar-mount.sh (→ .claude/tools/)
 templates/         AGENTS.md (template) · CLAUDE.md (prefix block)
 migrations/        dated structural-upgrade instructions (YYYY-MM-DD-<slug>.md); applied
                    per clone against the .git/the-works/migrated watermark
