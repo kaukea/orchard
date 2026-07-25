@@ -1,6 +1,6 @@
 """Emulator frame check for tools/sidebar.py's curses renderer.
 
-Runs the REAL curses app inside a detached tmux pane, against a fixture bus
+Runs the REAL curses app inside a detached tmux pane, against a fixture courier
 built from the scenario baked into the blessed reference frame
 (.git/the-works/bus-message-specifying/approved-frame.ans and its generator,
 sidebar-mock.py) — the source of truth for the visual grammar declared in
@@ -102,8 +102,8 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.orchids_repo = _make_named_repo(self._tmp.name, "orchids")
         self.signmc_repo = _make_named_repo(self._tmp.name, "signmc")
-        self._seed_orchids_bus()
-        self._seed_signmc_bus()
+        self._seed_orchids_courier()
+        self._seed_signmc_courier()
         self._repolist_path = os.path.join(self._tmp.name, "repolist.txt")
         Path(self._repolist_path).write_text(
             f"{self.orchids_repo}\n{self.signmc_repo}\n", encoding="utf-8",
@@ -120,58 +120,58 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
             capture_output=True, text=True,
         )
 
-    def _bus_root(self, repo_path: str) -> Path:
-        roots = sidebar_model.iter_bus_roots([repo_path])
-        assert roots, f"no bus root resolved for {repo_path}"
+    def _courier_root(self, repo_path: str) -> Path:
+        roots = sidebar_model.iter_courier_roots([repo_path])
+        assert roots, f"no courier root resolved for {repo_path}"
         return roots[0]
 
-    def _put(self, bus_root, folder, msg_id, sender, body, notify_user=None) -> None:
+    def _put(self, courier_root, folder, msg_id, sender, body, notify_user=None) -> None:
         write_message(
-            bus_root, folder,
+            courier_root, folder,
             envelope(msg_id, sender, body=body, notify_user=notify_user),
         )
 
-    def _put_question(self, bus_root, folder, msg_id, sender, question_id, subject) -> None:
+    def _put_question(self, courier_root, folder, msg_id, sender, question_id, subject) -> None:
         env = envelope(
             msg_id, sender, body=f"orchid:interrupt:question:{subject}", notify_user=True,
         )
         env["question_id"] = question_id
-        write_message(bus_root, folder, env)
+        write_message(courier_root, folder, env)
 
-    def _seed_orchids_bus(self) -> None:
-        bus_root = self._bus_root(self.orchids_repo)
+    def _seed_orchids_courier(self) -> None:
+        courier_root = self._courier_root(self.orchids_repo)
 
         done_session = "orch-bloomer"
-        self._put(bus_root, done_session, "d-id", done_session,
-                   identity_body(done_session, agent_type="architect",
+        self._put(courier_root, done_session, "d-id", done_session,
+                   identity_body(done_session, agent_type="landscaper",
                                  feature_id="bloomer-v1", name="bloomer v1"))
-        self._put(bus_root, done_session, "d-fin", done_session,
+        self._put(courier_root, done_session, "d-fin", done_session,
                    lifecycle_body("finished", feature_id="bloomer-v1"))
 
         live_session = "orch-arch"
-        identity = identity_body(live_session, agent_type="architect",
+        identity = identity_body(live_session, agent_type="landscaper",
                                   feature_id="sidebar-titling", name="sidebar titling")
         identity["model"] = "opus-4.8"
-        self._put(bus_root, live_session, "l-id", live_session, identity)
+        self._put(courier_root, live_session, "l-id", live_session, identity)
         for i, body in enumerate((
             "orchid:status:writing",
             "orchid:phase:building:2/4",
-            "orchid:subagent:start:builder-a",
-            "orchid:subagent:start:builder-b",
-            "orchid:subagent:start:builder-c",
-            "orchid:subagent:queue:builder-d",
-            "orchid:subagent:queue:builder-e",
+            "orchid:subagent:start:sower-a",
+            "orchid:subagent:start:sower-b",
+            "orchid:subagent:start:sower-c",
+            "orchid:subagent:queue:sower-d",
+            "orchid:subagent:queue:sower-e",
         )):
-            self._put(bus_root, live_session, f"l-{i}", live_session, body)
+            self._put(courier_root, live_session, f"l-{i}", live_session, body)
 
-    def _seed_signmc_bus(self) -> None:
-        bus_root = self._bus_root(self.signmc_repo)
+    def _seed_signmc_courier(self) -> None:
+        courier_root = self._courier_root(self.signmc_repo)
         session = "sign-arch"
-        self._put(bus_root, session, "s-id", session,
-                   identity_body(session, agent_type="architect",
+        self._put(courier_root, session, "s-id", session,
+                   identity_body(session, agent_type="landscaper",
                                  feature_id="focus-returning", name="focus returning"))
-        self._put(bus_root, session, "s-phase", session, "orchid:phase:building")
-        self._put_question(bus_root, session, "s-q1", session, "q1", "scope fork")
+        self._put(courier_root, session, "s-phase", session, "orchid:phase:building")
+        self._put_question(courier_root, session, "s-q1", session, "q1", "scope fork")
 
     def _pane_size_settled(self) -> bool:
         expected = f"{self.PANE_WIDTH}x{self.PANE_HEIGHT}"
@@ -255,7 +255,7 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
             i for i, l in enumerate(stripped)
             if i > working_idx and "writing" in l and "⋮" in l
         )
-        self.assertIn("architect", stripped[identity_idx])
+        self.assertIn("landscaper", stripped[identity_idx])
 
         checklist_start = next(
             i for i, l in enumerate(stripped) if i > working_idx and "ideation" in l

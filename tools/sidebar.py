@@ -30,7 +30,7 @@ accent-coloured member of the spinner family (`STATUS_EMOJI["working"]`),
 deliberately not cycled any more: cycling it too would be a second, redundant
 motion the mock never shows.
 
-Every other row (repo header, done/todo feature, subagent, bus) stays a
+Every other row (repo header, done/todo feature, subagent, courier) stays a
 single fixed-width character, unconditionally the same on every frame.
 
 CLI:
@@ -46,6 +46,7 @@ import curses
 import os
 import sys
 import threading
+import unicodedata
 import zlib
 from dataclasses import dataclass, field
 
@@ -109,12 +110,12 @@ NBSP = "\xa0"
 # so a later pick drops in without a code change (bus-message-specifying B5
 # item 8).
 ROLE_EMOJI: dict[str, str | None] = {
+    "gardener": "🌳",
+    "landscaper": "🌿",
+    "sower": "🌱",
+    "groundskeeper": "🧹",
+    "courier": "📮",
     "bloomer": "🌸",
-    "housekeeper": "🍂",
-    "bus": "📯",
-    "builder": "🌾",
-    "orchestrator": None,
-    "architect": None,
 }
 LOCATION_BADGES = {"local": "💻", "cloud": "☁️"}
 
@@ -145,7 +146,7 @@ STATUS_EMOJI = {
 # "working" and has no "idle" counterpart glyph.
 SUBAGENT_GLYPH = "●"
 
-BUS_GLYPH = "📬"
+COURIER_GLYPH = "📬"
 NO_ACTIVITY_TEXT = "⋮ no activity ⋮"
 ELLIPSIS = "…"
 
@@ -157,7 +158,7 @@ ELLIPSIS = "…"
 TARGET_SEPARATOR = "/"
 
 # Per-agent colour palette (sidebar-polish item 4, unchanged by this step) —
-# still used for subagent/bus row tinting, which this step does not rebuild
+# still used for subagent/courier row tinting, which this step does not rebuild
 # (bus-message-specifying B5 item 9).
 ORCHID_PALETTE = [
     ("white",   (0xF5, 0xF0, 0xF6), curses.COLOR_WHITE),
@@ -272,16 +273,24 @@ def model_tier_colour(model: str | None) -> tuple[int, int, int]:
     return MODEL_TIERS.get(model.split("-")[0], TEXT)
 
 
+def _cell_width(text: str) -> int:
+    """Terminal column width of `text`: East-Asian Wide/Fullwidth characters
+    (which include the role emoji) occupy two cells, everything else one."""
+    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in text)
+
+
 def compose_identity_line(
     doing: str, role: str | None, model: str | None, width: int,
 ) -> tuple[str, str, str]:
-    """(doing, role_text, model_text) — role_text is '' when `role` is None
-    (integration hasn't wired it yet); model_text is `model` truncated
-    (never wrapped) to whatever room is left after doing+role, '' if none is
-    left or `model` is None."""
+    """(doing, role_text, model_text) — role_text is '' when `role` is None;
+    otherwise it is `role_emoji(role)` glued to the role text with an NBSP
+    (no leading space when there is no glyph for the role). model_text is
+    `model` truncated (never wrapped) to whatever room is left after
+    doing+role, '' if none is left or `model` is None."""
     sep = NBSP + "⋮" + NBSP
-    role_text = role or ""
-    used = len(doing) + (len(sep) + len(role_text) if role_text else 0)
+    emoji = role_emoji(role)
+    role_text = (emoji + NBSP + role) if (role and emoji) else (role or "")
+    used = _cell_width(doing) + (len(sep) + _cell_width(role_text) if role_text else 0)
     room = width - used - (len(sep) if model else 0)
     model_text = (model or "")[:max(room, 0)] if model else ""
     return doing, role_text, model_text
@@ -384,7 +393,7 @@ def role_emoji(role: str | None) -> str | None:
 @dataclass
 class Row:
     depth: int
-    kind: str  # "repo" | "feature" | "subagent" | "bus"
+    kind: str  # "repo" | "feature" | "subagent" | "courier"
     target: str  # exact tmux window name to navigate to on Enter
     label: str
     status: str | None
@@ -409,16 +418,16 @@ class Row:
     source: object = field(default=None, repr=False)
 
 
-def _bus_row(depth: int, target: str, bus: sidebar_model.Bus) -> Row:
+def _courier_row(depth: int, target: str, courier: sidebar_model.Courier) -> Row:
     return Row(
-        depth=depth, kind="bus", target=target, label=bus.label,
+        depth=depth, kind="courier", target=target, label=courier.label,
         status=None, waiting_on_operator=False, is_subagent=False,
     )
 
 
 def flatten(fleet: sidebar_model.Fleet) -> list[Row]:
     """Fleet -> flat list of Row, depth-first (repo, its features, their
-    subagents). A live parent's collapsed bus row (sidebar-polish item 5), if
+    subagents). A live parent's collapsed courier row (sidebar-polish item 5), if
     any, is the FIRST row in that parent's group — before its features or
     subagents.
 
@@ -439,8 +448,8 @@ def flatten(fleet: sidebar_model.Fleet) -> list[Row]:
             status=repo.status, waiting_on_operator=repo.waiting_on_operator,
             is_subagent=False, paused=repo.paused,
         ))
-        if repo.bus is not None:
-            rows.append(_bus_row(1, repo.name, repo.bus))
+        if repo.courier is not None:
+            rows.append(_courier_row(1, repo.name, repo.courier))
         features = sorted(repo.features, key=lambda f: f.status != "done")
         for feature in features:
             feature_target = f"{repo.name}{TARGET_SEPARATOR}{feature.name}"
@@ -455,8 +464,8 @@ def flatten(fleet: sidebar_model.Fleet) -> list[Row]:
                 first_question_subject=feature.first_question_subject,
                 status_word=feature.status_word, source=feature,
             ))
-            if feature.bus is not None:
-                rows.append(_bus_row(2, feature_target, feature.bus))
+            if feature.courier is not None:
+                rows.append(_courier_row(2, feature_target, feature.courier))
             for sub in feature.subagents:
                 rows.append(Row(
                     depth=2, kind="subagent", target=feature_target, label=sub.label,
@@ -467,8 +476,8 @@ def flatten(fleet: sidebar_model.Fleet) -> list[Row]:
 
 def _row_text(row: Row) -> str:
     indent = "  " * row.depth
-    if row.kind == "bus":
-        return f"{indent}{BUS_GLYPH} {row.label}"
+    if row.kind == "courier":
+        return f"{indent}{COURIER_GLYPH} {row.label}"
     if row.kind == "subagent":
         # presence in the model IS the only verifiable subagent state — no
         # "idle" counterpart glyph exists (sidebar-titling item 4).
@@ -630,7 +639,7 @@ def render_header_line(title: str, width: int) -> str:
 
 def _init_colours() -> dict[str, int]:
     """Colour-pair attrs per status, used ONLY by the still-unrebuilt
-    subagent/bus rows (bus-message-specifying B5 item 9 — "verify, don't
+    subagent/courier rows (bus-message-specifying B5 item 9 — "verify, don't
     rebuild"); empty dict (attr 0 everywhere) if the terminal has no colour
     support. Feature/repo-header rows use `_ColourCache` instead (below)."""
     if not curses.has_colors():
@@ -698,7 +707,7 @@ def _rgb_to_xterm256(rgb: tuple[int, int, int]) -> int:
 
 
 # Colour-pair ids reserved for per-agent tint (sidebar-polish item 4, still
-# used for subagent/bus rows) — kept clear of the 1-6 status pairs above and
+# used for subagent/courier rows) — kept clear of the 1-6 status pairs above and
 # of `_ColourCache`'s lazily-allocated range (see its _FIRST_* constants).
 _AGENT_PAIR_BASE = 10
 
@@ -729,8 +738,8 @@ def _init_agent_colours() -> list[int] | None:
 
 def _agent_colour_key(row: Row) -> str:
     """A stable identity per live agent row: repo/feature rows are unique by
-    target; sibling subagents/bus rows share a target, so label joins in."""
-    if row.kind in ("subagent", "bus"):
+    target; sibling subagents/courier rows share a target, so label joins in."""
+    if row.kind in ("subagent", "courier"):
         return f"{row.target}/{row.label}"
     return row.target
 
@@ -958,12 +967,12 @@ def _draw_identity_line(
     _safe_addstr(stdscr, y, x, prefix, colours.pair(MUTED, dim=True))
     x += len(prefix)
     _safe_addstr(stdscr, y, x, doing_t, colours.pair(TEXT))
-    x += len(doing_t)
+    x += _cell_width(doing_t)
     if role_t:
         _safe_addstr(stdscr, y, x, sep, colours.pair(MUTED, dim=True))
         x += len(sep)
         _safe_addstr(stdscr, y, x, role_t, colours.pair(MUTED, dim=True, italic=True))
-        x += len(role_t)
+        x += _cell_width(role_t)
     if model_t:
         _safe_addstr(stdscr, y, x, sep, colours.pair(MUTED, dim=True))
         x += len(sep)
@@ -1087,7 +1096,7 @@ def _draw(
 
         text = _truncate(_row_text(row), max_x)
         attr = colour_pairs.get(row.status, 0)
-        if row.kind == "bus":
+        if row.kind == "courier":
             attr |= curses.A_ITALIC | curses.A_DIM
         if agent_colours:
             attr |= agent_colours[_agent_colour_index(_agent_colour_key(row))]

@@ -34,7 +34,7 @@ _H1_RE = re.compile(r'^#\s+(.+?)\s*$')
 
 
 def _repo_root(start: str | None = None) -> str | None:
-    """git toplevel for `start` (or cwd) — the same resolution bus.py's
+    """git toplevel for `start` (or cwd) — the same resolution courier.py's
     identity_of() uses, so a caller that already has that value should pass
     it in via `root=` instead of paying for a second subprocess call."""
     try:

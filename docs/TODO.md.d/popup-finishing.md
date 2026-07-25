@@ -20,7 +20,7 @@
   at close as FOLLOW-UP TASKS, never as a coverage footnote inside a
   "all items built" result. The operator had to ask where his requests
   went.
-- The bus envelope already carries title/summary fields (observed in the
+- The courier envelope already carries title/summary fields (observed in the
   round-2 trial relays); what lacks proof is the RENDERED behaviour.
 
 ## Proposal
@@ -30,7 +30,7 @@ Finish and LIVE-PROVE, with the operator pressing keys, each of:
    redraw, a confirm key commits; single-select stays instant-on-digit;
    the two modes visually distinct at a glance.
 2. **Escape = continue-the-conversation** — a distinct sentinel over the
-   bus; the asking agent treats it as "pause and keep talking", NEVER as
+   courier; the asking agent treats it as "pause and keep talking", NEVER as
    declined/cancelled (the AskUserQuestion dismissal failure mode must not
    recur).
 3. **Always-available gate keywords** — the popup special-cases the gate

@@ -1,4 +1,4 @@
-"""Unit tests for tools/bus.py's operator_origin provenance flag, and the
+"""Unit tests for tools/courier.py's operator_origin provenance flag, and the
 `ask`/answer question protocol (sidebar-polish item 12c-f).
 
 Mirrors the notify_user coverage style used elsewhere in this suite (see
@@ -27,12 +27,12 @@ _TOOLS_DIR = os.path.join(
 if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
-import bus  # noqa: E402
+import courier  # noqa: E402
 
 from support import make_repo  # noqa: E402
 
 _SCHEMA_PATH = os.path.join(_TOOLS_DIR, "message.schema.json")
-_BUS_PY = os.path.join(_TOOLS_DIR, "bus.py")
+_COURIER_PY = os.path.join(_TOOLS_DIR, "courier.py")
 
 
 def _schema() -> dict:
@@ -44,16 +44,16 @@ class MakeEnvelopeTests(unittest.TestCase):
     """Unit-level: make_envelope() itself, no subprocess involved."""
 
     def test_operator_origin_true_is_present(self):
-        env = bus.make_envelope("senderX", "recipientA", operator_origin=True)
+        env = courier.make_envelope("senderX", "recipientA", operator_origin=True)
         self.assertTrue(env["operator_origin"])
 
     def test_operator_origin_false_is_absent(self):
-        env = bus.make_envelope("senderX", "recipientA")
+        env = courier.make_envelope("senderX", "recipientA")
         self.assertNotIn("operator_origin", env)
 
     @unittest.skipIf(jsonschema is None, "jsonschema not installed")
     def test_operator_origin_envelope_validates_against_schema(self):
-        env = bus.make_envelope("senderX", "recipientA", operator_origin=True)
+        env = courier.make_envelope("senderX", "recipientA", operator_origin=True)
         jsonschema.validate(instance=env, schema=_schema())
 
 
@@ -65,20 +65,20 @@ class CliRoundTripTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.repo = make_repo(self._tmp.name)
 
-    def _bus(self, *args):
+    def _courier(self, *args):
         return subprocess.run(
-            [sys.executable, _BUS_PY, *args],
+            [sys.executable, _COURIER_PY, *args],
             cwd=self.repo, check=True, capture_output=True, text=True,
         )
 
     def test_operator_origin_round_trips_through_send_and_receive(self):
-        self._bus("init", "recipientA")
-        self._bus(
+        self._courier("init", "recipientA")
+        self._courier(
             "send", "--from", "senderX", "--to", "recipientA",
             "--operator-origin", "--body", "hello",
         )
 
-        out = self._bus("receive", "recipientA")
+        out = self._courier("receive", "recipientA")
         messages = json.loads(out.stdout)
 
         self.assertEqual(len(messages), 1)
@@ -91,11 +91,11 @@ class CliRoundTripTests(unittest.TestCase):
             jsonschema.validate(instance=msg, schema=_schema())
 
     def test_broadcast_operator_origin_round_trips(self):
-        self._bus("init", "senderX")
-        self._bus("init", "recipientA")
-        self._bus("broadcast", "--from", "senderX", "--operator-origin", "--body", "hi")
+        self._courier("init", "senderX")
+        self._courier("init", "recipientA")
+        self._courier("broadcast", "--from", "senderX", "--operator-origin", "--body", "hi")
 
-        out = self._bus("receive", "recipientA")
+        out = self._courier("receive", "recipientA")
         messages = json.loads(out.stdout)
 
         self.assertEqual(len(messages), 1)
@@ -111,21 +111,21 @@ class SignalAttributionTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.repo = make_repo(self._tmp.name)
 
-    def _bus(self, *args, session_id):
+    def _courier(self, *args, session_id):
         env = dict(os.environ, CLAUDE_CODE_SESSION_ID=session_id)
         return subprocess.run(
-            [sys.executable, _BUS_PY, *args],
+            [sys.executable, _COURIER_PY, *args],
             cwd=self.repo, check=True, capture_output=True, text=True, env=env,
         )
 
     def test_signal_uses_caller_as_from(self):
-        self._bus("init", "watcher2", session_id="watcher2")
-        self._bus(
+        self._courier("init", "watcher2", session_id="watcher2")
+        self._courier(
             "signal", "--state", "finished", "--feature", "own-feature",
             session_id="selfSignallerA",
         )
 
-        out = self._bus("receive", "watcher2", session_id="watcher2")
+        out = self._courier("receive", "watcher2", session_id="watcher2")
         messages = json.loads(out.stdout)
 
         self.assertEqual(messages[0]["from"], "selfSignallerA")
@@ -135,33 +135,33 @@ class QuestionEnvelopeUnitTests(unittest.TestCase):
     """Unit-level: _question_envelope() itself, no subprocess involved."""
 
     def test_carries_notify_user_and_interrupt_question_body_for_the_existing_sidebar_signal(self):
-        env = bus._question_envelope("askerX", "peerA", "q1", "Proceed?", ["Yes", "No"])
+        env = courier._question_envelope("askerX", "peerA", "q1", "Proceed?", ["Yes", "No"])
         self.assertTrue(env["notify_user"])
         self.assertEqual(env["body"], "orchid:interrupt:question:Proceed?")
 
     def test_interrupt_question_body_uses_title_as_subject_when_given(self):
-        env = bus._question_envelope(
+        env = courier._question_envelope(
             "askerX", "peerA", "q1", "Proceed?", ["Yes", "No"], title="Deploy gate",
         )
         self.assertEqual(env["body"], "orchid:interrupt:question:Deploy gate")
 
     def test_interrupt_question_body_falls_back_to_question_text_without_a_title(self):
-        env = bus._question_envelope("askerX", "peerA", "q1", "Ship it?", ["Yes", "No"])
+        env = courier._question_envelope("askerX", "peerA", "q1", "Ship it?", ["Yes", "No"])
         self.assertEqual(env["body"], "orchid:interrupt:question:Ship it?")
 
     def test_carries_question_fields(self):
-        env = bus._question_envelope("askerX", "peerA", "q1", "Proceed?", ["Yes", "No"])
+        env = courier._question_envelope("askerX", "peerA", "q1", "Proceed?", ["Yes", "No"])
         self.assertEqual(env["question_id"], "q1")
         self.assertEqual(env["question"], "Proceed?")
         self.assertEqual(env["options"], ["Yes", "No"])
 
     @unittest.skipIf(jsonschema is None, "jsonschema not installed")
     def test_question_envelope_validates_against_schema(self):
-        env = bus._question_envelope("askerX", "peerA", "q1", "Proceed?", ["Yes", "No"])
+        env = courier._question_envelope("askerX", "peerA", "q1", "Proceed?", ["Yes", "No"])
         jsonschema.validate(instance=env, schema=_schema())
 
     def test_title_summary_multi_carried_when_given(self):
-        env = bus._question_envelope(
+        env = courier._question_envelope(
             "askerX", "peerA", "q1", "Proceed?", ["Yes", "No"],
             title="Deploy gate", summary="Ship now or wait.", multi=True,
         )
@@ -170,14 +170,14 @@ class QuestionEnvelopeUnitTests(unittest.TestCase):
         self.assertTrue(env["multi"])
 
     def test_title_summary_multi_absent_by_default(self):
-        env = bus._question_envelope("askerX", "peerA", "q1", "Proceed?", ["Yes", "No"])
+        env = courier._question_envelope("askerX", "peerA", "q1", "Proceed?", ["Yes", "No"])
         self.assertNotIn("title", env)
         self.assertNotIn("summary", env)
         self.assertNotIn("multi", env)
 
     @unittest.skipIf(jsonschema is None, "jsonschema not installed")
     def test_question_envelope_with_title_summary_multi_validates_against_schema(self):
-        env = bus._question_envelope(
+        env = courier._question_envelope(
             "askerX", "peerA", "q1", "Proceed?", ["Yes", "No"],
             title="Deploy gate", summary="Ship now or wait.", multi=True,
         )
@@ -198,7 +198,7 @@ class MatchAnswerUnitTests(unittest.TestCase):
 
     def test_no_reply_yet_returns_none(self):
         self._write("unrelated.json", {"id": "1", "from": "x", "to": "y", "body": "hi"})
-        self.assertIsNone(bus._match_answer(self.box, "q1"))
+        self.assertIsNone(courier._match_answer(self.box, "q1"))
         self.assertTrue((self.box / "unrelated.json").exists())
 
     def test_matching_reply_is_consumed_and_returned(self):
@@ -207,7 +207,7 @@ class MatchAnswerUnitTests(unittest.TestCase):
         self._write("answer.json", {"id": "2", "from": "question-broker", "to": "askerX",
                                      "in_reply_to": "q1", "body": '{"index": 0, "option": "Yes"}'})
 
-        answer = bus._match_answer(self.box, "q1")
+        answer = courier._match_answer(self.box, "q1")
 
         self.assertEqual(answer, '{"index": 0, "option": "Yes"}')
         self.assertFalse((self.box / "answer.json").exists())
@@ -226,20 +226,20 @@ class AskCliRoundTripTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.repo = make_repo(self._tmp.name)
 
-    def _bus(self, *args, session_id=None, **kwargs):
+    def _courier(self, *args, session_id=None, **kwargs):
         env = dict(os.environ)
         if session_id is not None:
             env["CLAUDE_CODE_SESSION_ID"] = session_id
         return subprocess.run(
-            [sys.executable, _BUS_PY, *args],
+            [sys.executable, _COURIER_PY, *args],
             cwd=self.repo, capture_output=True, text=True, env=env, **kwargs,
         )
 
     def test_ask_round_trips_to_an_answer(self):
-        self._bus("init", "peerA", session_id="peerA")
+        self._courier("init", "peerA", session_id="peerA")
 
         proc = subprocess.Popen(
-            [sys.executable, _BUS_PY, "ask", "--question", "Proceed?",
+            [sys.executable, _COURIER_PY, "ask", "--question", "Proceed?",
              "--option", "Yes", "--option", "No", "--poll-interval", "0.05"],
             cwd=self.repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             env=dict(os.environ, CLAUDE_CODE_SESSION_ID="askerX"),
@@ -249,7 +249,7 @@ class AskCliRoundTripTests(unittest.TestCase):
             deadline = time.time() + 5
             question_id = None
             while time.time() < deadline and question_id is None:
-                out = self._bus("receive", "peerA", session_id="peerA")
+                out = self._courier("receive", "peerA", session_id="peerA")
                 messages = json.loads(out.stdout)
                 for m in messages:
                     if m.get("question_id"):
@@ -267,7 +267,7 @@ class AskCliRoundTripTests(unittest.TestCase):
             # the "broker" (standing in for tools/orchard-question-broker.py)
             # answers directly over the bus, exactly like it would after a
             # real popup returned a keypress
-            self._bus(
+            self._courier(
                 "send", "--from", "question-broker", "--to", "askerX",
                 "--in-reply-to", question_id, "--body", '{"index": 0, "option": "Yes"}',
             )
@@ -282,7 +282,7 @@ class AskCliRoundTripTests(unittest.TestCase):
         self.assertEqual(json.loads(stdout), {"index": 0, "option": "Yes"})
 
     def test_ask_requires_at_least_two_options(self):
-        proc = self._bus(
+        proc = self._courier(
             "ask", "--question", "Proceed?", "--option", "OnlyOne",
             session_id="askerY",
         )
@@ -293,9 +293,9 @@ class AskCliRoundTripTests(unittest.TestCase):
         """Shared CLI round trip: broadcast, a stand-in broker answers
         directly over the bus (exactly like the real popup would after
         returning a keypress), `ask` prints whatever body it received."""
-        self._bus("init", "peerA", session_id="peerA")
+        self._courier("init", "peerA", session_id="peerA")
         proc = subprocess.Popen(
-            [sys.executable, _BUS_PY, "ask", "--question", "Proceed?",
+            [sys.executable, _COURIER_PY, "ask", "--question", "Proceed?",
              "--option", "Yes", "--option", "No", "--poll-interval", "0.05",
              *extra_ask_args],
             cwd=self.repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
@@ -306,7 +306,7 @@ class AskCliRoundTripTests(unittest.TestCase):
             question_id = None
             received = None
             while time.time() < deadline and question_id is None:
-                out = self._bus("receive", "peerA", session_id="peerA")
+                out = self._courier("receive", "peerA", session_id="peerA")
                 messages = json.loads(out.stdout)
                 for m in messages:
                     if m.get("question_id"):
@@ -316,7 +316,7 @@ class AskCliRoundTripTests(unittest.TestCase):
                     time.sleep(0.05)
             self.assertIsNotNone(question_id, "ask() never broadcast a question")
 
-            self._bus(
+            self._courier(
                 "send", "--from", "question-broker", "--to", session_id,
                 "--in-reply-to", question_id, "--body", reply_body,
             )
@@ -372,16 +372,16 @@ class OrchidGrammarCliTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.repo = make_repo(self._tmp.name)
-        self._bus("init", "peerA")
+        self._courier("init", "peerA")
 
-    def _bus(self, *args):
+    def _courier(self, *args):
         return subprocess.run(
-            [sys.executable, _BUS_PY, *args],
+            [sys.executable, _COURIER_PY, *args],
             cwd=self.repo, capture_output=True, text=True,
         )
 
     def _send(self, body, *extra):
-        return self._bus("send", "--from", "senderX", "--to", "peerA",
+        return self._courier("send", "--from", "senderX", "--to", "peerA",
                           "--body", body, *extra)
 
     def assertRejected(self, proc, *fragments):
@@ -471,7 +471,7 @@ class OrchidGrammarCliTests(unittest.TestCase):
 
     def test_hand_sent_interrupt_question_is_rejected(self):
         self.assertRejected(
-            self._send("orchid:interrupt:question:Proceed?"), "bus.py ask",
+            self._send("orchid:interrupt:question:Proceed?"), "courier.py ask",
         )
 
     def test_unknown_orchid_class_is_rejected(self):
@@ -513,21 +513,21 @@ class OrchidGrammarCliTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_broadcast_enforces_the_same_grammar(self):
-        self._bus("init", "senderX")
-        proc = self._bus("broadcast", "--from", "senderX", "--body", "orchid:status:building")
+        self._courier("init", "senderX")
+        proc = self._courier("broadcast", "--from", "senderX", "--body", "orchid:status:building")
         self.assertRejected(proc, "lifecycle state")
 
     def test_broadcast_accepts_valid_orchid_body(self):
-        self._bus("init", "senderX")
-        proc = self._bus("broadcast", "--from", "senderX", "--body", "orchid:phase:building")
+        self._courier("init", "senderX")
+        proc = self._courier("broadcast", "--from", "senderX", "--body", "orchid:phase:building")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_broadcast_rejects_hand_sent_interrupt(self):
-        self._bus("init", "senderX")
-        proc = self._bus(
+        self._courier("init", "senderX")
+        proc = self._courier(
             "broadcast", "--from", "senderX", "--body", "orchid:interrupt:question:hi",
         )
-        self.assertRejected(proc, "bus.py ask")
+        self.assertRejected(proc, "courier.py ask")
 
 
 class SignalNotifyLegalityCliTests(unittest.TestCase):
@@ -539,44 +539,44 @@ class SignalNotifyLegalityCliTests(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.repo = make_repo(self._tmp.name)
 
-    def _bus(self, *args, session_id="s1"):
+    def _courier(self, *args, session_id="s1"):
         env = dict(os.environ, CLAUDE_CODE_SESSION_ID=session_id)
         return subprocess.run(
-            [sys.executable, _BUS_PY, *args],
+            [sys.executable, _COURIER_PY, *args],
             cwd=self.repo, capture_output=True, text=True, env=env,
         )
 
     def test_notify_user_legal_with_done(self):
-        proc = self._bus("signal", "--state", "done", "--notify-user")
+        proc = self._courier("signal", "--state", "done", "--notify-user")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_notify_user_legal_with_blocked(self):
-        proc = self._bus("signal", "--state", "blocked", "--notify-user")
+        proc = self._courier("signal", "--state", "blocked", "--notify-user")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_notify_user_legal_with_abandoned(self):
-        proc = self._bus("signal", "--state", "abandoned", "--notify-user")
+        proc = self._courier("signal", "--state", "abandoned", "--notify-user")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_notify_user_rejected_with_started(self):
-        proc = self._bus("signal", "--state", "started", "--notify-user")
+        proc = self._courier("signal", "--state", "started", "--notify-user")
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("--notify-user", proc.stderr)
 
     def test_notify_user_rejected_with_building(self):
-        proc = self._bus("signal", "--state", "building", "--notify-user")
+        proc = self._courier("signal", "--state", "building", "--notify-user")
         self.assertNotEqual(proc.returncode, 0)
 
     def test_notify_user_rejected_with_testing(self):
-        proc = self._bus("signal", "--state", "testing", "--notify-user")
+        proc = self._courier("signal", "--state", "testing", "--notify-user")
         self.assertNotEqual(proc.returncode, 0)
 
     def test_notify_user_rejected_with_finished(self):
-        proc = self._bus("signal", "--state", "finished", "--notify-user")
+        proc = self._courier("signal", "--state", "finished", "--notify-user")
         self.assertNotEqual(proc.returncode, 0)
 
     def test_signal_without_notify_user_is_unrestricted(self):
-        proc = self._bus("signal", "--state", "building")
+        proc = self._courier("signal", "--state", "building")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
 

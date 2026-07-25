@@ -9,7 +9,7 @@
 - **Edge syntax for an external id.** Needs to be unambiguous against local ids and
   cheap for `board_lint.py` to split. Candidate: `⊘serialseb/kauk#role-aware-delivery`
   (`<owner>/<repo>#<task-id>`).
-- **How does the orchestrator resolve one?** It needs the other repo's board. Read a
+- **How does the gardener resolve one?** It needs the other repo's board. Read a
   local checkout if present (both repos are on-box today), or fetch? What is the
   behaviour when the other repo is absent — report unresolved, or fail?
 - **What does the lint do with an unresolvable external id?** It cannot check another
@@ -27,11 +27,11 @@
   `role-aware-delivery` (filed 2026-07-17). That dependency exists only as prose in two
   Findings sections, on two boards, which nothing checks. Either side can drift and
   nothing will complain.
-- The orchestrator's boot sequence already reads the board and the handover; adding
+- The gardener's boot sequence already reads the board and the handover; adding
   external-blocker resolution extends a read it already performs. But the role is
   deliberately lean and reconstitutes from a bounded set — an unbounded fan-out to
   other repos' boards would break that property. Bound it.
-- Operator ruling (2026-07-17): the orchestrator MUST include external blockers when it
+- Operator ruling (2026-07-17): the gardener MUST include external blockers when it
   loads its tasks. A task blocked on another project's work is not "queued" — rendering
   it as such is a lie the board currently tells.
 
@@ -39,9 +39,9 @@
 1. Extend the edge syntax with a qualified external form.
 2. Teach `board_lint.py` to recognise it and to resolve it when the other checkout is
    present — never to silently accept an unresolvable one.
-3. Teach the orchestrator's boot/board-render to resolve external blockers and surface
+3. Teach the gardener's boot/board-render to resolve external blockers and surface
    them in the render, including the blocker's current status.
-4. Update `AGENTS.files.md` §TODO (edges) and the `orchestrator` skill together — the
+4. Update `AGENTS.files.md` §TODO (edges) and the `gardener` skill together — the
    format and the reader are one change.
 
 ## Testing

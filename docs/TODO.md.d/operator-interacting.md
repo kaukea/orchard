@@ -6,7 +6,7 @@
 ## Blockers
 
 - Sequencing only: builds on the question ask-path landing in
-  [[sidebar-polish]] item 12 (the bus-message question with numbered
+  [[sidebar-polish]] item 12 (the courier-message question with numbered
   options is the first kind of this envelope).
 
 ## Questions
@@ -16,9 +16,9 @@
   summary/presentation (which glyph?). Others (progress reports, blockers)?
 - ~~Rendering surface?~~ RULED direction (operator, 2026-07-22, "let's try
   it and see if it works"): the broker is a SCRIPT, not an agent — a
-  question message on the bus triggers a token-free tool drawing a native
+  question message on the courier triggers a token-free tool drawing a native
   tmux popup (numbered options) over the operator's CURRENT window; the
-  keypress returns over the bus to the asker.
+  keypress returns over the courier to the asker.
   INPUT RULE (operator, 2026-07-22, after the live demo landed mid-typing):
   the popup responds ONLY to its defined option keys and IGNORES every
   other keypress — no default pick, no dismiss-on-any-key — so a question
@@ -41,8 +41,8 @@
   the trial holds.
 - Fallback when tmux is absent, and whether gate requests ever render only
   in the agent's pane.
-- Does the operator's ANSWER travel back over the bus too (operator types in
-  the orchestrator pane, relay carries it operator-origin per Decision-047),
+- Does the operator's ANSWER travel back over the courier too (operator types in
+  the gardener pane, relay carries it operator-origin per Decision-047),
   making the whole exchange symmetric?
 - Enforcement: same pattern as the question tools — presentation habits
   stripped from agent defs and replaced by the typed send?
@@ -58,9 +58,9 @@
 
 ## Proposal
 
-One typed operator-interaction envelope on the bus: kind (question | gate |
+One typed operator-interaction envelope on the courier: kind (question | gate |
 summary), payload, numbered options where applicable. Agents SEND the
-envelope instead of inventing presentation; the orchestrator renders all
+envelope instead of inventing presentation; the gardener renders all
 kinds uniformly in the operator's pane; the sidebar marks the waiting kind
 with its glyph. Gate SEMANTICS are untouched — MAKE IT SO and THAT IS ALL
 remain the operator's words, exactly as ruled; only their request and
@@ -70,5 +70,5 @@ display unify.
 
 To agree at readiness: one live feature driven end-to-end through the
 envelope — a discovery question, a plan gate request, and the done summary
-all arriving uniformly in the orchestrator pane with correct sidebar
+all arriving uniformly in the gardener pane with correct sidebar
 markers, and the operator's answers/gate words flowing back unchanged.

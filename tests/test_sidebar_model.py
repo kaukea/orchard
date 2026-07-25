@@ -1,7 +1,7 @@
-"""Unit tests for tools/sidebar_model.py — the bus reader/aggregator.
+"""Unit tests for tools/sidebar_model.py — the courier reader/aggregator.
 
 Runs under both `python3 -m unittest discover` and `pytest`; stdlib only.
-Fixtures are real git-init'd temp repos with bus message files written by
+Fixtures are real git-init'd temp repos with courier message files written by
 hand (see tests/support.py) — build_model() is exercised end to end, never
 mocked.
 """
@@ -25,22 +25,22 @@ import sidebar_model  # noqa: E402
 import orchard_registry  # noqa: E402
 
 from support import (  # noqa: E402
-    make_repo, bus_root_of, identity_body, lifecycle_body, envelope, write_message,
+    make_repo, courier_root_of, identity_body, lifecycle_body, envelope, write_message,
 )
 
 
-class _BusFixtureTestCase(unittest.TestCase):
-    """One fresh git repo + bus root per test."""
+class _CourierFixtureTestCase(unittest.TestCase):
+    """One fresh git repo + courier root per test."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.repo = make_repo(self._tmp.name)
-        self.bus_root = bus_root_of(self.repo)
+        self.courier_root = courier_root_of(self.repo)
 
     def _put(self, folder, msg_id, sender, body, ts, notify_user=None):
         write_message(
-            self.bus_root, folder,
+            self.courier_root, folder,
             envelope(msg_id, sender, body=body, ts=ts, notify_user=notify_user),
         )
 
@@ -52,27 +52,27 @@ class _BusFixtureTestCase(unittest.TestCase):
         env = envelope(msg_id, sender, body=f"orchid:interrupt:question:{subject}",
                        ts=ts, notify_user=notify_user)
         env["question_id"] = question_id
-        write_message(self.bus_root, folder, env)
+        write_message(self.courier_root, folder, env)
 
     def _put_reply(self, folder, msg_id, sender, in_reply_to, ts, body="ack"):
         env = envelope(msg_id, sender, body=body, ts=ts)
         env["in_reply_to"] = in_reply_to
-        write_message(self.bus_root, folder, env)
+        write_message(self.courier_root, folder, env)
 
-    def _architect(self, session_id, feature_id, folder=None, name=None):
+    def _landscaper(self, session_id, feature_id, folder=None, name=None):
         """Write the identity announce that makes session_id a renderable
-        architect feature."""
+        landscaper feature."""
         folder = folder or session_id
         self._put(
             folder, f"{session_id}-id", session_id,
-            identity_body(session_id, agent_type="architect", feature_id=feature_id,
+            identity_body(session_id, agent_type="landscaper", feature_id=feature_id,
                           name=name or feature_id.replace("-", " ")),
             ts="2026-01-01T00:00:00.000000+00:00",
         )
         return folder
 
 
-class StatusMappingTests(_BusFixtureTestCase):
+class StatusMappingTests(_CourierFixtureTestCase):
     """The six-state status vocabulary (sidebar-polish item 9, revised —
     working/waiting/idle/awaiting_agent/done/failed), all distinct and
     non-overlapping."""
@@ -88,7 +88,7 @@ class StatusMappingTests(_BusFixtureTestCase):
         for state, _status in expected.items():
             session_id = f"arch-{state}"
             feature_id = f"feat-{state}"
-            self._architect(session_id, feature_id)
+            self._landscaper(session_id, feature_id)
             self._put(
                 session_id, f"{session_id}-lc", session_id,
                 lifecycle_body(state, feature_id=feature_id),
@@ -108,11 +108,11 @@ class StatusMappingTests(_BusFixtureTestCase):
     def test_done_and_failed_never_share_encoding(self):
         # explicit operator correction: done and failed must never share a
         # glyph/status value, however they're derived
-        self._architect("arch-done", "feat-done")
+        self._landscaper("arch-done", "feat-done")
         self._put("arch-done", "arch-done-lc", "arch-done",
                   lifecycle_body("finished", feature_id="feat-done"),
                   ts="2026-01-01T00:00:01.000000+00:00")
-        self._architect("arch-failed", "feat-failed")
+        self._landscaper("arch-failed", "feat-failed")
         self._put("arch-failed", "arch-failed-lc", "arch-failed",
                   lifecycle_body("abandoned", feature_id="feat-failed"),
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -124,16 +124,16 @@ class StatusMappingTests(_BusFixtureTestCase):
         self.assertNotEqual(features["feat-done"].status, features["feat-failed"].status)
 
     def test_no_lifecycle_and_no_subagents_is_idle(self):
-        self._architect("arch-fresh", "feat-fresh")
+        self._landscaper("arch-fresh", "feat-fresh")
 
         fleet = sidebar_model.build_model([self.repo])
         feature = fleet.repos[0].features[0]
         self.assertEqual(feature.status, "idle")
 
     def test_active_subagent_marks_working_even_without_lifecycle_push(self):
-        self._architect("arch-working", "feat-working")
+        self._landscaper("arch-working", "feat-working")
         self._put("arch-working", "arch-working-s1", "arch-working",
-                  "orchid:subagent:start:builder-1",
+                  "orchid:subagent:start:sower-1",
                   ts="2026-01-01T00:00:01.000000+00:00")
 
         fleet = sidebar_model.build_model([self.repo])
@@ -143,7 +143,7 @@ class StatusMappingTests(_BusFixtureTestCase):
     def test_pre_terminal_done_lifecycle_is_waiting_on_operator(self):
         # lifecycle "done" (built/tested, awaiting THAT IS ALL) is, by
         # definition, an operator-wait -- not a separate terminal status.
-        self._architect("arch-predone", "feat-predone")
+        self._landscaper("arch-predone", "feat-predone")
         self._put("arch-predone", "arch-predone-lc", "arch-predone",
                   lifecycle_body("done", feature_id="feat-predone"),
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -158,13 +158,13 @@ class StatusMappingTests(_BusFixtureTestCase):
         self.assertEqual(len(statuses), 6)
 
 
-class BlockedOnTests(_BusFixtureTestCase):
+class BlockedOnTests(_CourierFixtureTestCase):
     """blocked_on distinguishes "waiting on a component" from "awaiting
     another agent" — the minimal tag added to the blocked lifecycle signal
     since the prior signal shape carried no such distinction."""
 
     def test_blocked_defaults_to_waiting_on_component(self):
-        self._architect("arch-blocked-comp", "feat-blocked-comp")
+        self._landscaper("arch-blocked-comp", "feat-blocked-comp")
         self._put("arch-blocked-comp", "arch-blocked-comp-lc", "arch-blocked-comp",
                   lifecycle_body("blocked", feature_id="feat-blocked-comp"),
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -175,7 +175,7 @@ class BlockedOnTests(_BusFixtureTestCase):
         self.assertFalse(feature.waiting_on_operator)
 
     def test_blocked_on_agent_is_awaiting_agent(self):
-        self._architect("arch-blocked-peer", "feat-blocked-peer")
+        self._landscaper("arch-blocked-peer", "feat-blocked-peer")
         self._put("arch-blocked-peer", "arch-blocked-peer-lc", "arch-blocked-peer",
                   lifecycle_body("blocked", feature_id="feat-blocked-peer",
                                 blocked_on="agent"),
@@ -186,7 +186,7 @@ class BlockedOnTests(_BusFixtureTestCase):
         self.assertEqual(feature.status, "awaiting_agent")
 
     def test_blocked_on_component_explicit_is_waiting(self):
-        self._architect("arch-blocked-explicit", "feat-blocked-explicit")
+        self._landscaper("arch-blocked-explicit", "feat-blocked-explicit")
         self._put("arch-blocked-explicit", "arch-blocked-explicit-lc", "arch-blocked-explicit",
                   lifecycle_body("blocked", feature_id="feat-blocked-explicit",
                                 blocked_on="component"),
@@ -197,12 +197,12 @@ class BlockedOnTests(_BusFixtureTestCase):
         self.assertEqual(feature.status, "waiting")
 
 
-class WaitingOperatorVariantTests(_BusFixtureTestCase):
+class WaitingOperatorVariantTests(_CourierFixtureTestCase):
     """The ❓ waiting-on-operator variant — driven by last_notify_user (or
     the equivalent lifecycle "done" signal), never by blocked_on=agent."""
 
     def test_notify_user_flag_marks_waiting_on_operator(self):
-        self._architect("arch-notify", "feat-notify")
+        self._landscaper("arch-notify", "feat-notify")
         self._put("arch-notify", "arch-notify-act", "arch-notify",
                   "orchid:activity:need input",
                   ts="2026-01-01T00:00:01.000000+00:00", notify_user=True)
@@ -213,14 +213,14 @@ class WaitingOperatorVariantTests(_BusFixtureTestCase):
         self.assertEqual(feature.status, "waiting")
 
     def test_reannounce_after_notify_does_not_clear_waiting(self):
-        self._architect("arch-sticky1", "feat-sticky1")
+        self._landscaper("arch-sticky1", "feat-sticky1")
         self._put("arch-sticky1", "arch-sticky1-act", "arch-sticky1",
                   "orchid:activity:need input",
                   ts="2026-01-01T00:00:01.000000+00:00", notify_user=True)
         # a later re-announce (identity push) from the SAME sender, without
         # notify_user, must not clear the still-open waiting flash
         self._put("arch-sticky1", "arch-sticky1-id2", "arch-sticky1",
-                  identity_body("arch-sticky1", agent_type="architect",
+                  identity_body("arch-sticky1", agent_type="landscaper",
                                 feature_id="feat-sticky1", name="feat sticky1"),
                   ts="2026-01-01T00:00:02.000000+00:00")
 
@@ -230,7 +230,7 @@ class WaitingOperatorVariantTests(_BusFixtureTestCase):
         self.assertEqual(feature.status, "waiting")
 
     def test_plain_lifecycle_after_notify_does_not_clear_waiting(self):
-        self._architect("arch-sticky2", "feat-sticky2")
+        self._landscaper("arch-sticky2", "feat-sticky2")
         self._put("arch-sticky2", "arch-sticky2-act", "arch-sticky2",
                   "orchid:activity:need input",
                   ts="2026-01-01T00:00:01.000000+00:00", notify_user=True)
@@ -246,7 +246,7 @@ class WaitingOperatorVariantTests(_BusFixtureTestCase):
         self.assertEqual(feature.status, "waiting")
 
     def test_terminal_lifecycle_clears_waiting(self):
-        self._architect("arch-sticky3", "feat-sticky3")
+        self._landscaper("arch-sticky3", "feat-sticky3")
         self._put("arch-sticky3", "arch-sticky3-act", "arch-sticky3",
                   "orchid:activity:need input",
                   ts="2026-01-01T00:00:01.000000+00:00", notify_user=True)
@@ -262,9 +262,9 @@ class WaitingOperatorVariantTests(_BusFixtureTestCase):
         self.assertEqual(feature.status, "done")
 
 
-class AttributionTests(_BusFixtureTestCase):
+class AttributionTests(_CourierFixtureTestCase):
     def test_activity_attributed_to_sender_not_folder(self):
-        self._architect("arch-A", "feat-A")
+        self._landscaper("arch-A", "feat-A")
         # activity FROM arch-A, physically written inside a DIFFERENT
         # session's folder ("arch-B") -- simulates fan_out delivering a copy
         # into a peer's inbox. Attribution must follow envelope['from'],
@@ -280,9 +280,9 @@ class AttributionTests(_BusFixtureTestCase):
         self.assertEqual(feature.activity, "working on A")
 
 
-class SubagentTests(_BusFixtureTestCase):
+class SubagentTests(_CourierFixtureTestCase):
     def test_start_without_done_is_present(self):
-        self._architect("arch-sub1", "feat-sub1")
+        self._landscaper("arch-sub1", "feat-sub1")
         self._put("arch-sub1", "arch-sub1-s1", "arch-sub1",
                   "orchid:subagent:start:build-agent",
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -292,7 +292,7 @@ class SubagentTests(_BusFixtureTestCase):
         self.assertEqual(labels, ["build-agent"])
 
     def test_start_then_done_is_absent(self):
-        self._architect("arch-sub2", "feat-sub2")
+        self._landscaper("arch-sub2", "feat-sub2")
         self._put("arch-sub2", "arch-sub2-s1", "arch-sub2",
                   "orchid:subagent:start:build-agent",
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -305,7 +305,7 @@ class SubagentTests(_BusFixtureTestCase):
         self.assertEqual(labels, [])
 
     def test_self_reported_messaging_label_excluded(self):
-        self._architect("arch-sub3", "feat-sub3")
+        self._landscaper("arch-sub3", "feat-sub3")
         self._put("arch-sub3", "arch-sub3-s1", "arch-sub3",
                   "orchid:subagent:start:messaging",
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -313,13 +313,13 @@ class SubagentTests(_BusFixtureTestCase):
         fleet = sidebar_model.build_model([self.repo])
         self.assertEqual(fleet.repos[0].features[0].subagents, [])
 
-    def test_bus_sidecar_child_session_excluded(self):
-        self._architect("arch-sub4", "feat-sub4")
-        # a bus sidecar child session (agent_type "bus") whose parent_session
-        # points at the architect must never surface as a subagent row, even
+    def test_courier_sidecar_child_session_excluded(self):
+        self._landscaper("arch-sub4", "feat-sub4")
+        # a courier sidecar child session (agent_type "courier") whose parent_session
+        # points at the landscaper must never surface as a subagent row, even
         # though it satisfies the generic parent_session-match rule.
-        self._put("bus-child", "bus-child-id", "bus-child",
-                  identity_body("bus-child", agent_type="bus", name="messaging",
+        self._put("courier-child", "courier-child-id", "courier-child",
+                  identity_body("courier-child", agent_type="courier", name="messaging",
                                 parent_session="arch-sub4"),
                   ts="2026-01-01T00:00:01.000000+00:00")
 
@@ -329,21 +329,21 @@ class SubagentTests(_BusFixtureTestCase):
     def test_two_parents_each_show_their_own_subagents(self):
         # sidebar-polish item 3: EVERY agent's subagents render under their
         # own parent, not just the first feature's.
-        self._architect("arch-parentA", "feat-parentA")
+        self._landscaper("arch-parentA", "feat-parentA")
         self._put("arch-parentA", "arch-parentA-s1", "arch-parentA",
-                  "orchid:subagent:start:builder-A1",
+                  "orchid:subagent:start:sower-A1",
                   ts="2026-01-01T00:00:01.000000+00:00")
         self._put("arch-parentA", "arch-parentA-s2", "arch-parentA",
-                  "orchid:subagent:start:builder-A2",
+                  "orchid:subagent:start:sower-A2",
                   ts="2026-01-01T00:00:02.000000+00:00")
 
-        self._architect("arch-parentB", "feat-parentB")
+        self._landscaper("arch-parentB", "feat-parentB")
         self._put("arch-parentB", "arch-parentB-s1", "arch-parentB",
-                  "orchid:subagent:start:builder-B1",
+                  "orchid:subagent:start:sower-B1",
                   ts="2026-01-01T00:00:01.000000+00:00")
-        # arch-parentB also has a peer session (non-bus) parented to it
+        # arch-parentB also has a peer session (non-courier) parented to it
         self._put("peer-B", "peer-B-id", "peer-B",
-                  identity_body("peer-B", agent_type="builder", name="peer-builder-B",
+                  identity_body("peer-B", agent_type="sower", name="peer-sower-B",
                                 parent_session="arch-parentB"),
                   ts="2026-01-01T00:00:01.000000+00:00")
 
@@ -353,11 +353,11 @@ class SubagentTests(_BusFixtureTestCase):
 
         labels_a = sorted(s.label for s in features["feat-parentA"].subagents)
         labels_b = sorted(s.label for s in features["feat-parentB"].subagents)
-        self.assertEqual(labels_a, ["builder-A1", "builder-A2"])
-        self.assertEqual(labels_b, ["builder-B1", "peer-builder-B"])
+        self.assertEqual(labels_a, ["sower-A1", "sower-A2"])
+        self.assertEqual(labels_b, ["peer-sower-B", "sower-B1"])
 
 
-class InternalRowFilteringTests(_BusFixtureTestCase):
+class InternalRowFilteringTests(_CourierFixtureTestCase):
     """Rows never operator-facing: a bare session-UUID row (no announced
     name) — sidebar-polish item 2."""
 
@@ -365,16 +365,16 @@ class InternalRowFilteringTests(_BusFixtureTestCase):
 
     def test_architect_with_no_name_and_no_feature_id_is_hidden(self):
         self._put(self._UUID, f"{self._UUID}-id", self._UUID,
-                  identity_body(self._UUID, agent_type="architect"),
+                  identity_body(self._UUID, agent_type="landscaper"),
                   ts="2026-01-01T00:00:00.000000+00:00")
 
         fleet = sidebar_model.build_model([self.repo])
         self.assertEqual(fleet.repos[0].features, [])
 
     def test_subagent_with_no_name_and_uuid_session_id_is_hidden(self):
-        self._architect("arch-uuidsub", "feat-uuidsub")
+        self._landscaper("arch-uuidsub", "feat-uuidsub")
         self._put(self._UUID, f"{self._UUID}-id", self._UUID,
-                  identity_body(self._UUID, agent_type="builder",
+                  identity_body(self._UUID, agent_type="sower",
                                 parent_session="arch-uuidsub"),
                   ts="2026-01-01T00:00:01.000000+00:00")
 
@@ -384,21 +384,21 @@ class InternalRowFilteringTests(_BusFixtureTestCase):
     def test_subagent_with_uuid_session_id_but_announced_name_is_shown(self):
         # a raw-uuid session_id is fine as long as a NAME was announced —
         # only a bare, unnamed uuid row is hidden.
-        self._architect("arch-nameduuidsub", "feat-nameduuidsub")
+        self._landscaper("arch-nameduuidsub", "feat-nameduuidsub")
         self._put(self._UUID, f"{self._UUID}-id", self._UUID,
-                  identity_body(self._UUID, agent_type="builder", name="named-builder",
+                  identity_body(self._UUID, agent_type="sower", name="named-sower",
                                 parent_session="arch-nameduuidsub"),
                   ts="2026-01-01T00:00:01.000000+00:00")
 
         fleet = sidebar_model.build_model([self.repo])
         labels = [s.label for s in fleet.repos[0].features[0].subagents]
-        self.assertEqual(labels, ["named-builder"])
+        self.assertEqual(labels, ["named-sower"])
 
 
 class StaleRowEvictionTests(unittest.TestCase):
     """Root-cause fix: a sender's ENTIRE state used to be evicted a scan
     after its terminal lifecycle signal, for BOTH finished and abandoned —
-    exercised directly against a long-lived _BusAggregator, the only way to
+    exercised directly against a long-lived _CourierAggregator, the only way to
     observe multi-scan behaviour (build_model() always starts a fresh one).
 
     Operator decision, 2026-07-24 (sidebar-titling item 7): a done feature's
@@ -410,25 +410,25 @@ class StaleRowEvictionTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.repo = make_repo(self._tmp.name)
-        self.bus_root = bus_root_of(self.repo)
+        self.courier_root = courier_root_of(self.repo)
 
     def _put(self, folder, msg_id, sender, body, ts):
-        write_message(self.bus_root, folder, envelope(msg_id, sender, body=body, ts=ts))
+        write_message(self.courier_root, folder, envelope(msg_id, sender, body=body, ts=ts))
 
     def test_finished_state_is_retained_across_many_scans(self):
         self._put("arch-stale", "arch-stale-id", "arch-stale",
-                  identity_body("arch-stale", agent_type="architect",
+                  identity_body("arch-stale", agent_type="landscaper",
                                 feature_id="feat-stale"),
                   ts="2026-01-01T00:00:00.000000+00:00")
 
-        agg = sidebar_model._BusAggregator()
-        agg.scan(self.bus_root)
+        agg = sidebar_model._CourierAggregator()
+        agg.scan(self.courier_root)
         self.assertEqual(agg.repo(self.repo).features[0].status, "idle")
 
         self._put("arch-stale", "arch-stale-lc", "arch-stale",
                   lifecycle_body("finished", feature_id="feat-stale"),
                   ts="2026-01-01T00:00:01.000000+00:00")
-        agg.scan(self.bus_root)
+        agg.scan(self.courier_root)
         # same scan the terminal signal arrived on: visible as "done"
         self.assertEqual(agg.repo(self.repo).features[0].status, "done")
 
@@ -437,23 +437,23 @@ class StaleRowEvictionTests(unittest.TestCase):
         # scan's grace, and not requiring the message files to still exist
         # on disk (both ids are already in _seen_ids so re-applying is moot).
         for _ in range(5):
-            agg.scan(self.bus_root)
+            agg.scan(self.courier_root)
             self.assertEqual(agg.repo(self.repo).features[0].status, "done")
 
     def test_abandoned_state_evicted_one_scan_after_signal(self):
         self._put("arch-fail", "arch-fail-id", "arch-fail",
-                  identity_body("arch-fail", agent_type="architect",
+                  identity_body("arch-fail", agent_type="landscaper",
                                 feature_id="feat-fail"),
                   ts="2026-01-01T00:00:00.000000+00:00")
 
-        agg = sidebar_model._BusAggregator()
-        agg.scan(self.bus_root)
+        agg = sidebar_model._CourierAggregator()
+        agg.scan(self.courier_root)
         self.assertEqual(agg.repo(self.repo).features[0].status, "idle")
 
         self._put("arch-fail", "arch-fail-lc", "arch-fail",
                   lifecycle_body("abandoned", feature_id="feat-fail"),
                   ts="2026-01-01T00:00:01.000000+00:00")
-        agg.scan(self.bus_root)
+        agg.scan(self.courier_root)
         # same scan the terminal signal arrived on: still visible as "failed"
         self.assertEqual(agg.repo(self.repo).features[0].status, "failed")
 
@@ -463,58 +463,58 @@ class StaleRowEvictionTests(unittest.TestCase):
         # still-on-disk identity announce is not re-applied) -- the NEXT
         # scan must evict the sender's state IN FULL, not just its waiting
         # flag, so the row disappears entirely
-        agg.scan(self.bus_root)
+        agg.scan(self.courier_root)
         self.assertEqual(agg.repo(self.repo).features, [])
 
 
-class BusRowTests(_BusFixtureTestCase):
-    """Bus rows: exactly one collapsed row per live parent agent, never for
-    a parent with no bus, never duplicated (sidebar-polish item 5)."""
+class CourierRowTests(_CourierFixtureTestCase):
+    """Courier rows: exactly one collapsed row per live parent agent, never
+    for a parent with no courier, never duplicated (sidebar-polish item 5)."""
 
-    def test_no_bus_row_when_no_bus_session(self):
-        self._architect("arch-nobus", "feat-nobus")
+    def test_no_courier_row_when_no_courier_session(self):
+        self._landscaper("arch-nocourier", "feat-nocourier")
 
         fleet = sidebar_model.build_model([self.repo])
-        self.assertIsNone(fleet.repos[0].features[0].bus)
+        self.assertIsNone(fleet.repos[0].features[0].courier)
 
-    def test_bus_row_present_for_live_architect(self):
-        self._architect("arch-hasbus", "feat-hasbus")
-        self._put("bus-1", "bus-1-id", "bus-1",
-                  identity_body("bus-1", agent_type="bus", name="messaging",
-                                parent_session="arch-hasbus"),
+    def test_courier_row_present_for_live_landscaper(self):
+        self._landscaper("arch-hascourier", "feat-hascourier")
+        self._put("courier-1", "courier-1-id", "courier-1",
+                  identity_body("courier-1", agent_type="courier", name="messaging",
+                                parent_session="arch-hascourier"),
                   ts="2026-01-01T00:00:01.000000+00:00")
 
         fleet = sidebar_model.build_model([self.repo])
         feature = fleet.repos[0].features[0]
-        self.assertIsNotNone(feature.bus)
-        self.assertEqual(feature.bus.label, sidebar_model.BUS_LABEL)
+        self.assertIsNotNone(feature.courier)
+        self.assertEqual(feature.courier.label, sidebar_model.COURIER_LABEL)
 
-    def test_duplicate_bus_sessions_collapse_to_one_row(self):
+    def test_duplicate_courier_sessions_collapse_to_one_row(self):
         # a known, separately-root-caused defect (bus-singleton task) can
-        # spawn more than one bus session for the same parent -- display
+        # spawn more than one courier session for the same parent -- display
         # must still show exactly one row, never more.
-        self._architect("arch-dupbus", "feat-dupbus")
+        self._landscaper("arch-dupcourier", "feat-dupcourier")
         for i in range(3):
-            self._put(f"bus-dup-{i}", f"bus-dup-{i}-id", f"bus-dup-{i}",
-                      identity_body(f"bus-dup-{i}", agent_type="bus", name="messaging",
-                                    parent_session="arch-dupbus"),
+            self._put(f"courier-dup-{i}", f"courier-dup-{i}-id", f"courier-dup-{i}",
+                      identity_body(f"courier-dup-{i}", agent_type="courier", name="messaging",
+                                    parent_session="arch-dupcourier"),
                       ts="2026-01-01T00:00:01.000000+00:00")
 
         fleet = sidebar_model.build_model([self.repo])
         feature = fleet.repos[0].features[0]
-        self.assertIsNotNone(feature.bus)  # exactly one Bus object, not a list
+        self.assertIsNotNone(feature.courier)  # exactly one Courier object, not a list
 
-    def test_orchestrator_bus_row(self):
+    def test_gardener_courier_row(self):
         self._put("orch-1", "orch-1-id", "orch-1",
-                  identity_body("orch-1", agent_type="orchestrator"),
+                  identity_body("orch-1", agent_type="gardener"),
                   ts="2026-01-01T00:00:00.000000+00:00")
-        self._put("orch-bus", "orch-bus-id", "orch-bus",
-                  identity_body("orch-bus", agent_type="bus", name="messaging",
+        self._put("orch-courier", "orch-courier-id", "orch-courier",
+                  identity_body("orch-courier", agent_type="courier", name="messaging",
                                 parent_session="orch-1"),
                   ts="2026-01-01T00:00:01.000000+00:00")
 
         fleet = sidebar_model.build_model([self.repo])
-        self.assertIsNotNone(fleet.repos[0].bus)
+        self.assertIsNotNone(fleet.repos[0].courier)
 
 
 class CrossRepoTests(unittest.TestCase):
@@ -526,12 +526,12 @@ class CrossRepoTests(unittest.TestCase):
         repo1 = make_repo(self._tmp.name)
         repo2 = make_repo(self._tmp.name)
         for repo, tag in ((repo1, "one"), (repo2, "two")):
-            root = bus_root_of(repo)
+            root = courier_root_of(repo)
             write_message(
                 root, f"arch-{tag}",
                 envelope(
                     f"arch-{tag}-id", f"arch-{tag}",
-                    body=identity_body(f"arch-{tag}", agent_type="architect",
+                    body=identity_body(f"arch-{tag}", agent_type="landscaper",
                                        feature_id=f"feat-{tag}"),
                     ts="2026-01-01T00:00:00.000000+00:00",
                 ),
@@ -544,28 +544,28 @@ class CrossRepoTests(unittest.TestCase):
         self.assertEqual(feature_ids, {"feat-one", "feat-two"})
 
 
-class DedupTests(_BusFixtureTestCase):
+class DedupTests(_CourierFixtureTestCase):
     def test_same_id_second_occurrence_across_scans_is_ignored(self):
-        # _BusAggregator (not the throwaway one build_model() uses internally)
+        # _CourierAggregator (not the throwaway one build_model() uses internally)
         # exercised directly across TWO scans -- this is the only way to
         # observe the id-dedup contract described in sidebar_model's own
         # docstring (state persists and re-delivery of an already-seen id is a
         # no-op), since build_model() always starts a fresh aggregator.
         write_message(
-            self.bus_root, "arch-dedup",
+            self.courier_root, "arch-dedup",
             envelope("arch-dedup-id", "arch-dedup",
-                    body=identity_body("arch-dedup", agent_type="architect",
+                    body=identity_body("arch-dedup", agent_type="landscaper",
                                         feature_id="feat-dedup"),
                     ts="2026-01-01T00:00:00.000000+00:00"),
         )
         write_message(
-            self.bus_root, "arch-dedup",
+            self.courier_root, "arch-dedup",
             envelope("dup-1", "arch-dedup", body="orchid:activity:first",
                     ts="2026-01-01T00:00:01.000000+00:00"),
         )
 
-        agg = sidebar_model._BusAggregator()
-        agg.scan(self.bus_root)
+        agg = sidebar_model._CourierAggregator()
+        agg.scan(self.courier_root)
         first_pass = agg.repo(self.repo)
         self.assertEqual(first_pass.features[0].activity, "first")
 
@@ -573,12 +573,12 @@ class DedupTests(_BusFixtureTestCase):
         # file (simulates a stale re-delivery) -- must not be re-applied once
         # that id was seen in an earlier scan.
         write_message(
-            self.bus_root, "arch-dedup",
+            self.courier_root, "arch-dedup",
             envelope("dup-1", "arch-dedup", body="orchid:activity:second",
                     ts="2026-01-01T00:00:02.000000+00:00"),
             filename="dup-1-retry.json",
         )
-        agg.scan(self.bus_root)
+        agg.scan(self.courier_root)
         second_pass = agg.repo(self.repo)
         self.assertEqual(second_pass.features[0].activity, "first",
                          "message with an already-seen id must not be re-applied")
@@ -588,60 +588,60 @@ class DedupTests(_BusFixtureTestCase):
         # recipient's receive), so once it's gone from disk its id must be
         # pruned from _seen_ids rather than retained forever.
         write_message(
-            self.bus_root, "arch-prune",
+            self.courier_root, "arch-prune",
             envelope("arch-prune-id", "arch-prune",
-                    body=identity_body("arch-prune", agent_type="architect",
+                    body=identity_body("arch-prune", agent_type="landscaper",
                                         feature_id="feat-prune"),
                     ts="2026-01-01T00:00:00.000000+00:00"),
         )
 
-        agg = sidebar_model._BusAggregator()
-        agg.scan(self.bus_root)
+        agg = sidebar_model._CourierAggregator()
+        agg.scan(self.courier_root)
         self.assertIn("arch-prune-id", agg._seen_ids)
 
-        (Path(self.bus_root) / "arch-prune" / "arch-prune-id.json").unlink()
+        (Path(self.courier_root) / "arch-prune" / "arch-prune-id.json").unlink()
 
-        agg.scan(self.bus_root)
+        agg.scan(self.courier_root)
         self.assertNotIn("arch-prune-id", agg._seen_ids)
 
 
-class RepoStatusTests(_BusFixtureTestCase):
-    def test_repo_without_orchestrator_is_idle(self):
-        self._architect("arch-idle", "feat-idle")
+class RepoStatusTests(_CourierFixtureTestCase):
+    def test_repo_without_gardener_is_idle(self):
+        self._landscaper("arch-idle", "feat-idle")
 
         fleet = sidebar_model.build_model([self.repo])
         self.assertEqual(fleet.repos[0].status, "idle")
 
 
-class HasSessionTests(_BusFixtureTestCase):
+class HasSessionTests(_CourierFixtureTestCase):
     """has_session (item 3, "empty projects don't render"): True only when
-    the repo has a live orchestrator session or at least one feature; False
-    for a repo whose bus is empty (nothing renderable), which the renderer's
+    the repo has a live gardener session or at least one feature; False
+    for a repo whose courier is empty (nothing renderable), which the renderer's
     flatten() then skips."""
 
-    def test_no_orchestrator_and_no_features_is_false(self):
+    def test_no_gardener_and_no_features_is_false(self):
         fleet = sidebar_model.build_model([self.repo])
         self.assertEqual(len(fleet.repos), 1)
         self.assertFalse(fleet.repos[0].has_session)
 
     def test_orchestrator_session_alone_is_true(self):
         self._put("orch-only", "orch-only-id", "orch-only",
-                  identity_body("orch-only", agent_type="orchestrator"),
+                  identity_body("orch-only", agent_type="gardener"),
                   ts="2026-01-01T00:00:00.000000+00:00")
 
         fleet = sidebar_model.build_model([self.repo])
         self.assertTrue(fleet.repos[0].has_session)
 
     def test_feature_alone_is_true(self):
-        self._architect("arch-hassession", "feat-hassession")
+        self._landscaper("arch-hassession", "feat-hassession")
 
         fleet = sidebar_model.build_model([self.repo])
         self.assertTrue(fleet.repos[0].has_session)
 
 
-class FeatureNameTests(_BusFixtureTestCase):
+class FeatureNameTests(_CourierFixtureTestCase):
     def test_announced_name_is_used_over_derived_form(self):
-        self._architect("arch-namedfeat", "custom-feature", name="Custom Label")
+        self._landscaper("arch-namedfeat", "custom-feature", name="Custom Label")
 
         fleet = sidebar_model.build_model([self.repo])
         feature = fleet.repos[0].features[0]
@@ -730,7 +730,7 @@ class ResolveReposRegistryTests(unittest.TestCase):
 
 class ResolveReposEnvOverrideTests(unittest.TestCase):
     """ORCHIDS_SIDEBAR_REPOS survives as an explicit, optional override
-    (architect HOW decision) — when set, it is read verbatim and the
+    (landscaper HOW decision) — when set, it is read verbatim and the
     registry/current-repo path is never consulted."""
 
     def setUp(self) -> None:
@@ -768,9 +768,9 @@ class ResolveReposEnvOverrideTests(unittest.TestCase):
 # WIRE GRAMMAR v1 (bus-message-specifying B3)
 # --------------------------------------------------------------------------
 
-class StatusWordTests(_BusFixtureTestCase):
+class StatusWordTests(_CourierFixtureTestCase):
     def test_status_prefix_sets_status_word_and_mirrors_activity(self):
-        self._architect("arch-sw1", "feat-sw1")
+        self._landscaper("arch-sw1", "feat-sw1")
         self._put("arch-sw1", "arch-sw1-sw", "arch-sw1", "orchid:status:building",
                   ts="2026-01-01T00:00:01.000000+00:00")
 
@@ -785,7 +785,7 @@ class StatusWordTests(_BusFixtureTestCase):
     def test_deprecated_orchid_activity_prefix_still_falls_back_to_status_word(self):
         # one-transition-release fallback: a sender still on the old grammar
         # must not go blank in the sidebar.
-        self._architect("arch-sw2", "feat-sw2")
+        self._landscaper("arch-sw2", "feat-sw2")
         self._put("arch-sw2", "arch-sw2-legacy", "arch-sw2",
                   "orchid:activity:doing legacy work",
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -796,9 +796,9 @@ class StatusWordTests(_BusFixtureTestCase):
         self.assertEqual(feature.activity, "doing legacy work")
 
 
-class UpdateTextTests(_BusFixtureTestCase):
+class UpdateTextTests(_CourierFixtureTestCase):
     def test_update_sets_update_text(self):
-        self._architect("arch-upd1", "feat-upd1")
+        self._landscaper("arch-upd1", "feat-upd1")
         self._put("arch-upd1", "arch-upd1-u", "arch-upd1",
                   "orchid:update:shipped the migration",
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -808,7 +808,7 @@ class UpdateTextTests(_BusFixtureTestCase):
         self.assertEqual(feature.update_text, "shipped the migration")
 
     def test_update_never_drives_status_derivation(self):
-        self._architect("arch-upd2", "feat-upd2")
+        self._landscaper("arch-upd2", "feat-upd2")
         self._put("arch-upd2", "arch-upd2-u", "arch-upd2",
                   "orchid:update:a long narrative sentence",
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -820,7 +820,7 @@ class UpdateTextTests(_BusFixtureTestCase):
     def test_update_never_sets_notify_even_if_flagged(self):
         # defensive: the grammar says update never notifies, but the
         # aggregator must not trust an envelope that claims otherwise.
-        self._architect("arch-upd3", "feat-upd3")
+        self._landscaper("arch-upd3", "feat-upd3")
         self._put("arch-upd3", "arch-upd3-u", "arch-upd3",
                   "orchid:update:need review", ts="2026-01-01T00:00:01.000000+00:00",
                   notify_user=True)
@@ -831,9 +831,9 @@ class UpdateTextTests(_BusFixtureTestCase):
         self.assertEqual(feature.status, "idle")
 
 
-class PhaseProgressTests(_BusFixtureTestCase):
+class PhaseProgressTests(_CourierFixtureTestCase):
     def test_phase_without_tick_uses_base_pct(self):
-        self._architect("arch-ph1", "feat-ph1")
+        self._landscaper("arch-ph1", "feat-ph1")
         self._put("arch-ph1", "arch-ph1-p", "arch-ph1", "orchid:phase:designing",
                   ts="2026-01-01T00:00:01.000000+00:00")
 
@@ -844,7 +844,7 @@ class PhaseProgressTests(_BusFixtureTestCase):
         self.assertEqual(feature.progress_pct, 25)
 
     def test_phase_with_tick_computes_pct(self):
-        self._architect("arch-ph2", "feat-ph2")
+        self._landscaper("arch-ph2", "feat-ph2")
         self._put("arch-ph2", "arch-ph2-p", "arch-ph2", "orchid:phase:building:2/3",
                   ts="2026-01-01T00:00:01.000000+00:00")
 
@@ -856,7 +856,7 @@ class PhaseProgressTests(_BusFixtureTestCase):
         self.assertEqual(feature.progress_pct, 70)
 
     def test_finished_lifecycle_overrides_pct_to_100(self):
-        self._architect("arch-ph3", "feat-ph3")
+        self._landscaper("arch-ph3", "feat-ph3")
         self._put("arch-ph3", "arch-ph3-p", "arch-ph3", "orchid:phase:scoping",
                   ts="2026-01-01T00:00:01.000000+00:00")
         self._put("arch-ph3", "arch-ph3-lc", "arch-ph3",
@@ -868,7 +868,7 @@ class PhaseProgressTests(_BusFixtureTestCase):
         self.assertEqual(feature.progress_pct, 100)
 
     def test_invalid_phase_string_is_ignored(self):
-        self._architect("arch-ph4", "feat-ph4")
+        self._landscaper("arch-ph4", "feat-ph4")
         self._put("arch-ph4", "arch-ph4-p", "arch-ph4", "orchid:phase:bogus",
                   ts="2026-01-01T00:00:01.000000+00:00")
 
@@ -878,9 +878,9 @@ class PhaseProgressTests(_BusFixtureTestCase):
         self.assertIsNone(feature.progress_pct)
 
 
-class SubagentQueueTests(_BusFixtureTestCase):
+class SubagentQueueTests(_CourierFixtureTestCase):
     def test_queue_then_start_moves_from_queued_to_running(self):
-        self._architect("arch-q1", "feat-q1")
+        self._landscaper("arch-q1", "feat-q1")
         self._put("arch-q1", "arch-q1-1", "arch-q1", "orchid:subagent:queue:build-1",
                   ts="2026-01-01T00:00:01.000000+00:00")
         self._put("arch-q1", "arch-q1-2", "arch-q1", "orchid:subagent:start:build-1",
@@ -892,7 +892,7 @@ class SubagentQueueTests(_BusFixtureTestCase):
         self.assertEqual(feature.subagents_running, 1)
 
     def test_start_without_prior_queue_adds_directly_to_running(self):
-        self._architect("arch-q2", "feat-q2")
+        self._landscaper("arch-q2", "feat-q2")
         self._put("arch-q2", "arch-q2-1", "arch-q2", "orchid:subagent:start:build-2",
                   ts="2026-01-01T00:00:01.000000+00:00")
 
@@ -902,7 +902,7 @@ class SubagentQueueTests(_BusFixtureTestCase):
         self.assertEqual(feature.subagents_running, 1)
 
     def test_queue_only_counted_until_started(self):
-        self._architect("arch-q3", "feat-q3")
+        self._landscaper("arch-q3", "feat-q3")
         self._put("arch-q3", "arch-q3-1", "arch-q3", "orchid:subagent:queue:build-3",
                   ts="2026-01-01T00:00:01.000000+00:00")
 
@@ -912,7 +912,7 @@ class SubagentQueueTests(_BusFixtureTestCase):
         self.assertEqual(feature.subagents_running, 0)
 
     def test_done_removes_from_both_queued_and_running(self):
-        self._architect("arch-q4", "feat-q4")
+        self._landscaper("arch-q4", "feat-q4")
         self._put("arch-q4", "arch-q4-1", "arch-q4", "orchid:subagent:queue:build-4",
                   ts="2026-01-01T00:00:01.000000+00:00")
         self._put("arch-q4", "arch-q4-2", "arch-q4", "orchid:subagent:start:build-4",
@@ -926,9 +926,9 @@ class SubagentQueueTests(_BusFixtureTestCase):
         self.assertEqual(feature.subagents_running, 0)
 
 
-class OpenQuestionsTests(_BusFixtureTestCase):
+class OpenQuestionsTests(_CourierFixtureTestCase):
     def test_ask_opens_a_question(self):
-        self._architect("arch-oq1", "feat-oq1")
+        self._landscaper("arch-oq1", "feat-oq1")
         self._put_ask("arch-oq1", "arch-oq1-ask", "arch-oq1", "q-1",
                       "Proceed with deploy?", ts="2026-01-01T00:00:01.000000+00:00")
 
@@ -943,7 +943,7 @@ class OpenQuestionsTests(_BusFixtureTestCase):
         self.assertEqual(feature.interrupt, "question")
 
     def test_matching_reply_clears_the_question(self):
-        self._architect("arch-oq2", "feat-oq2")
+        self._landscaper("arch-oq2", "feat-oq2")
         self._put_ask("arch-oq2", "arch-oq2-ask", "arch-oq2", "q-2",
                       "Ship it?", ts="2026-01-01T00:00:01.000000+00:00")
         self._put_reply("arch-oq2", "arch-oq2-reply", "operator-1", "q-2",
@@ -958,7 +958,7 @@ class OpenQuestionsTests(_BusFixtureTestCase):
     def test_askers_next_status_clears_the_question(self):
         # mirrors how last_notify_user clears today: a fresh, non-notify
         # status/activity signal from the SAME sender supersedes the wait.
-        self._architect("arch-oq3", "feat-oq3")
+        self._landscaper("arch-oq3", "feat-oq3")
         self._put_ask("arch-oq3", "arch-oq3-ask", "arch-oq3", "q-3",
                       "Continue?", ts="2026-01-01T00:00:01.000000+00:00")
         self._put("arch-oq3", "arch-oq3-status", "arch-oq3", "orchid:status:building",
@@ -970,15 +970,15 @@ class OpenQuestionsTests(_BusFixtureTestCase):
         self.assertEqual(feature.status_word, "building")
 
 
-class InterruptDerivationTests(_BusFixtureTestCase):
+class InterruptDerivationTests(_CourierFixtureTestCase):
     def test_none_by_default(self):
-        self._architect("arch-int1", "feat-int1")
+        self._landscaper("arch-int1", "feat-int1")
 
         fleet = sidebar_model.build_model([self.repo])
         self.assertEqual(fleet.repos[0].features[0].interrupt, "none")
 
     def test_question_when_open_questions_present(self):
-        self._architect("arch-int2", "feat-int2")
+        self._landscaper("arch-int2", "feat-int2")
         self._put_ask("arch-int2", "arch-int2-ask", "arch-int2", "q-int2",
                       "Deploy?", ts="2026-01-01T00:00:01.000000+00:00")
 
@@ -986,7 +986,7 @@ class InterruptDerivationTests(_BusFixtureTestCase):
         self.assertEqual(fleet.repos[0].features[0].interrupt, "question")
 
     def test_succeeded_on_pre_terminal_done_lifecycle(self):
-        self._architect("arch-int3", "feat-int3")
+        self._landscaper("arch-int3", "feat-int3")
         self._put("arch-int3", "arch-int3-lc", "arch-int3",
                   lifecycle_body("done", feature_id="feat-int3"),
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -995,7 +995,7 @@ class InterruptDerivationTests(_BusFixtureTestCase):
         self.assertEqual(fleet.repos[0].features[0].interrupt, "succeeded")
 
     def test_succeeded_on_finished_lifecycle(self):
-        self._architect("arch-int4", "feat-int4")
+        self._landscaper("arch-int4", "feat-int4")
         self._put("arch-int4", "arch-int4-lc", "arch-int4",
                   lifecycle_body("finished", feature_id="feat-int4"),
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -1004,7 +1004,7 @@ class InterruptDerivationTests(_BusFixtureTestCase):
         self.assertEqual(fleet.repos[0].features[0].interrupt, "succeeded")
 
     def test_failed_on_abandoned(self):
-        self._architect("arch-int5", "feat-int5")
+        self._landscaper("arch-int5", "feat-int5")
         self._put("arch-int5", "arch-int5-lc", "arch-int5",
                   lifecycle_body("abandoned", feature_id="feat-int5"),
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -1013,7 +1013,7 @@ class InterruptDerivationTests(_BusFixtureTestCase):
         self.assertEqual(fleet.repos[0].features[0].interrupt, "failed")
 
     def test_failed_on_blocked_with_notify(self):
-        self._architect("arch-int6", "feat-int6")
+        self._landscaper("arch-int6", "feat-int6")
         self._put("arch-int6", "arch-int6-lc", "arch-int6",
                   lifecycle_body("blocked", feature_id="feat-int6"),
                   ts="2026-01-01T00:00:01.000000+00:00", notify_user=True)
@@ -1022,7 +1022,7 @@ class InterruptDerivationTests(_BusFixtureTestCase):
         self.assertEqual(fleet.repos[0].features[0].interrupt, "failed")
 
     def test_none_on_blocked_without_notify(self):
-        self._architect("arch-int7", "feat-int7")
+        self._landscaper("arch-int7", "feat-int7")
         self._put("arch-int7", "arch-int7-lc", "arch-int7",
                   lifecycle_body("blocked", feature_id="feat-int7"),
                   ts="2026-01-01T00:00:01.000000+00:00")
@@ -1031,12 +1031,12 @@ class InterruptDerivationTests(_BusFixtureTestCase):
         self.assertEqual(fleet.repos[0].features[0].interrupt, "none")
 
 
-class DuplicateMessageDedupTests(_BusFixtureTestCase):
+class DuplicateMessageDedupTests(_CourierFixtureTestCase):
     """Item 7: a message identical in body+notify_user to the SENDER's
     previous one changes nothing and re-raises no notify."""
 
     def test_identical_consecutive_status_messages_stay_idempotent(self):
-        self._architect("arch-dd1", "feat-dd1")
+        self._landscaper("arch-dd1", "feat-dd1")
         self._put("arch-dd1", "arch-dd1-1", "arch-dd1", "orchid:status:waiting for input",
                   ts="2026-01-01T00:00:01.000000+00:00", notify_user=True)
         self._put("arch-dd1", "arch-dd1-2", "arch-dd1", "orchid:status:waiting for input",
@@ -1051,7 +1051,7 @@ class DuplicateMessageDedupTests(_BusFixtureTestCase):
         # the duplicate-summons defect: a stale, at-least-once-delivered
         # resend of the SAME ask (identical body+notify, same sender)
         # arriving after the question was already answered must not reopen it.
-        self._architect("arch-dd2", "feat-dd2")
+        self._landscaper("arch-dd2", "feat-dd2")
         self._put_ask("arch-dd2", "ask-1", "arch-dd2", "q-dd2", "Ship now?",
                       ts="2026-01-01T00:00:01.000000+00:00")
         self._put_reply("arch-dd2", "reply-1", "operator-x", "q-dd2",
@@ -1091,8 +1091,8 @@ class FormattingHelperTests(unittest.TestCase):
 
 class WorkedSecondsTests(unittest.TestCase):
     """The worked-time gap math on synthetic commit-epoch lists, factored out
-    of any git subprocess so it is testable without git (bus-message-
-    specifying B5b): gaps <= 30 minutes count at face value, longer gaps
+    of any git subprocess so it is testable without git (bus-message-specifying
+    B5b): gaps <= 30 minutes count at face value, longer gaps
     count as zero, floored at 10 minutes once the branch has any commit."""
 
     def test_no_commits_is_zero(self):
@@ -1162,9 +1162,9 @@ class TTLCacheTests(unittest.TestCase):
 
 
 class ReadStatusTests(unittest.TestCase):
-    """tokens/dollars via a direct, zero-bus-traffic read of the session's
-    own transcript, reusing bus.py's TOKEN_CLASSES/usage_entries/
-    estimates_for over that transcript rather than any bus message."""
+    """tokens/dollars via a direct, zero-courier-traffic read of the session's
+    own transcript, reusing courier.py's TOKEN_CLASSES/usage_entries/
+    estimates_for over that transcript rather than any courier message."""
 
     def _write_transcript(self, tmp, model, usage):
         path = Path(tmp) / "session.jsonl"
@@ -1214,7 +1214,7 @@ class ReadStatusTests(unittest.TestCase):
             )
             with mock.patch.object(sidebar_model, "_transcript_for_session", return_value=path):
                 state = sidebar_model._SessionState(session_id="s1")
-                state.agent_type = "architect"
+                state.agent_type = "landscaper"
                 row = sidebar_model.Feature(
                     feature_id="f1", name="f one", activity="",
                     status="working", waiting_on_operator=False,
@@ -1269,25 +1269,25 @@ class ReadGitStatsTests(unittest.TestCase):
         self.assertEqual(worked, "10m")  # one commit -> floor
 
 
-class RoleModelExposureTests(_BusFixtureTestCase):
+class RoleModelExposureTests(_CourierFixtureTestCase):
     """bus-message-specifying B5b: role comes straight off the announced
     agent_type; model only ever appears if the identity body happens to
-    carry one — bus.py's identity_of() does not today (see deviations), so
+    carry one — courier.py's identity_of() does not today (see deviations), so
     this exercises the mechanism defensively rather than assuming a value
     that doesn't currently exist."""
 
     def test_feature_role_is_the_announced_agent_type(self):
-        self._architect("arch-role1", "feat-role1")
+        self._landscaper("arch-role1", "feat-role1")
         fleet = sidebar_model.build_model([self.repo])
-        self.assertEqual(fleet.repos[0].features[0].role, "architect")
+        self.assertEqual(fleet.repos[0].features[0].role, "landscaper")
 
     def test_feature_model_is_none_when_identity_body_omits_it(self):
-        self._architect("arch-role2", "feat-role2")
+        self._landscaper("arch-role2", "feat-role2")
         fleet = sidebar_model.build_model([self.repo])
         self.assertIsNone(fleet.repos[0].features[0].model)
 
     def test_feature_model_is_exposed_when_identity_body_carries_one(self):
-        body = identity_body("arch-role3", agent_type="architect",
+        body = identity_body("arch-role3", agent_type="landscaper",
                              feature_id="feat-role3", name="feat role3")
         body["model"] = "claude-sonnet-5-20260101"
         self._put("arch-role3", "arch-role3-id", "arch-role3", body,
@@ -1297,10 +1297,10 @@ class RoleModelExposureTests(_BusFixtureTestCase):
 
     def test_repo_role_is_the_announced_orchestrator_agent_type(self):
         self._put("orch-role1", "orch-role1-id", "orch-role1",
-                  identity_body("orch-role1", agent_type="orchestrator"),
+                  identity_body("orch-role1", agent_type="gardener"),
                   ts="2026-01-01T00:00:00.000000+00:00")
         fleet = sidebar_model.build_model([self.repo])
-        self.assertEqual(fleet.repos[0].role, "orchestrator")
+        self.assertEqual(fleet.repos[0].role, "gardener")
 
 
 if __name__ == "__main__":

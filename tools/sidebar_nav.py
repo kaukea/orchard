@@ -6,16 +6,16 @@ client to it (session + window). Window name is the reliable handle —
 pane titles get clobbered by a status-glyph setter (observed live:
 `⠐ orchids/fleet sidebar`), so matching is done on window name, not
 pane title. Mirrors the resolve-by-title approach used by
-tools/architect-teardown.sh, but runs on the AMBIENT tmux socket (the
+tools/landscaper-teardown.sh, but runs on the AMBIENT tmux socket (the
 sidebar lives inside the same tmux server it navigates), so plain
 `tmux` is used rather than a `-S <socket>` target.
 
 Window names are the session-naming display forms:
-  - orchestrator window -> the bare repo name, e.g. "orchids"
-  - architect window    -> "<repo>/<human name>", e.g. "orchids/fleet sidebar"
+  - gardener window   -> the bare repo name, e.g. "orchids"
+  - landscaper window -> "<repo>/<human name>", e.g. "orchids/fleet sidebar"
     (separator is "/" U+002F)
 
-`arch:<id>` still exists as a PANE TITLE (used by teardown), but is no
+`land:<id>` still exists as a PANE TITLE (used by teardown), but is no
 longer a window name and is not used for navigation here.
 
 STDLIB ONLY.

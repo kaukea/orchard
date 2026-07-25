@@ -1454,3 +1454,13 @@ the [[orchard-renaming]] branch with its migration entry; no behaviour change
 rides along.
 
 (Operator, 2026-07-25.)
+
+## [2026-07-25] Decision-086: bus→courier is a full subsystem rename, shipped behind a transitional shim
+#naming #bus #courier #transport #renaming #migration
+
+Ruling (operator, 2026-07-25): the `bus`→`courier` rename in Decision-085 is a FULL subsystem rename, not role-only — `tools/bus.py`→`tools/courier.py`, the `the-works/bus` state dir→`courier`, the envelope schema title, and `test_bus*`→`test_courier*`. To avoid severing live messaging (the transport had just changed under bus-transport-v2 and its cutover is delicate), it ships behind a one-release cutover: `tools/bus.py` remains a thin shim that `exec`s `courier.py`, the courier hooks accept BOTH tool names, and the migration moves the state dir with a `bus`→`courier` compat symlink. The `orchid:` wire-grammar prefix and the `orchard:` topic transport keep their names (they are not the bus). Consequence: the tmux teardown handle follows architect→landscaper — `@arch_id`/`arch:<id>` become `@landscaper_id`/`land:<id>` in the live launcher+teardown+docs, superseding Decision-048's handle name (history keeps `@arch_id`).
+
+## [2026-07-25] Decision-087: location (local/cloud) is not part of the role rename and is deferred
+#naming #cloud #location #sidebar #scope
+
+Ruling (operator, 2026-07-25): cloud vs local is NOT an agent-type distinction and will not be — it is a planning/execution-time property that applies to anything, orthogonal to the role. The location badges were therefore DROPPED from the orchard-renaming feature; `tools/sidebar.py`'s `LOCATION_BADGES` constant stays unwired. Only the role glyph was wired into the identity render. The `-cloud` def variants were left untouched this pass (the cloud model is being reworked).

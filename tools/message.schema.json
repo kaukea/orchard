@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://orchids.kaukea/message.schema.json",
-  "title": "Bus message envelope",
-  "description": "The on-disk format of one bus message. Owned by tools/bus.py; this schema is the canonical definition of the envelope.",
+  "title": "Courier message envelope",
+  "description": "The on-disk format of one courier message. Owned by tools/courier.py; this schema is the canonical definition of the envelope.",
   "type": "object",
   "required": ["id", "ts", "from", "to"],
   "additionalProperties": false,
@@ -41,7 +41,7 @@
     },
     "question_id": {
       "type": "string",
-      "description": "Present only on a bus.py `ask` broadcast (sidebar-polish item 12). A reply references it via the existing in_reply_to field — answers add no new envelope field of their own."
+      "description": "Present only on a courier.py `ask` broadcast (sidebar-polish item 12). A reply references it via the existing in_reply_to field — answers add no new envelope field of their own."
     },
     "question": {
       "type": "string",
@@ -54,15 +54,15 @@
     },
     "title": {
       "type": "string",
-      "description": "Optional short title for a `bus.py ask` broadcast (sidebar-polish item 12g), shown prominently above the question in the popup. Present only alongside question_id."
+      "description": "Optional short title for a `courier.py ask` broadcast (sidebar-polish item 12g), shown prominently above the question in the popup. Present only alongside question_id."
     },
     "summary": {
       "type": "string",
-      "description": "Optional short summary of what the decision is about, for a `bus.py ask` broadcast (item 12g). Present only alongside question_id."
+      "description": "Optional short summary of what the decision is about, for a `courier.py ask` broadcast (item 12g). Present only alongside question_id."
     },
     "multi": {
       "const": true,
-      "description": "Present and true only when a `bus.py ask --multi` broadcast (item 12g): the popup is a multi-select (digits toggle, Enter confirms) rather than the default instant-on-digit single-select."
+      "description": "Present and true only when a `courier.py ask --multi` broadcast (item 12g): the popup is a multi-select (digits toggle, Enter confirms) rather than the default instant-on-digit single-select."
     }
   }
 }

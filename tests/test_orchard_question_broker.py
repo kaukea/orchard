@@ -102,7 +102,7 @@ class IsOperatorBusyTests(unittest.TestCase):
 
 
 class PendingQuestionsTests(unittest.TestCase):
-    """pending_questions() scans bus roots non-destructively (never deletes,
+    """pending_questions() scans courier roots non-destructively (never deletes,
     mirroring tools/sidebar_model.py's own scan) and de-dupes by
     question_id, since a broadcast lands one copy per peer inbox."""
 
@@ -110,19 +110,19 @@ class PendingQuestionsTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.repo = make_repo(self._tmp.name)
-        self.bus_root = sidebar_model.iter_bus_roots([self.repo])[0]
+        self.courier_root = sidebar_model.iter_courier_roots([self.repo])[0]
 
     def _put(self, folder, msg_id, sender, question_id, question, options):
         env = envelope(msg_id, sender, body=f"orchid:activity:{question}", notify_user=True)
         env["question_id"] = question_id
         env["question"] = question
         env["options"] = options
-        write_message(self.bus_root, folder, env)
+        write_message(self.courier_root, folder, env)
 
     def test_finds_a_new_question(self):
         self._put("peerA", "m1", "askerX", "q1", "Proceed?", ["Yes", "No"])
 
-        found = broker.pending_questions([self.bus_root], seen_ids=set())
+        found = broker.pending_questions([self.courier_root], seen_ids=set())
 
         self.assertEqual(len(found), 1)
         self.assertEqual(found[0]["question_id"], "q1")
@@ -134,31 +134,31 @@ class PendingQuestionsTests(unittest.TestCase):
         self._put("peerA", "m1", "askerX", "q1", "Proceed?", ["Yes", "No"])
         self._put("peerB", "m2", "askerX", "q1", "Proceed?", ["Yes", "No"])
 
-        found = broker.pending_questions([self.bus_root], seen_ids=set())
+        found = broker.pending_questions([self.courier_root], seen_ids=set())
 
         self.assertEqual(len(found), 1)
 
     def test_already_seen_question_id_is_not_returned_again(self):
         self._put("peerA", "m1", "askerX", "q1", "Proceed?", ["Yes", "No"])
 
-        found = broker.pending_questions([self.bus_root], seen_ids={"q1"})
+        found = broker.pending_questions([self.courier_root], seen_ids={"q1"})
 
         self.assertEqual(found, [])
 
     def test_messages_without_question_id_are_ignored(self):
-        write_message(self.bus_root, "peerA",
+        write_message(self.courier_root, "peerA",
                       envelope("m1", "someoneX", body="orchid:activity:just working"))
 
-        found = broker.pending_questions([self.bus_root], seen_ids=set())
+        found = broker.pending_questions([self.courier_root], seen_ids=set())
 
         self.assertEqual(found, [])
 
     def test_never_deletes_the_files_it_scans(self):
         self._put("peerA", "m1", "askerX", "q1", "Proceed?", ["Yes", "No"])
 
-        broker.pending_questions([self.bus_root], seen_ids=set())
+        broker.pending_questions([self.courier_root], seen_ids=set())
 
-        self.assertTrue((Path(self.bus_root) / "peerA" / "m1.json").exists())
+        self.assertTrue((Path(self.courier_root) / "peerA" / "m1.json").exists())
 
     def test_title_summary_multi_surfaced_when_present(self):
         env = envelope("m1", "askerX", body="orchid:activity:Proceed?", notify_user=True)
@@ -168,9 +168,9 @@ class PendingQuestionsTests(unittest.TestCase):
         env["title"] = "Deploy gate"
         env["summary"] = "Ship the release now or wait."
         env["multi"] = True
-        write_message(self.bus_root, "peerA", env)
+        write_message(self.courier_root, "peerA", env)
 
-        found = broker.pending_questions([self.bus_root], seen_ids=set())
+        found = broker.pending_questions([self.courier_root], seen_ids=set())
 
         self.assertEqual(found[0]["title"], "Deploy gate")
         self.assertEqual(found[0]["summary"], "Ship the release now or wait.")
@@ -179,7 +179,7 @@ class PendingQuestionsTests(unittest.TestCase):
     def test_title_summary_absent_and_multi_false_by_default(self):
         self._put("peerA", "m1", "askerX", "q1", "Proceed?", ["Yes", "No"])
 
-        found = broker.pending_questions([self.bus_root], seen_ids=set())
+        found = broker.pending_questions([self.courier_root], seen_ids=set())
 
         self.assertIsNone(found[0]["title"])
         self.assertIsNone(found[0]["summary"])

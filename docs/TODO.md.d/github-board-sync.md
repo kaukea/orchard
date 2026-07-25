@@ -16,7 +16,7 @@
   distribution across the three owners (serialseb, SafeKeepIt, kaukea) —
   org secrets don't span owners.
 - Injection/actor gating: on public repos anyone can file issues; the
-  workflow must run the orchestrator only for the operator's own
+  workflow must run the gardener only for the operator's own
   issues/comments (actor allowlist), never on third-party text.
 - Workflow-file delivery: RESOLVED — a manifest `template` entry
   (`template templates/board-sync.yml .github/workflows/board-sync.yml`);
@@ -25,7 +25,7 @@
   touching workflow files need the workflows permission, and template
   files are project-owned, so template changes don't propagate on sync —
   acceptable for a stable trigger shim that delegates logic to the agent.
-- Race with a live local session on main: cloud orchestrator pushes intake
+- Race with a live local session on main: cloud gardener pushes intake
   commits; local sessions already pull at start — define retry/ff-only
   behaviour on push rejection.
 - Project naming and location (user-level project on serialseb).
@@ -34,7 +34,7 @@
 - Result: FUNCTIONAL (f/github-board-sync, 2026-07-18). Shipped: board_gh.py
   (issue projection + Project rows + pull ingestion), the user Project
   "Orchidarium" (private, 28 rows), central board-sync workflow + shim
-  (kauk laid), orchestrator pull-at-boot/push-after-write wiring. Live-tested
+  (kauk laid), gardener pull-at-boot/push-after-write wiring. Live-tested
   both repos end-to-end (orchids ingest ed3e4bb, kauk shim 8ca6645).
   Increments remain per the 2026-07-19 test plan below: body/comment and
   Project-drag ingestion, Claude-app triage, and the privacy fallout fix
@@ -55,14 +55,14 @@ Operator rulings (2026-07-18):
 - Issues for ACTIVE tasks only (todo/doing/blocked/paused; closed on
   done/cancelled). Issue body = sanitized summary + open questions; the
   sidecar stays the full record.
-- Sync is the ORCHESTRATOR'S job only — pull at session start, push at close
+- Sync is the GARDENER'S job only — pull at session start, push at close
   (same pattern as kauk sync); child sessions never touch GitHub.
 - Ingestion is EVENT-DRIVEN over GitHub, not polled (operator, 2026-07-18):
   a GitHub Actions workflow in each repo receives issue/Project events and
-  runs the Claude GitHub integration AS THAT REPO'S ORCHESTRATOR — the
+  runs the Claude GitHub integration AS THAT REPO'S GARDENER — the
   checkout carries the vendored orchids package, so the role, skills, and
   board rules are in place; it ingests the change into sidecar/board and
-  commits to main. Local sessions stay for real work; the cloud orchestrator
+  commits to main. Local sessions stay for real work; the cloud gardener
   only triages board events. Works with the Pi off; no idle cron runs.
 - Pilot: orchids + kauk; the fleet follows via the package.
 
@@ -88,7 +88,7 @@ nothing else changed.
    matching the badge; gh# committed on the badge.
 5. **Field drift.** Change a task's urgency on the board, push.
    → Only that row's Urgency changes in Orchidarium.
-6. **Orchestrator boot.** Start a fresh orchestrator session after (1).
+6. **Gardener boot.** Start a fresh gardener session after (1).
    → Pull runs before the board read; the untriaged stub is surfaced in the
    render; bloom assigns type/component and push updates the issue body.
 7. **Central update propagation.** Edit the central workflow on orchids main

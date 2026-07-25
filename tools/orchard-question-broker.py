@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """Token-free question-popup broker (sidebar-polish item 12c-f).
 
-An agent asks a question over the bus (`bus.py ask`); this script — a plain
+An agent asks a question over the courier (`courier.py ask`); this script — a plain
 long-running process, never an agent, never spending a token — is what makes
 that ask() actually reach the operator and come back with an answer:
 
-    watch loop -> finds a new question broadcast (tools/bus.py's
-    _question_envelope, scanned via tools/sidebar_model.py's own bus-root
+    watch loop -> finds a new question broadcast (tools/courier.py's
+    _question_envelope, scanned via tools/sidebar_model.py's own courier-root
     resolution, never a re-derived traversal) -> waits until the operator is
     not mid-input (12e) -> pops a native `tmux display-popup` over the
     operator's CURRENT window (12c) -> reads keypresses, accepting ONLY the
     defined option keys, no default/dismiss/timeout (12d) -> sends the
-    answer back over the bus to the asking session (`bus.py send
+    answer back over the courier to the asking session (`courier.py send
     --in-reply-to`).
 
-None of this is parameterizable by the asking agent (12f): `bus.py ask` has
+None of this is parameterizable by the asking agent (12f): `courier.py ask` has
 no flag that skips deferral or widens the accepted keys — those rules live
 entirely here.
 
@@ -38,7 +38,7 @@ ASSUMPTIONS flagged for the operator (this trial's HOW decisions):
     (fires on SEND, not while typing), which is used here as the "just
     submitted, safe now" signal that overrides mere recency of pane activity
     for one instant, per is_operator_busy()'s docstring.
-  - `bus.py ask` itself has no timeout (blocks until answered) — the
+  - `courier.py ask` itself has no timeout (blocks until answered) — the
     no-timeout-auto-pick rule (12d) is about the POPUP's keypress handling,
     not about how long an agent's ask() may block.
 """
@@ -56,9 +56,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sidebar_model  # noqa: E402
 
 _TOOLS_DIR = os.path.dirname(os.path.abspath(__file__))
-_BUS_PY = os.path.join(_TOOLS_DIR, "bus.py")
+_COURIER_PY = os.path.join(_TOOLS_DIR, "courier.py")
 
-# Sender identity this script uses when it answers a question over the bus —
+# Sender identity this script uses when it answers a question over the courier —
 # it is not an agent session, so it has no CLAUDE_CODE_SESSION_ID of its own.
 BROKER_SENDER = "question-broker"
 
@@ -284,7 +284,7 @@ def is_operator_busy(now: float, last_submit_ts: float | None,
 
 
 def pending_questions(bus_roots: list[Path], seen_ids: set[str]) -> list[dict]:
-    """Scan every bus root for question broadcasts not in `seen_ids`.
+    """Scan every courier root for question broadcasts not in `seen_ids`.
 
     Non-destructive peek — mirrors tools/sidebar_model.py's own
     _BusAggregator.scan(): messages are owned by their recipients, this
@@ -598,7 +598,7 @@ def _handle_question(q: dict) -> None:
         return  # tmux/popup failed — leave the ❓ signal standing, no crash
     body = json.dumps(answer)
     subprocess.run(
-        [sys.executable, _BUS_PY, "send", "--from", BROKER_SENDER,
+        [sys.executable, _COURIER_PY, "send", "--from", BROKER_SENDER,
          "--to", q["asker"], "--in-reply-to", q["question_id"], "--body", body],
         capture_output=True, text=True,
     )
@@ -609,7 +609,7 @@ def watch(poll_interval: float = DEFAULT_POLL_SECONDS,
     seen_ids: set[str] = set()
     pending: list[dict] = []
     while True:
-        roots = sidebar_model.iter_bus_roots()
+        roots = sidebar_model.iter_courier_roots()
         for q in pending_questions(roots, seen_ids):
             seen_ids.add(q["question_id"])
             pending.append(q)

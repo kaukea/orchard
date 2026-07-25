@@ -13,7 +13,7 @@ Usage:
      list the N stalest bloomable tasks (default: all stale, stalest first)
   python3 .claude/tools/board_stale.py --since <sha>
      list bloomable tasks whose sidecar OR a hard dep changed since <sha>
-     (the orchestrator's change-signal cue)
+     (the gardener's change-signal cue)
 """
 import re, os, sys, json, subprocess
 

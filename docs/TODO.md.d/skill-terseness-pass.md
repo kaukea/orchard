@@ -17,7 +17,7 @@
   skills and every byte loads in every session; `forensic-acquisition` (559 b) is 7×
   `history-rewrite` (80 b) without being 7× the skill.
 - Conflicting advice is known to exist, not hypothesised: `git-commit` requires the
-  `Branch:` trailer to be "never `main`", while the orchestrator's procedural-on-main
+  `Branch:` trailer to be "never `main`", while the gardener's procedural-on-main
   carve-out requires `Branch: main`. Found 2026-07-17 while committing board work in
   this very repo. `skill-renames-and-splits` resolves this one; the pass should hunt
   for its siblings.

@@ -5,7 +5,7 @@
 ## Blockers
 
 - PARITY GATE (operator sequencing, 2026-07-25): the tracked `sidebar_model.py`
-  reads bus INBOXES (announce = identity, broadcast = status). Killing the
+  reads courier INBOXES (announce = identity, broadcast = status). Killing the
   fan-out before `sidebar_v3` reaches parity blinds the old sidebar. Cut only
   after parity is confirmed on screen.
 
@@ -17,8 +17,8 @@
 
 ## Findings
 
-- THE MONEY LEAK (operator, 2026-07-25): v1's fan-out announce — a bus telling
-  every peer inbox "I'm a bus agent" wakes all agents, a large token cost. The
+- THE MONEY LEAK (operator, 2026-07-25): v1's fan-out announce — a courier telling
+  every peer inbox "I'm a courier agent" wakes all agents, a large token cost. The
   sanctioned replacement is topic posts that subscribers filter, which
   [[bus-transport-v2]] shipped.
 - `depart` fan-out is already safe to remove — nothing reads it.

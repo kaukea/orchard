@@ -120,13 +120,13 @@ mapped to s / m / l against LAUNCH_SIZE_S_MAX / LAUNCH_SIZE_M_MAX (first-
 calibration constants below). Each size maps to a model/effort tier that
 MIRRORS the current per-role table (docs/decisions.md Decision-018,
 Decision-019, as of 2026-07-20):
-    s -> claude-sonnet-5 / high    (the builder tier: a small, short-lived
+    s -> claude-sonnet-5 / high    (the sower tier: a small, short-lived
                                      build handled inline)
-    m -> claude-opus-4-8 / xhigh   (the architect's pegged default)
-    l -> claude-fable-5 / high     (the top of the architect's complexity
+    m -> claude-opus-4-8 / xhigh   (the landscaper's pegged default)
+    l -> claude-fable-5 / high     (the top of the landscaper's complexity
                                      scaling, "the hardest long-horizon
                                      builds")
-This mapping is descriptive guidance for the operator/orchestrator, not an
+This mapping is descriptive guidance for the operator/gardener, not an
 authority over the live per-role table — if that table changes, update
 MODEL_TIER to match.
 

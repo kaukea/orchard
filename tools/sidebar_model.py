@@ -1,29 +1,29 @@
 #!/usr/bin/env python3
-"""Cross-repo bus reader/aggregator for the fleet sidebar.
+"""Cross-repo courier reader/aggregator for the fleet sidebar.
 
-READ-ONLY observer over the on-disk bus (see tools/bus.py, message.schema.json).
+READ-ONLY observer over the on-disk courier (see tools/courier.py, message.schema.json).
 Parses WIRE GRAMMAR v1: orchid:status (+ deprecated orchid:activity fallback),
 orchid:update, orchid:phase, orchid:subagent:queue/start/done,
 orchid:interrupt:question, lifecycle JSON, notify_user.
 
-    <git-common-dir>/the-works/bus/<session-id>/<datetime>.json
+    <git-common-dir>/the-works/courier/<session-id>/<datetime>.json
 
 one JSON message per file. This module never deletes, moves, or otherwise
-mutates a bus file — messages are owned by their recipients (bus.py's
+mutates a courier file — messages are owned by their recipients (courier.py's
 `receive` drains them on the way up); the sidebar only looks.
 
 ATTRIBUTION: the folder a message physically sits in is its RECIPIENT's inbox,
-not its origin — bus.py's fan_out/broadcast delivers a copy into every OTHER
+not its origin — courier.py's fan_out/broadcast delivers a copy into every OTHER
 session's folder, never the sender's own (`peers = [... d.name != sender]`).
 So every message is attributed to its envelope `from` field, never to the
-folder it was found in: a repo's bus is scanned in full (every session
+folder it was found in: a repo's courier is scanned in full (every session
 folder), and each parsed message is routed to state[from].
 
-EPHEMERALITY: a message file disappears once its recipient's bus sidecar
+EPHEMERALITY: a message file disappears once its recipient's courier sidecar
 drains it (`receive` unlinks on read), often within moments. A sender's
 last-known activity/lifecycle/subagent-set must therefore be remembered
 across scans, not just re-derived from whatever happens to be on disk right
-now — see _BusAggregator, which accumulates per-sender state keyed by
+now — see _CourierAggregator, which accumulates per-sender state keyed by
 envelope `from`, deduplicated by envelope `id`, applied in `ts` order
 (last-write-wins per field). `build_model()` is a single-scan convenience
 wrapper around a fresh, throwaway aggregator; `watch()` keeps one aggregator
@@ -39,7 +39,7 @@ repolist file (one repo path per line, '#' comments and blank lines ignored)
 read verbatim, registry and hiding bypassed. Falls back to the current repo
 alone if the registry resolves nothing.
 
-Public API: build_model(), iter_bus_roots(), watch(on_change, ...),
+Public API: build_model(), iter_courier_roots(), watch(on_change, ...),
 resolve_repos().
 """
 from __future__ import annotations
@@ -56,14 +56,14 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from feature_name import feature_name as _feature_name  # noqa: E402
-import bus  # noqa: E402
+import courier  # noqa: E402
 import orchard_registry  # noqa: E402
 
-# Sidecar sessions surface as agent_type "bus"; their subagent label is
+# Sidecar sessions surface as agent_type "courier"; their subagent label is
 # conventionally "messaging" — never shown as a fleet subagent row (they get
-# their own single collapsed "bus row" instead — see _pick_bus()).
-BUS_AGENT_TYPE = "bus"
-BUS_LABEL = "messaging"
+# their own single collapsed "courier row" instead — see _pick_courier()).
+COURIER_AGENT_TYPE = "courier"
+COURIER_LABEL = "messaging"
 
 # Six-state status vocabulary (final, settled — sidebar-polish item 9,
 # revised). Every status below is STATIC: no glyph may ever change
@@ -83,7 +83,7 @@ LIFECYCLE_TO_STATUS = {
 }
 
 # A `blocked` lifecycle signal's body may carry a `blocked_on` tag
-# distinguishing what it's blocked ON — bus.py's signal command didn't carry
+# distinguishing what it's blocked ON — courier.py's signal command didn't carry
 # this distinction before this change (checked: LIFECYCLE_STATES only ever
 # had a bare "blocked", no qualifier), so this is the minimal tag added to
 # make the waiting/awaiting_agent split possible. Absent (older senders,
@@ -114,11 +114,11 @@ class Subagent:
 
 
 @dataclass
-class Bus:
-    """One collapsed bus-sidecar row for a live parent agent (repo's
-    orchestrator or a feature's architect) — sidebar-polish item 5. At most
+class Courier:
+    """One collapsed courier-sidecar row for a live parent agent (repo's
+    gardener or a feature's landscaper) — sidebar-polish item 5. At most
     one per parent, rendered at the top of that parent's row group."""
-    label: str = BUS_LABEL
+    label: str = COURIER_LABEL
 
 
 @dataclass
@@ -138,7 +138,7 @@ class Feature:
     status: str
     waiting_on_operator: bool
     subagents: list[Subagent] = field(default_factory=list)
-    bus: Bus | None = None
+    courier: Courier | None = None
     status_word: str = ""
     update_text: str = ""
     phase: str | None = None
@@ -171,13 +171,13 @@ class Repo:
     status: str
     waiting_on_operator: bool
     paused: bool = False
-    # True when the repo has at least one live session (an orchestrator session
+    # True when the repo has at least one live session (a gardener session
     # or any feature). A repo with no live session is not rendered (the sidebar's
     # flatten() skips it). Defaults True so hand-built Repo() test fixtures render
     # as before unless a test opts out; _assemble_repo() sets the real value.
     has_session: bool = True
     features: list[Feature] = field(default_factory=list)
-    bus: Bus | None = None
+    courier: Courier | None = None
     status_word: str = ""
     update_text: str = ""
     phase: str | None = None
@@ -191,7 +191,7 @@ class Repo:
     interrupt: str = "none"
     # See Feature's matching fields — a repo has no branch of its own, so it
     # never gets age/worked, only role/model/tokens/dollars off its
-    # orchestrator session.
+    # gardener session.
     role: str | None = None
     model: str | None = None
     tokens: str | None = None
@@ -255,7 +255,7 @@ def resolve_repos(repolist: list[str] | None = None) -> list[str]:
     (item 7b) are excluded via `visible_repos()`.
 
     ORCHIDS_SIDEBAR_REPOS survives as an explicit, optional override for
-    manual/debug use (architect HOW decision): when set, it names a
+    manual/debug use (landscaper HOW decision): when set, it names a
     repolist file read verbatim — registry and hiding are bypassed entirely,
     same file format as before (one repo path per line, '#'/blank ignored).
     """
@@ -281,29 +281,29 @@ def resolve_repos(repolist: list[str] | None = None) -> list[str]:
     return [current] if current else []
 
 
-def _bus_root_for(repo_path: str) -> Path | None:
-    """<git-common-dir>/the-works/bus for one repo path, or None if not a repo."""
+def _courier_root_for(repo_path: str) -> Path | None:
+    """<git-common-dir>/the-works/courier for one repo path, or None if not a repo."""
     common = _git("rev-parse", "--git-common-dir", cwd=repo_path)
     if not common:
         return None
     common_dir = Path(common)
     if not common_dir.is_absolute():
         common_dir = Path(repo_path) / common_dir
-    return common_dir.resolve() / "the-works" / "bus"
+    return common_dir.resolve() / "the-works" / "courier"
 
 
-def iter_bus_roots(repolist: list[str] | None = None) -> list[Path]:
-    """The bus root (<git-common-dir>/the-works/bus) for each resolved repo."""
+def iter_courier_roots(repolist: list[str] | None = None) -> list[Path]:
+    """The courier root (<git-common-dir>/the-works/courier) for each resolved repo."""
     roots = []
     for repo_path in resolve_repos(repolist):
-        root = _bus_root_for(repo_path)
+        root = _courier_root_for(repo_path)
         if root is not None:
             roots.append(root)
     return roots
 
 
 # --------------------------------------------------------------------------
-# Bus reading (read-only) — per-sender state, accumulated across scans
+# Courier reading (read-only) — per-sender state, accumulated across scans
 # --------------------------------------------------------------------------
 
 @dataclass
@@ -316,12 +316,12 @@ class _SessionState:
     parent_session: str | None = None
     # Carried on the identity envelope only if the sender's identity_of()
     # ever grows a model field — as of this step it does not (model is
-    # deliberately excluded from bus.py's identity_of() because it can
+    # deliberately excluded from courier.py's identity_of() because it can
     # change mid-session), so this stays None in practice; see role/model on
     # Feature/Repo (bus-message-specifying B5b).
     model: str | None = None
     # Wall-clock instant this session's first message was processed by this
-    # process (aggregator-assigned, see _BusAggregator.scan) — the fallback
+    # process (aggregator-assigned, see _CourierAggregator.scan) — the fallback
     # age baseline when the feature's branch doesn't exist yet.
     first_seen: float = 0.0
     status_word: str = ""
@@ -402,7 +402,7 @@ def _parse_phase(remainder: str) -> tuple[str | None, tuple[int, int] | None]:
 def _apply_phase(state: _SessionState, msg: dict, remainder: str) -> None:
     phase, tick = _parse_phase(remainder)
     if phase is None:
-        return  # invalid phase string — defensive, bus.py validates at send
+        return  # invalid phase string — defensive, courier.py validates at send
     state.phase = phase
     state.phase_tick = tick
 
@@ -414,18 +414,18 @@ def _apply_question(state: _SessionState, msg: dict, subject: str) -> None:
     state.last_notify_user = msg.get("notify_user") is True
 
 
-def _is_bus_subagent(state: _SessionState, label: str) -> bool:
-    return state.agent_type == BUS_AGENT_TYPE or label == BUS_LABEL
+def _is_courier_subagent(state: _SessionState, label: str) -> bool:
+    return state.agent_type == COURIER_AGENT_TYPE or label == COURIER_LABEL
 
 
 def _apply_subagent_queue(state: _SessionState, msg: dict, label: str) -> None:
-    if not _is_bus_subagent(state, label):
+    if not _is_courier_subagent(state, label):
         state.subagents_queued.add(label)
 
 
 def _apply_subagent_start(state: _SessionState, msg: dict, label: str) -> None:
     state.subagents_queued.discard(label)
-    if not _is_bus_subagent(state, label):
+    if not _is_courier_subagent(state, label):
         state.active_subagents.add(label)
 
 
@@ -509,7 +509,7 @@ def _clear_replied_question(states: dict, msg: dict) -> None:
 _TERMINAL_LIFECYCLE = {"finished", "abandoned"}
 
 # the pre-terminal lifecycle "done" (built/tested, awaiting the operator's
-# THAT IS ALL — see agents/architect.md) is, by definition, an operator-wait:
+# THAT IS ALL — see agents/landscaper.md) is, by definition, an operator-wait:
 # treated as the waiting status with the operator (❓) variant forced on.
 _AWAITING_OPERATOR_LIFECYCLE = "done"
 
@@ -569,7 +569,7 @@ def _interrupt_for(state: _SessionState) -> str:
 # Display-grammar stats (bus-message-specifying B5b) — role/model straight
 # off the identity envelope; tokens/dollars and age/worked need a local
 # subprocess/filesystem read apiece, so both are gated behind a small
-# refresh-throttling cache (ZERO bus traffic and ZERO extra agent turns —
+# refresh-throttling cache (ZERO courier traffic and ZERO extra agent turns —
 # operator constraint: this data is deterministic and locally-emitted only).
 # --------------------------------------------------------------------------
 
@@ -620,21 +620,21 @@ def _format_dollars(amount: float) -> str:
 
 
 def _transcript_for_session(session_id: str) -> Path | None:
-    """Mirrors bus.py's own `transcript()`, parameterised by session id
-    instead of always resolving the CALLING process's own session — bus.py
+    """Mirrors courier.py's own `transcript()`, parameterised by session id
+    instead of always resolving the CALLING process's own session — courier.py
     has no such lookup (its status_of() only ever answers for `whoami()`),
     so this reads the same on-disk convention directly rather than adding
-    one to bus.py outside this step's edit scope. Zero bus traffic: a plain
-    filesystem glob, exactly like bus.py's own version."""
+    one to courier.py outside this step's edit scope. Zero courier traffic: a plain
+    filesystem glob, exactly like courier.py's own version."""
     projects = Path.home() / ".claude" / "projects"
     matches = sorted(projects.glob(f"*/{session_id}.jsonl"))
     return matches[-1] if matches else None
 
 
 def _read_status(session_id: str) -> tuple[str | None, str | None, str | None]:
-    """(tokens, dollars, model) for `session_id`, reusing bus.py's own
-    token-class and cost-estimate machinery (bus.TOKEN_CLASSES,
-    bus.usage_entries, bus.estimates_for) over that session's transcript.
+    """(tokens, dollars, model) for `session_id`, reusing courier.py's own
+    token-class and cost-estimate machinery (courier.TOKEN_CLASSES,
+    courier.usage_entries, courier.estimates_for) over that session's transcript.
     The model id is the transcript's most recent entry — a mutable session
     fact the identity broadcast deliberately excludes. Any failure — no
     transcript, malformed lines, unknown model — yields (None, None, None),
@@ -643,17 +643,17 @@ def _read_status(session_id: str) -> tuple[str | None, str | None, str | None]:
         path = _transcript_for_session(session_id)
         if path is None:
             return None, None, None
-        spend = dict.fromkeys(bus.TOKEN_CLASSES, 0)
+        spend = dict.fromkeys(courier.TOKEN_CLASSES, 0)
         model = None
-        for usage, entry_model in bus.usage_entries(path):
+        for usage, entry_model in courier.usage_entries(path):
             if entry_model:
                 model = entry_model
-            for token_class in bus.TOKEN_CLASSES:
+            for token_class in courier.TOKEN_CLASSES:
                 spend[token_class] += usage.get(token_class, 0) or 0
         total_tokens = sum(spend.values())
         if total_tokens == 0:
             return None, None, model
-        cost = bus.estimates_for(model, spend, 0).get("cost_usd")
+        cost = courier.estimates_for(model, spend, 0).get("cost_usd")
         dollars = _format_dollars(cost) if cost is not None else None
         return _format_tokens(total_tokens), dollars, model
     except Exception:
@@ -734,8 +734,8 @@ def _apply_row_extension(row, state: _SessionState, status_cache: _TTLCache) -> 
     row.model = state.model or transcript_model
 
 
-class _BusAggregator:
-    """Accumulates per-sender state for one repo's bus across repeated scans.
+class _CourierAggregator:
+    """Accumulates per-sender state for one repo's courier across repeated scans.
 
     Keyed by envelope `from` (the originating session), NOT by which folder a
     message happened to be found in — a broadcast from A sitting in B's inbox
@@ -745,7 +745,7 @@ class _BusAggregator:
 
     State, once applied, is never forgotten even after the message that
     produced it is deleted from disk by its recipient's `receive` — this is
-    what lets the sidebar survive the bus's ephemerality. A sender seen with
+    what lets the sidebar survive the courier's ephemerality. A sender seen with
     activity/lifecycle traffic but no identity (announce) message yet simply
     has agent_type=None and is not placed into any Repo/Feature row until an
     identity message for it does arrive in a later scan; it never crashes,
@@ -775,24 +775,24 @@ class _BusAggregator:
         self._status_cache = _TTLCache(_STATUS_CACHE_TTL_SECONDS, clock)
         self._git_stats_cache = _TTLCache(_GIT_STATS_CACHE_TTL_SECONDS, clock)
 
-    def scan(self, bus_root: Path) -> None:
+    def scan(self, courier_root: Path) -> None:
         # evict senders whose terminal signal was already observed on a
         # PREVIOUS scan — one full scan's grace to show "done"/"failed"
         for sender in self._pending_eviction:
             self.states.pop(sender, None)
         self._pending_eviction.clear()
 
-        if not bus_root.is_dir():
+        if not courier_root.is_dir():
             return
 
         new_messages = []
         current_ids: set[str] = set()
-        for session_dir in bus_root.iterdir():
+        for session_dir in courier_root.iterdir():
             if not session_dir.is_dir():
                 continue
             for f in session_dir.glob("*.json"):
                 if f.name.startswith("."):
-                    continue  # bus.py's atomic-write .partial temp files
+                    continue  # courier.py's atomic-write .partial temp files
                 try:
                     msg = json.loads(f.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError):
@@ -843,10 +843,10 @@ class _BusAggregator:
 # Assembly: per-sender states -> Fleet
 # --------------------------------------------------------------------------
 
-def _pick_bus(sessions: dict[str, _SessionState], parent_session_id: str) -> Bus | None:
-    """The single collapsed bus row for a live parent (sidebar-polish item 5).
+def _pick_courier(sessions: dict[str, _SessionState], parent_session_id: str) -> Courier | None:
+    """The single collapsed courier row for a live parent (sidebar-polish item 5).
 
-    Per-agent bus is a singleton BY DESIGN (Decision-051); multiplicity
+    Per-agent courier is a singleton BY DESIGN (Decision-051); multiplicity
     beyond one is a known, separately-root-caused defect (bus-singleton
     task). This function only owns the DISPLAY-side guarantee: never render
     more than one row, picked deterministically (lowest session_id) so
@@ -854,9 +854,9 @@ def _pick_bus(sessions: dict[str, _SessionState], parent_session_id: str) -> Bus
     """
     candidates = sorted(
         s.session_id for s in sessions.values()
-        if s.agent_type == BUS_AGENT_TYPE and s.parent_session == parent_session_id
+        if s.agent_type == COURIER_AGENT_TYPE and s.parent_session == parent_session_id
     )
-    return Bus() if candidates else None
+    return Courier() if candidates else None
 
 
 def _assemble_repo(
@@ -870,27 +870,27 @@ def _assemble_repo(
     repo = Repo(path=repo_path, name=name, activity="", status="idle",
                 waiting_on_operator=False)
 
-    orchestrator = next(
-        (s for s in sessions.values() if s.agent_type == "orchestrator"), None,
+    gardener = next(
+        (s for s in sessions.values() if s.agent_type == "gardener"), None,
     )
-    if orchestrator is not None:
-        repo.activity = orchestrator.status_word
-        repo.status = _status_for(orchestrator)
-        repo.waiting_on_operator = _waiting_on_operator_of(orchestrator)
-        repo.bus = _pick_bus(sessions, orchestrator.session_id)
-        _apply_row_extension(repo, orchestrator, status_cache)
+    if gardener is not None:
+        repo.activity = gardener.status_word
+        repo.status = _status_for(gardener)
+        repo.waiting_on_operator = _waiting_on_operator_of(gardener)
+        repo.courier = _pick_courier(sessions, gardener.session_id)
+        _apply_row_extension(repo, gardener, status_cache)
 
-    architects = [s for s in sessions.values() if s.agent_type == "architect"]
+    architects = [s for s in sessions.values() if s.agent_type == "landscaper"]
     for arch in architects:
-        # bare session-UUID row: an architect that never announced a name OR
+        # bare session-UUID row: a landscaper that never announced a name OR
         # a feature_id has nothing operator-facing to show — never render it
         # (sidebar-polish item 2 / this round's item 3b).
         if not arch.name and not arch.feature_id and _is_bare_uuid(arch.session_id):
             continue
 
         feature_id = arch.feature_id or arch.session_id
-        # arch.name is whatever the architect announced (already ledger-derived
-        # via bus.py's identity_of() in the normal case) — an explicit runtime
+        # arch.name is whatever the landscaper announced (already ledger-derived
+        # via courier.py's identity_of() in the normal case) — an explicit runtime
         # override wins; otherwise re-derive from the board/sidecar directly
         # (sidebar-polish item 11) rather than falling back to the mechanical
         # id-with-spaces form.
@@ -903,7 +903,7 @@ def _assemble_repo(
             activity=arch.status_word,
             status=_status_for(arch),
             waiting_on_operator=_waiting_on_operator_of(arch),
-            bus=_pick_bus(sessions, arch.session_id),
+            courier=_pick_courier(sessions, arch.session_id),
         )
         _apply_row_extension(feature, arch, status_cache)
         feature.age, feature.worked = git_stats_cache.get(
@@ -912,32 +912,32 @@ def _assemble_repo(
                 repo_path, feature_id, arch.first_seen, clock(),
             ),
         )
-        # subagents surfaced directly by the architect's own orchid:subagent traffic
+        # subagents surfaced directly by the landscaper's own orchid:subagent traffic
         for label in sorted(arch.active_subagents):
             feature.subagents.append(Subagent(label=label))
-        # plus any other (non-bus-sidecar) session whose parent_session points
-        # at this architect (EVERY architect, not just the first — sidebar-
+        # plus any other (non-courier-sidecar) session whose parent_session points
+        # at this landscaper (EVERY landscaper, not just the first — sidebar-
         # polish item 3), surfaced by name
         for s in sessions.values():
             if s is arch or s.parent_session != arch.session_id:
                 continue
-            if s.agent_type == BUS_AGENT_TYPE:
+            if s.agent_type == COURIER_AGENT_TYPE:
                 continue
             if not s.name and _is_bare_uuid(s.session_id):
                 continue  # bare session-UUID row: never operator-facing
             feature.subagents.append(Subagent(label=s.name or s.session_id))
         repo.features.append(feature)
 
-    # a repo with no orchestrator session AND no features has nothing live to
+    # a repo with no gardener session AND no features has nothing live to
     # show — the renderer's flatten() reads this flag and skips the repo
     # entirely (item 3, "empty projects don't render").
-    repo.has_session = orchestrator is not None or bool(repo.features)
+    repo.has_session = gardener is not None or bool(repo.features)
 
     return repo
 
 
 def build_model(repolist: list[str] | None = None) -> Fleet:
-    """One snapshot of the fleet: scan every resolved repo's bus in full,
+    """One snapshot of the fleet: scan every resolved repo's courier in full,
     attribute messages by `from`, dedup by `id`, assemble the tree.
 
     A fresh, throwaway aggregator per call — no state survives between calls
@@ -945,11 +945,11 @@ def build_model(repolist: list[str] | None = None) -> Fleet:
     """
     fleet = Fleet()
     for repo_path in resolve_repos(repolist):
-        bus_root = _bus_root_for(repo_path)
-        if bus_root is None:
+        courier_root = _courier_root_for(repo_path)
+        if courier_root is None:
             continue
-        aggregator = _BusAggregator()
-        aggregator.scan(bus_root)
+        aggregator = _CourierAggregator()
+        aggregator.scan(courier_root)
         fleet.repos.append(aggregator.repo(repo_path))
     return fleet
 
@@ -959,22 +959,22 @@ def build_model(repolist: list[str] | None = None) -> Fleet:
 # --------------------------------------------------------------------------
 
 def watch(on_change, repolist: list[str] | None = None) -> None:
-    """Call on_change(fleet) whenever a repo's bus changes.
+    """Call on_change(fleet) whenever a repo's courier changes.
 
-    One `_BusAggregator` per repo is kept alive for the life of the watch, so
+    One `_CourierAggregator` per repo is kept alive for the life of the watch, so
     accumulated per-sender state survives a recipient draining (deleting) its
-    copy of a message between scans. On each event: rescan every repo's bus
+    copy of a message between scans. On each event: rescan every repo's courier
     root, merge unseen messages into the accumulated state, rebuild the
     Fleet, and call on_change(fleet).
 
-    Prefers `inotifywait -m -r` across every resolved bus root that already
+    Prefers `inotifywait -m -r` across every resolved courier root that already
     exists on disk; falls back to a 2s re-scan when inotifywait is
-    unavailable or no bus root exists yet. Resilient to bus roots that do not
+    unavailable or no courier root exists yet. Resilient to courier roots that do not
     exist yet — scanning a missing root is a no-op, never a crash.
     """
     repos = resolve_repos(repolist)
-    roots = {repo_path: _bus_root_for(repo_path) for repo_path in repos}
-    aggregators = {repo_path: _BusAggregator() for repo_path in repos}
+    roots = {repo_path: _courier_root_for(repo_path) for repo_path in repos}
+    aggregators = {repo_path: _CourierAggregator() for repo_path in repos}
 
     def rescan_and_notify() -> None:
         fleet = Fleet()

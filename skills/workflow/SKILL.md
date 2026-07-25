@@ -37,7 +37,7 @@ Workflow Completion — executed via the `workflow-complete` skill, loaded on `M
 - [ ] Verified integrity
 - [ ] Pushed to origin (commits + `archive/` tag + notes)
 - [ ] Worktree removed and branch ref deleted (archive tag is the tombstone)
-- [ ] Workstream log closed for the orchestrator (final `## State`, `_closed` marker)
+- [ ] Workstream log closed for the gardener (final `## State`, `_closed` marker)
 
 ## Rules
 
@@ -217,10 +217,10 @@ Metadata are cheap, overridable hints, not contracts (Decision-047):
   "attached to the work I'm doing now" link, no judgement needed.
 - **`size: s|m|b`** — stamp only when the task is *born during current work* (a free
   byproduct of already-loaded context); coarse buckets, never hours. Omit for cold/idea
-  captures — the orchestrator sizes those on demand at triage.
+  captures — the gardener sizes those on demand at triage.
 - **`blocked_by`** — only for a true ordering gate; use a soft `parent`/related ref for
   mere association. A durable "do A then B" becomes a `blocked_by` link; a mere chosen
-  order stays session-only (orchestrator's `MOOD.md`).
+  order stays session-only (gardener's `MOOD.md`).
 
 Never block intake on getting these right — approximate-and-free beats precise-and-slow.
 

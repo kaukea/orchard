@@ -32,11 +32,11 @@ pollutes history.
       out-of-date information.
 - [ ] Agreed work, follow-up work, and future work must be updated on the board (`docs/TODO.md` + sidecars, `AGENTS.files.md` §TODO).
 - [ ] The `## Changelog entry` is STAGED verbatim in the sidecar result — do NOT
-      edit `CHANGELOG.md`; the orchestrator places it at ingest, operator-gated
+      edit `CHANGELOG.md`; the gardener places it at ingest, operator-gated
       (Decision-034; format `AGENTS.files.md` → §Changelog).
 - [ ] The `## Readme delta` (user-facing changes) is staged in the sidecar result,
       or an evidenced no-change determination recorded — do NOT edit `README.md`;
-      the orchestrator applies it via `readme-sync` at ingest (Decision-034).
+      the gardener applies it via `readme-sync` at ingest (Decision-034).
 
 ## Clean tree
 

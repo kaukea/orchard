@@ -2,7 +2,7 @@
 
 - created: 2026-07-22
 - created_by: fable-5
-- created_during: field-projecting close (architect-surfaced follow-up)
+- created_during: field-projecting close (landscaper-surfaced follow-up)
 
 ## Blockers
 

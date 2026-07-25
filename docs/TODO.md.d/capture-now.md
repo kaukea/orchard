@@ -8,8 +8,8 @@ ledger exists.
 
 ## Questions
 
-- Recurring trigger: orchestrator-boot invocation only, or also a scheduled run so
-  capture survives days with no orchestrator session?
+- Recurring trigger: gardener-boot invocation only, or also a scheduled run so
+  capture survives days with no gardener session?
 - Retention of the spool once the encrypted ledger ingests it: delete, or keep as the
   pre-ledger stratum?
 
@@ -28,7 +28,7 @@ Stop-loss preservation of the fleet's uncommitted knowledge, running from tonigh
 the append-only encrypted ledger replaces it. `.claude/tools/capture-snapshot.sh`
 mirrors `~/.claude/projects/` and each repo's `.git/the-works/` into
 `.git/the-works/_capture/<host>/`, incrementally, with a manifest log. Invoked at every
-orchestrator boot; the ledger (separate task, designed 2026-07-24) supersedes it. The
+gardener boot; the ledger (separate task, designed 2026-07-24) supersedes it. The
 spool is the raw substrate the corpus-indexing task catalogs.
 
 ## Testing

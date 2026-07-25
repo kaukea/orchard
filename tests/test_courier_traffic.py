@@ -1,7 +1,7 @@
-"""CLI-level tests for `bus.py validate` and the WIRE GRAMMAR v1 traffic
+"""CLI-level tests for `courier.py validate` and the WIRE GRAMMAR v1 traffic
 contract (docs/TODO.md.d/bus-message-specifying.md step 6, feature's agreed
 test method): each role's emulated session, driven through the real CLI into
-a sandboxed bus root, must produce traffic that validates with zero
+a sandboxed courier root, must produce traffic that validates with zero
 violations; a set of hand-written envelopes must be flagged exactly as the
 spec describes.
 """
@@ -20,14 +20,14 @@ _TOOLS_DIR = os.path.join(
 if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
-from support import bus_root_of, envelope, make_repo, write_message  # noqa: E402
+from support import courier_root_of, envelope, make_repo, write_message  # noqa: E402
 
-_BUS_PY = os.path.join(_TOOLS_DIR, "bus.py")
+_COURIER_PY = os.path.join(_TOOLS_DIR, "courier.py")
 
 
 def _poll_for_question_id(folder: Path, deadline: float) -> str | None:
     """Non-destructive read of `folder` for a broadcast question — unlike
-    `bus.py receive`, this never deletes, so the role's earlier traffic
+    `courier.py receive`, this never deletes, so the role's earlier traffic
     stays on disk for the validate pass at the end of the test."""
     while time.time() < deadline:
         for f in sorted(folder.glob("*.json")):
@@ -45,8 +45,8 @@ def _poll_for_question_id(folder: Path, deadline: float) -> str | None:
 
 class RoleTrafficCliTests(unittest.TestCase):
     """One emulated session per role, driving its contract-specified
-    sequence through the real bus.py CLI, then auditing the resulting
-    sandbox with `bus.py validate`."""
+    sequence through the real courier.py CLI, then auditing the resulting
+    sandbox with `courier.py validate`."""
 
     PEER = "watcher"
 
@@ -54,24 +54,24 @@ class RoleTrafficCliTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.repo = make_repo(self._tmp.name)
-        self.sandbox_root = bus_root_of(self.repo)
-        self._bus("init", self.PEER)
+        self.sandbox_root = courier_root_of(self.repo)
+        self._courier("init", self.PEER)
 
-    def _bus(self, *args, session_id=None, check=True):
+    def _courier(self, *args, session_id=None, check=True):
         env = dict(os.environ)
         if session_id:
             env["CLAUDE_CODE_SESSION_ID"] = session_id
         return subprocess.run(
-            [sys.executable, _BUS_PY, *args],
+            [sys.executable, _COURIER_PY, *args],
             cwd=self.repo, capture_output=True, text=True, env=env, check=check,
         )
 
     def _broadcast(self, session_id: str, body: str) -> None:
-        self._bus("broadcast", "--from", session_id, "--body", body, session_id=session_id)
+        self._courier("broadcast", "--from", session_id, "--body", body, session_id=session_id)
 
     def _validate(self):
         return subprocess.run(
-            [sys.executable, _BUS_PY, "validate", str(self.sandbox_root)],
+            [sys.executable, _COURIER_PY, "validate", str(self.sandbox_root)],
             capture_output=True, text=True,
         )
 
@@ -86,7 +86,7 @@ class RoleTrafficCliTests(unittest.TestCase):
         for option in options:
             option_args += ["--option", option]
         proc = subprocess.Popen(
-            [sys.executable, _BUS_PY, "ask", "--question", question, *option_args,
+            [sys.executable, _COURIER_PY, "ask", "--question", question, *option_args,
              "--poll-interval", "0.05"],
             cwd=self.repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             env=dict(os.environ, CLAUDE_CODE_SESSION_ID=session_id),
@@ -94,7 +94,7 @@ class RoleTrafficCliTests(unittest.TestCase):
         try:
             question_id = _poll_for_question_id(self.sandbox_root / self.PEER, time.time() + 5)
             self.assertIsNotNone(question_id, "ask() never broadcast a question")
-            self._bus(
+            self._courier(
                 "send", "--from", self.PEER, "--to", session_id,
                 "--in-reply-to", question_id, "--body", reply_body, session_id=self.PEER,
             )
@@ -107,7 +107,7 @@ class RoleTrafficCliTests(unittest.TestCase):
 
     def test_orchestrator_role_traffic_validates(self):
         session = "orchestrator1"
-        self._bus("announce", session_id=session)
+        self._courier("announce", session_id=session)
         for body in (
             "orchid:status:triaging",
             "orchid:status:prioritising",
@@ -118,7 +118,7 @@ class RoleTrafficCliTests(unittest.TestCase):
             "orchid:status:dispatching",
         ):
             self._broadcast(session, body)
-        self._bus("depart", session_id=session)
+        self._courier("depart", session_id=session)
         self.assertTrafficIsClean()
 
     def test_architect_role_traffic_validates(self):
@@ -136,8 +136,8 @@ class RoleTrafficCliTests(unittest.TestCase):
             session, "Proceed with the plan?", ["Yes", "No"],
             '{"index": 0, "option": "Yes"}',
         )
-        self._bus("signal", "--state", "done", "--notify-user", session_id=session)
-        self._bus("signal", "--state", "finished", session_id=session)
+        self._courier("signal", "--state", "done", "--notify-user", session_id=session)
+        self._courier("signal", "--state", "finished", session_id=session)
         self.assertTrafficIsClean()
 
     def test_groomer_role_traffic_validates(self):
@@ -157,7 +157,7 @@ class TrafficValidateNegativeTests(unittest.TestCase):
     """Hand-written envelopes dropped straight into the spool, bypassing the
     CLI's send-time enforcement — validate is the only backstop for traffic
     that reached disk some other way (sidecar improvisation, a future
-    non-bus.py sender)."""
+    non-courier.py sender)."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -169,7 +169,7 @@ class TrafficValidateNegativeTests(unittest.TestCase):
 
     def _validate(self):
         return subprocess.run(
-            [sys.executable, _BUS_PY, "validate", str(self.sandbox_root)],
+            [sys.executable, _COURIER_PY, "validate", str(self.sandbox_root)],
             capture_output=True, text=True,
         )
 

@@ -18,11 +18,11 @@
 - **Drift is currently discovered by accident, weeks late.** Rules get written, agents route
   around them, and nobody knows until someone happens to look.
 - **The delegation rule failed within four hours of being written (2026-07-19).** The
-  architect definition was amended to make delegation the default, requiring a one-line
-  written justification for inline work. The very next architect dispatched no builders and
+  landscaper definition was amended to make delegation the default, requiring a one-line
+  written justification for inline work. The very next landscaper dispatched no sowers and
   wrote no justification. It was not a delivery failure — the rule was in its system prompt,
   read and understood, and overridden silently.
-- **Asking the agent works, and is the only thing that did.** Resuming that architect's
+- **Asking the agent works, and is the only thing that did.** Resuming that landscaper's
   finished session and asking it to self-report its decisions and deviations produced a
   specific, candid list: three delegation violations, three specified skills never loaded
   (`git-commit`, `AGENTS.files.md`, `readme-sync`), a possibly-owed migration it never

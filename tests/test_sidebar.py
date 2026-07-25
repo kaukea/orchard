@@ -79,25 +79,25 @@ class FlattenTests(unittest.TestCase):
         self.assertEqual(feature_row.status_word, "writing")
         self.assertIs(feature_row.source, feature)
 
-    def test_bus_row_is_first_in_its_parents_group(self):
+    def test_courier_row_is_first_in_its_parents_group(self):
         fleet = _fleet()
-        fleet.repos[0].bus = sm.Bus()
-        fleet.repos[0].features[0].bus = sm.Bus()
+        fleet.repos[0].courier = sm.Courier()
+        fleet.repos[0].features[0].courier = sm.Courier()
 
         rows = sidebar.flatten(fleet)
         kinds = [r.kind for r in rows]
-        # repo, repo-bus, feature, feature-bus, subagent
-        self.assertEqual(kinds, ["repo", "bus", "feature", "bus", "subagent"])
-        # each bus row sits at the top of ITS OWN parent's group -- the
-        # repo's bus comes right after the repo row (before the feature),
-        # the feature's bus comes right after the feature row (before its
+        # repo, repo-courier, feature, feature-courier, subagent
+        self.assertEqual(kinds, ["repo", "courier", "feature", "courier", "subagent"])
+        # each courier row sits at the top of ITS OWN parent's group -- the
+        # repo's courier comes right after the repo row (before the feature),
+        # the feature's courier comes right after the feature row (before its
         # subagent)
         self.assertEqual(rows[1].target, "repoA")
         self.assertEqual(rows[3].target, "repoA/feat one")
 
-    def test_no_bus_row_when_absent(self):
+    def test_no_courier_row_when_absent(self):
         rows = sidebar.flatten(_fleet())
-        self.assertNotIn("bus", [r.kind for r in rows])
+        self.assertNotIn("courier", [r.kind for r in rows])
 
     def test_repo_without_session_is_skipped_entirely(self):
         # sidebar-titling item 3: an empty project (no live session) has
@@ -278,12 +278,12 @@ class RenderLinesTests(unittest.TestCase):
         for line in lines:
             self.assertLessEqual(len(line), 6)
 
-    def test_bus_row_renders_with_message_glyph(self):
+    def test_courier_row_renders_with_message_glyph(self):
         fleet = _fleet()
-        fleet.repos[0].bus = sm.Bus()
+        fleet.repos[0].courier = sm.Courier()
         lines = sidebar.render_lines(fleet, width=64)
-        self.assertIn(sidebar.BUS_GLYPH, lines[1])
-        self.assertIn(sm.BUS_LABEL, lines[1])
+        self.assertIn(sidebar.COURIER_GLYPH, lines[1])
+        self.assertIn(sm.COURIER_LABEL, lines[1])
 
 
 def _many_repos_fleet(n):
@@ -737,14 +737,12 @@ class RoleEmojiTests(unittest.TestCase):
     placeholder or a crash."""
 
     def test_known_roles_map_to_their_emoji(self):
+        self.assertEqual(sidebar.ROLE_EMOJI["gardener"], "🌳")
+        self.assertEqual(sidebar.ROLE_EMOJI["landscaper"], "🌿")
+        self.assertEqual(sidebar.ROLE_EMOJI["sower"], "🌱")
+        self.assertEqual(sidebar.ROLE_EMOJI["groundskeeper"], "🧹")
+        self.assertEqual(sidebar.ROLE_EMOJI["courier"], "📮")
         self.assertEqual(sidebar.ROLE_EMOJI["bloomer"], "🌸")
-        self.assertEqual(sidebar.ROLE_EMOJI["housekeeper"], "🍂")
-        self.assertEqual(sidebar.ROLE_EMOJI["bus"], "📯")
-        self.assertEqual(sidebar.ROLE_EMOJI["builder"], "🌾")
-
-    def test_pending_pick_roles_are_none(self):
-        self.assertIsNone(sidebar.ROLE_EMOJI["orchestrator"])
-        self.assertIsNone(sidebar.ROLE_EMOJI["architect"])
 
     def test_role_emoji_helper_returns_none_without_crashing(self):
         self.assertIsNone(sidebar.role_emoji("orchestrator"))

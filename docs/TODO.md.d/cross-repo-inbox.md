@@ -19,13 +19,13 @@
 - **Ingest-and-delete, or durable + acknowledged?** HANDOVER is deleted on sight. A
   requirement should probably become a task on the receiver's board and *then* the
   message dies — that is a different lifecycle, with an ack the sender can observe.
-- **Who ingests, and when?** Receiving orchestrator at boot is the obvious hook (it
+- **Who ingests, and when?** Receiving gardener at boot is the obvious hook (it
   already ingests HANDOVER there). Cost: another boot-time read on a role that is
   deliberately lean.
 - **Sensitive content: ENCRYPTED AND KEPT, not deleted** (operator ruling, 2026-07-17).
   Delete-and-sanitize was considered and rejected: a message that warrants a task is
   persistent by definition, so destroying it destroys what the task needs.
-  "Sensitive but not persistent" is an incoherent category. The orchestrator encrypts
+  "Sensitive but not persistent" is an incoherent category. The gardener encrypts
   sensitive information at board blooming; `content: sensitive` marks content to
   **encrypt**, not to delete. Open below — this ruling sets the direction, not the
   mechanics:
@@ -35,7 +35,7 @@
     satisfying the rule's *intent* (nothing readable leaks) while breaking its *letter*.
     That file MUST NOT be modified without an explicit operator request. Needs a ruling
     before anything is built.
-  - **Encrypted to whom?** The architect implementing the task must read it, so the key
+  - **Encrypted to whom?** The landscaper implementing the task must read it, so the key
     has to be reachable by an agent. That means this does not defend against a local
     attacker — it defends against *publication*. Naming the threat model decides the key
     choice: an operator smart-card key (strong, but every read needs a PIN — gpg
@@ -49,7 +49,7 @@
     published later, permanently. If sensitive tasks are instead confined to the private
     side of that split, the encryption question may narrow considerably — decide the
     split first, or at least alongside.
-  - Blooming is done by the `bloomer` agent as well as the orchestrator; both need this,
+  - Blooming is done by the `bloomer` agent as well as the gardener; both need this,
     or the rule has a hole.
 - **Storage: in-tree, or on an invisible ref?** (operator, 2026-07-17 — leading idea.)
   Sensitive content need not live in the working tree at all. Store it the way `git
@@ -82,7 +82,7 @@
     they are genuinely gone. **No history rewrite, no filter-repo, no scrub ceremony.**
     Sensitive content committed in-tree can NEVER be removed that cheaply — that
     asymmetry is arguably the strongest argument for this storage choice.
-    Open: who fires the deletion? The `housekeeper` owns the deterministic close and is
+    Open: who fires the deletion? The `groundskeeper` owns the deterministic close and is
     the natural candidate. And who judges "no further value" — is it automatic at close,
     or operator-gated? (Operator's thought was cut off mid-sentence; confirm the
     intended trigger before building it.)
@@ -127,7 +127,7 @@
 ## Findings
 - **There is no channel today, and its absence caused a real boundary violation on
   2026-07-17.** orchids decided the role-DAG model and needed kauk to build the reader.
-  With no protocol, the orchids orchestrator wrote a task directly into kauk's working
+  With no protocol, the orchids gardener wrote a task directly into kauk's working
   tree — authoring on a board it does not own, setting another project's badge,
   component, and priority. Operator ruling on the correction: work to be done by kauk
   *belongs* in kauk's repo (moving it there is right; deleting it would lose it). What
@@ -154,7 +154,7 @@
 ## Proposal
 Sketch only — the push/pull and sensitive-handling forks above decide the shape, and
 they are the operator's. Leading candidate: each repo owns an **outbox** of sanitized,
-addressed messages; the receiving orchestrator pulls at boot, converts each into a task
+addressed messages; the receiving gardener pulls at boot, converts each into a task
 on its own board, and acks. The sender never writes the receiver's tree. Message kinds
 worth distinguishing early: *requirement* (do this), *knowledge* (this is true, you will
 need it), *ack* (filed as `<id>`).
@@ -164,11 +164,11 @@ Fixed by operator ruling (2026-07-17), not open:
   See Findings for why. The `.git/`-only rule is a consequence of the handover's
   lifecycle, not a general sanitization policy to be copied here.
 - **Sensitive content is encrypted and kept**, because it is the input to creating work.
-- **External blockers are resolved when the orchestrator loads its tasks** — see the
+- **External blockers are resolved when the gardener loads its tasks** — see the
   sibling task `external-blockers`, which owns that half.
 
 ## Testing
-Two scratch repos: A posts a requirement to B; B's orchestrator boots, files it as a
+Two scratch repos: A posts a requirement to B; B's gardener boots, files it as a
 real task on its own board, and acks; A observes the ack. Assert A never wrote to B's
 tree. Negative test: a message carrying sensitive content is refused, not merely warned
 about. Board lint stays clean on both sides throughout.

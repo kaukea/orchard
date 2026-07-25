@@ -25,7 +25,7 @@
   branches mutable, MAKE IT SO gating). The second set is meaningless in a repo running
   a different process.
 - The `Branch: main` conflict is live evidence: `git-commit` says `Branch:` is "never
-  `main`", while the orchestrator's procedural-on-main carve-out requires exactly
+  `main`", while the gardener's procedural-on-main carve-out requires exactly
   `Branch: main` for board commits — and does so in every repo, not just orchids. The
   split is where that contradiction gets resolved; it is currently unresolved in the
   package and worked around by convention.

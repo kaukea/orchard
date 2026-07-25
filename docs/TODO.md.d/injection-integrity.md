@@ -17,7 +17,7 @@ _None._
 
 - **Agents skip and summarise what they are told to read.** The operator has repeatedly had
   agents admit they did not read `AGENTS.shared.md` and relied on a subagent's summary
-  instead. Corroborated in-session on 2026-07-19: an architect logged that it "treated a
+  instead. Corroborated in-session on 2026-07-19: a landscaper logged that it "treated a
   subagent's summary of `lg-cec-protocol.md` as sufficient instead of reading the document."
 - The distinction is PUSH vs PULL. Content already in context (system prompt, hook injection)
   cannot be skipped. Content an agent must choose to open can be skimmed, deferred, or

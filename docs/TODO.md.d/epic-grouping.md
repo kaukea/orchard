@@ -14,7 +14,7 @@
 - Operator intake (2026-07-24, dictation): the board has no concept of an
   EPIC — a grouping of smaller features toward a big feature — and the
   current sidebar/fleet cluster is exactly that in practice. Once epics
-  exist, the orchestrator's cockpit view should convey a sense of
+  exist, the gardener's cockpit view should convey a sense of
   PERCENTAGE of work already done per epic. Explicitly optional and for
   later.
 - Relation: the board already nests parents/children (§TODO hierarchy);

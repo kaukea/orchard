@@ -26,7 +26,7 @@ English rather than as leaked session notes.
 ## Rules
 
 - **Write for the stranger.** The reader has not seen the session, the plan round, or
-  the bus. If a sentence only makes sense to tonight's participants, rewrite it.
+  the courier. If a sentence only makes sense to tonight's participants, rewrite it.
 - **Full sentences.** Fragments chained with semicolons and dashes are notes, not
   writing. Titles and subjects may compress; bodies may not.
 - **Expand or drop insider vocabulary.** "hop", "gate", "cold-start", "frozen", "the

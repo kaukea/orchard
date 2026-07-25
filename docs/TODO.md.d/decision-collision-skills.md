@@ -1,5 +1,5 @@
 - created: 2026-07-21
-- created_by: fable-5 (orchestrator, agent-closing ingest)
+- created_by: fable-5 (gardener, agent-closing ingest)
 
 ## Questions
 
@@ -7,10 +7,10 @@
 
 ## Findings
 
-- Flagged by the agent-closing architect (not touched, decisions.md is the
-  orchestrator's): `skills/*.md` cite "Decision-046" (worktree-mode) and
+- Flagged by the agent-closing landscaper (not touched, decisions.md is the
+  gardener's): `skills/*.md` cite "Decision-046" (worktree-mode) and
   "Decision-047" (metadata-hints) with meanings that differ from
-  `docs/decisions.md` 046 (bus wake) and 047 (operator relay) — the skills
+  `docs/decisions.md` 046 (courier wake) and 047 (operator relay) — the skills
   were written against a different numbering.
 
 ## Proposal

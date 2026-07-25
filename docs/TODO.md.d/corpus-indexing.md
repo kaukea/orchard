@@ -16,7 +16,7 @@ depend on the capture spool ([[capture-now]]) staying current.
 ## Findings
 
 - Design session 2026-07-24 (blueprint + four research sweeps + two reviews, in the
-  orchestrator workstream log): pipeline is schema-last — (1) phase + era + monotonic
+  gardener workstream log): pipeline is schema-last — (1) phase + era + monotonic
   order marking, (2) extraction around the authored skeleton (decisions chains, commit
   trailers, board edges), (3) distillation with operator ratification. Indexing is
   deliberately inventory-FIRST: enumerate and measure everything before any content

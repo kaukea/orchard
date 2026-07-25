@@ -52,7 +52,7 @@ branch `tmp/main-rewrite`; tag `backup/pre-rewrite` on current `main` FIRST.
 Original `main` is never checked out, committed to, amended, or deleted.
 
 **Dispatch note:** §0–§1 are read-only (the backup tag is the only ref created, and it
-touches nothing). The orchestrator may run them as a parallel background subagent;
+touches nothing). The gardener may run them as a parallel background subagent;
 every write from §2 on waits behind operator gate #1.
 
 ## 1 · Sweep, then partition (operator gate #1)

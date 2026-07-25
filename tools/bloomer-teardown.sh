@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bloomer pane teardown — run by the bloomer AGENT ITSELF as its last act.
 # Returns focus to the pane that launched it (bloomer-launch.sh) and closes
-# the bloomer's own pane. Pane-scoped counterpart to architect-teardown.sh's
+# the bloomer's own pane. Pane-scoped counterpart to landscaper-teardown.sh's
 # window-scoped close: same socket-aware tx wrapper, same .return-* contract,
 # scaled down from a whole window to a single split pane (Decision-075).
 #

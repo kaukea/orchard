@@ -5,7 +5,7 @@
 
 - ~~Sequencing only: the operator ordered the sidebar bug fixes to start after
   the bloomer v1 build lands, one at a time, each verified live on the
-  orchestrator's own sidebar after coding.~~ Pulled forward (operator,
+  gardener's own sidebar after coding.~~ Pulled forward (operator,
   2026-07-24 evening): runs NOW as the one-go quick pass, in parallel with
   the bloomer close.
 
@@ -28,7 +28,7 @@
 - Observed (operator, 2026-07-24): gradient backgrounds are missing from the
   project name rows (orchids, SignMc). Both projects render as empty groups
   although no session is open for either.
-- Pane capture (2026-07-24 evening, orchestrator, `tmux capture-pane -e` on
+- Pane capture (2026-07-24 evening, gardener, `tmux capture-pane -e` on
   the live sidebar): confirms and extends the report —
   - `orchids` header renders bold+reverse-video (`[1;7m`), `SignMc` renders
     bold only (`[1m`): no gradient anywhere, and the two project headers are
@@ -50,7 +50,7 @@
     name must map 1:1 to the GitHub repository name (naming slice pulled
     forward from [[orchestrator-identity]], which keeps the
     single-instance enforcement).
-  - Architect window pane titles flicker: sometimes the Claude name shows,
+  - Landscaper window pane titles flicker: sometimes the Claude name shows,
     sometimes nothing, sometimes `bash`, depending on whether the title is
     displayed — titles must be deterministic.
 
@@ -59,7 +59,7 @@
 The one-go quick pass — seven items, all decisions baked in. OPERATOR
 MANDATE (2026-07-24 evening): decisions are final; the plan-gate question
 round AND the MAKE IT SO prologue are waived for this feature — the
-architect builds exactly this list and nothing else, immediately; the
+landscaper builds exactly this list and nothing else, immediately; the
 operator's gate is the live one-look verification at the end plus THAT IS
 ALL at close.
 
@@ -73,7 +73,7 @@ ALL at close.
    recorded here at build; no icon is ever shown for a state the observer
    cannot verify. Inherit the ignored icon history from sidebar-polish /
    sidebar-spacing-and-glyphs before choosing the set.
-5. Session naming 1:1: the orchestrator session in every repo is named
+5. Session naming 1:1: the gardener session in every repo is named
    exactly after its repository (this repo's live session renamed as part of
    the pass); pane titles are set explicitly with `allow-rename off`
    everywhere so no pane ever shows `bash` or flickers.
@@ -84,7 +84,7 @@ ALL at close.
 7. Done state (operator, amendment round): a done feature's row NEVER
    leaves the current session's view — it renders green, sorts to the top
    of its project group, and the list keeps accruing below. Clarified
-   mid-build (operator, relayed over the bus to the working architect):
+   mid-build (operator, relayed over the courier to the working landscaper):
    this rule is for FEATURE rows only — SUBAGENT rows (white/black-circle)
    DISAPPEAR when done; they have nothing to say and nothing to display.
 
@@ -119,7 +119,7 @@ operator has begun dictating the interaction spec into
   rework; its renderer contribution is already in main.
 - Custom question tmux dialogs (the queued-question broker UI) are "nowhere
   to be seen" (operator) — that is the [[operator-interacting]] surface, not
-  built; the bus grammar defined the question CLASS only.
+  built; the courier grammar defined the question CLASS only.
 
 ## Testing
 

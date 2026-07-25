@@ -14,11 +14,11 @@
 ## Findings
 
 - Returned as follow-up #1 by the psychometric-discovery close (merged
-  eaa8bae): repoint the orchestrator's §Blooming/handoff round and the
-  `bloom-tasks` dispatch target from groomer to bloomer; the orchestrator
+  eaa8bae): repoint the gardener's §Blooming/handoff round and the
+  `bloom-tasks` dispatch target from groomer to bloomer; the gardener
   adopts `tools/bloomer-launch.sh` / `bloomer-teardown.sh` (until then
   dispatch is manual/scripted).
-- The wiring shape is ruled by Decision-075: the orchestrator dispatches the
+- The wiring shape is ruled by Decision-075: the gardener dispatches the
   bloomer pane at intake and in the Decision-050 pre-launch slot, ANALYZES
   the statistical report itself, and owns the go/no-go — no
   delegate-and-forget.
@@ -26,12 +26,12 @@
 ## Proposal
 
 (to shape when unblocked) Groomer analysis → keep/retire verdict; repoint
-orchestrator definition and bloom-tasks skill to the bloomer; orchestrator
+gardener definition and bloom-tasks skill to the bloomer; gardener
 adopts the pane launch/teardown scripts; groomer definition retired per the
 verdict.
 
 ## Testing
 
 To agree when unblocked — expected: a full intake and a full pre-launch
-round run through the bloomer pane with the orchestrator executing the
+round run through the bloomer pane with the gardener executing the
 outcome; no reference to the groomer remains in the pipeline.

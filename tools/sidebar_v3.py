@@ -120,9 +120,9 @@ def _project_block(name: str, idle: float, sess: dict[str, dict]) -> list[str]:
     if task:
         header += "  " + ("✓" if task == "completed" else "❌")
     lines = [header]
-    # orchestrator (the header agent) first, then the rest, stable by session id
+    # gardener (the header agent) first, then the rest, stable by session id
     order = sorted(sess.values(),
-                   key=lambda r: ((r.get("identity") or {}).get("agent") != "orchestrator",
+                   key=lambda r: ((r.get("identity") or {}).get("agent") != "gardener",
                                   r["sid"]))
     for rec in order:
         lines.append("  " + _session_line(rec))

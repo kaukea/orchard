@@ -18,14 +18,14 @@
 ## Findings
 
 - Operator (2026-07-20): "a simple available file that can be read and parsed by that
-  component" — each repository's orchestrator PREPARES the summary; Orchard only reads.
+  component" — each repository's gardener PREPARES the summary; Orchard only reads.
   This keeps Orchard dumb and the intelligence where the context is.
 - The projection rule already exists at task level (sidecar → board badge); this is the
   same move one level up (board → fleet summary).
 
 ## Proposal
 
-The orchestrator maintains a machine-readable summary file as part of its board
+The gardener maintains a machine-readable summary file as part of its board
 commits: repo identity, per-urgency counts, blocked items with what blocks them
 (including cross-repo edges), the prepared/plan-ready tasks with one-line descriptions,
 and the board SHA + timestamp it reflects. Format settled at blooming (answer the

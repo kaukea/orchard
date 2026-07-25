@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "root=\"$(git rev-parse --show-toplevel 2>/dev/null)\"; [ -x \"$root/.claude/hooks/bus-init.sh\" ] && \"$root/.claude/hooks/bus-init.sh\"; exit 0",
+            "command": "root=\"$(git rev-parse --show-toplevel 2>/dev/null)\"; [ -x \"$root/.claude/hooks/courier-init.sh\" ] && \"$root/.claude/hooks/courier-init.sh\"; exit 0",
             "timeout": 10
           }
         ]
@@ -66,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "root=\"$(git rev-parse --show-toplevel 2>/dev/null)\"; [ -x \"$root/.claude/hooks/bus-end.sh\" ] && \"$root/.claude/hooks/bus-end.sh\"; exit 0",
+            "command": "root=\"$(git rev-parse --show-toplevel 2>/dev/null)\"; [ -x \"$root/.claude/hooks/courier-end.sh\" ] && \"$root/.claude/hooks/courier-end.sh\"; exit 0",
             "timeout": 10
           }
         ]
