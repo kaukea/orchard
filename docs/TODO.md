@@ -133,3 +133,10 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `feature · todo · idea · queued · sync · gh#18` [Dynamic skill delivery per role](TODO.md.d/dynamic-skill-delivery.md)
 - `feature · todo · idea · queued · sync · gh#19` [Multi-source namespacing](TODO.md.d/multi-source-namespacing.md)
 - `feature · todo · idea · blocked-on-answers · sync · gh#20` [Agents: external dependencies beyond in-package skills](TODO.md.d/agent-external-deps.md) ~agents-first-class ~multi-source-namespacing
+- `feature · todo · · queued · · gh#232` [Decision-067: Decision-to-issue matching is title-based and stateless](TODO.md.d/decision-067-decision-to-issue-matching-is-title.md)
+- `feature · todo · · queued · · gh#231` [Decision-066: Decision supersession projects as GitHub's native duplicate-of, not a body-note fallback](TODO.md.d/decision-066-decision-supersession-projects-as-g.md)
+- `feature · todo · · queued · · gh#230` [Decision-061: Decision-043 superseded — the sidebar discovers repos via the registry](TODO.md.d/decision-061-decision-043-superseded-the-sidebar.md)
+- `feature · todo · · queued · · gh#229` [Decision-060: Agent self-exit lifecycle — two closing messages, a declared grace, then the orchestrator kills](TODO.md.d/decision-060-agent-self-exit-lifecycle-two-closi.md)
+- `feature · todo · · queued · · gh#228` [Decision-059: Human names are authored at intake, never grammar-converted at runtime](TODO.md.d/decision-059-human-names-are-authored-at-intake-.md)
+- `feature · todo · · queued · · gh#227` [Decision-058: The sidebar status vocabulary is six static states](TODO.md.d/decision-058-the-sidebar-status-vocabulary-is-si.md)
+- `feature · todo · · queued · · gh#226` [Decision-057: The operator's build-gate phrase, translated at the boundary](TODO.md.d/decision-057-the-operator-s-build-gate-phrase-tr.md)
