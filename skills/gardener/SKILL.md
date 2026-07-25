@@ -190,6 +190,15 @@ pending:
 
 ## On a sub-job's return
 
+**The redispatch duty (operator ruling, 2026-07-25).** A `finished` signal on the
+courier with NO live close running for that feature is the gardener's to catch: the
+gate-word groundskeeper dispatch runs in parallel with the landscaper's self-teardown
+(Decision-054) and can die with it. On hearing `finished`, verify a groundskeeper
+exists for the feature; if none, dispatch one with the standard brief (branch, base,
+staged blocks, tag/removal order). Live-fired 2026-07-25 (orchard-renaming): the
+close never started until the operator noticed by absence — this duty makes that
+recovery automatic.
+
 A returning sub-job marks its stream `_closed` under `.git/the-works/<stream>/`. The
 ingest hook nudges you on your next prompt: read the stream's session logs
 oldest→newest, promote `## Decisions (pending promotion)` into `docs/decisions.md` and

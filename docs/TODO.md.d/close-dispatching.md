@@ -1,6 +1,18 @@
 - created: 2026-07-25
 - created_by: Sebastien Lambla
 - created_during: orchestrator session (orchard-renaming close gap)
+- completed: 2026-07-25
+- completed_during: orchestrator session (procedural-on-main, Decision-065)
+
+## Result
+
+CLOSED BY DOCUMENTATION (operator ruling, 2026-07-25 afternoon: "we do not
+need five — that has been done already; it's in the documentation or should
+be"). The gardener skill now carries the redispatch duty: on a `finished`
+signal with no live close for that feature, verify and dispatch the
+groundskeeper with the standard brief — the recovery live-fired for
+orchard-renaming this morning. Any deeper mechanism review rides
+[[close-family-fakes]] after the bus lands.
 
 ## Blockers
 
@@ -8,10 +20,10 @@
 
 ## Questions
 
-- Who owns the gate-word dispatch when the architect dies at that exact moment —
-  should the orchestrator treat every `finished` bus signal as "verify a
-  housekeeper exists, dispatch if not", making recovery automatic instead of
-  operator-noticed?
+- ~~Who owns the gate-word dispatch when the architect dies at that exact
+  moment?~~ ANSWERED by the ruling: the gardener does — every `finished` it
+  hears without a live close means verify-and-dispatch. Documented in the
+  gardener skill.
 
 ## Findings
 

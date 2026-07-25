@@ -4,16 +4,14 @@
 
 ## Blockers
 
-- PARITY GATE (operator sequencing, 2026-07-25): the tracked `sidebar_model.py`
-  reads courier INBOXES (announce = identity, broadcast = status). Killing the
-  fan-out before `sidebar_v3` reaches parity blinds the old sidebar. Cut only
-  after parity is confirmed on screen.
+- ~~PARITY GATE (operator sequencing, 2026-07-25 morning).~~ DROPPED by
+  operator ruling (2026-07-25 afternoon): "I think it's just killing it" —
+  the old inbox-fed `sidebar_model.py` retires WITH the fan-out; no parity
+  dance. Builds as part of [[bus-finishing]].
 
 ## Questions
 
-- Is parity now met? `sidebar_v3` already shows feature/task · agent·model ·
-  lifecycle · status · outcome per session. Operator confirms on screen, then
-  this unblocks.
+- ~~Is parity now met?~~ MOOT — the parity gate is dropped (ruling above).
 
 ## Findings
 
