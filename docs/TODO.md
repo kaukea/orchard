@@ -39,7 +39,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `feature · done · · complete/interactive · process ·` [Decision projecting: decisions mirror as their own type, closing on supersession](TODO.md.d/decision-projecting.md) ~field-projecting
   - `completion · todo · · queued · process · gh#187` [Component field declaring: Component missing from board_gh field sets](TODO.md.d/component-field-declaring.md) ~field-projecting
   - `bug · done · critical · complete/interactive · process · gh#252` [Ingest echo loop: callabloom folds the board's own decision mirrors back as tasks](TODO.md.d/ingest-echo-loop.md) ~github-board-sync ~decision-projecting ~close-dispatching
-  - `feature · todo · · plan-ready · process ·` [Sync automating: hidden-field binding, no file write-backs, inline draft issues at intake](TODO.md.d/sync-automating.md) ~github-board-sync ~ingest-echo-loop ~intake-deduping
+  - `feature · todo · · plan-ready · process · gh#262` [Sync automating: hidden-field binding, no file write-backs, inline draft issues at intake](TODO.md.d/sync-automating.md) ~github-board-sync ~ingest-echo-loop ~intake-deduping
 - `housekeeping · todo · nice-to-have · blocked-on-answers · process · gh#14` [Install-id migration to the kaukea org — parked until the org name is final](TODO.md.d/install-id-kaukea.md)
 - `feature · todo · idea · queued · process · gh#188` [Epic grouping: features rolled toward a big feature, with cockpit progress](TODO.md.d/epic-grouping.md) ~orchard ~github-board-sync
 - `feature · todo · · queued · · gh#25` [Orchard: the fleet workbench — global view, selection, dispatch](TODO.md.d/orchard.md) ~github-board-sync ~cross-repo-inbox
@@ -79,7 +79,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `bug · todo · · queued · process · gh#204` [Bloom subset posterior: multi-select dimensions converge instead of exhausting](TODO.md.d/bloom-subset-posterior.md) ~psychometric-discovery ~bloom-administering
 - `bug · done · · complete/interactive · process ·` [Agents leave sub-agents and sessions unclosed: the flow cannot finish](TODO.md.d/agent-closing.md) ~message-bus ~hook-choreography ~zombie-revival
 - `bug · done · critical · complete/interactive · process · gh#258` [Close dispatching: the gate-word groundskeeper dispatch can die with the landscaper](TODO.md.d/close-dispatching.md) ~agent-closing ~window-closing-owning ~hook-choreography
-- `feature · todo · · queued · ·` [Close-family fakes: window owning, zombie revival, sidebar witnessing — re-examined once the bus lands](TODO.md.d/close-family-fakes.md) ⊘bus-finishing ~close-dispatching ~agent-closing
+- `feature · todo · · queued · · gh#263` [Close-family fakes: window owning, zombie revival, sidebar witnessing — re-examined once the bus lands](TODO.md.d/close-family-fakes.md) ⊘bus-finishing ~close-dispatching ~agent-closing
   - `bug · todo · critical · working · process · gh#215` [Window closing owning: agents close themselves — kill listener removed by Decision-081](TODO.md.d/window-closing-owning.md) ~sidebar-polish ~bus-singleton ~agent-closing
   - `feature · todo · · blocked-on-answers · process · gh#30` [Zombie delivery: scripts revive dead sessions before handing them messages](TODO.md.d/zombie-revival.md) ~bus-liveness ~message-bus
   - `bug · todo · · queued · process · gh#193` [Sidebar witnessing: ghost rows persist, silent live agents invisible — the ephemeral-courier observer gap](TODO.md.d/sidebar-witnessing.md) ~sidebar-polish ~bus-singleton ~message-bus
@@ -109,7 +109,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `feature · done · · complete/interactive · process ·` [Message courier: repo-scoped agent-to-agent messaging via a courier sidecar](TODO.md.d/message-bus.md) ~hook-choreography ~cross-repo-inbox
 - `refactor · functional · · complete/interactive · process ·` [Bus message specifying: tighten the vocabulary, fix what each agent sends](TODO.md.d/bus-message-specifying.md) ~message-bus ~fleet-documenting ~sidebar-witnessing ~sidebar-titling ~orchard-renaming ~bus-transport-v2
 - `feature · functional · · plan-ready · process ·` [Bus transport v2: the dictated topic design, fed one iteration at a time](TODO.md.d/bus-transport-v2.md) ~bus-message-specifying ~bus-close-cleanup ~message-bus
-- `feature · todo · critical · plan-ready · ·` [Bus finishing: request/response across repos, fan-out killed, singleton and close cleanup — the good-enough gate](TODO.md.d/bus-finishing.md) ~bus-transport-v2 ~message-bus
+- `feature · todo · critical · plan-ready · · gh#264` [Bus finishing: request/response across repos, fan-out killed, singleton and close cleanup — the good-enough gate](TODO.md.d/bus-finishing.md) ~bus-transport-v2 ~message-bus
   - `feature · todo · · blocked-on-answers · process · gh#209` [Bus relay: request/response unicast, delete-on-read, across repositories](TODO.md.d/bus-relay.md) ~bus-transport-v2 ~cross-repo-bus ~message-bus
   - `refactor · todo · · plan-ready · process · gh#210` [Fan-out cut-over: topic posts replace v1 inbox broadcasts — just kill it](TODO.md.d/fanout-cutover.md) ~bus-transport-v2 ~message-bus ~bus-close-cleanup
   - `feature · todo · · blocked-on-answers · process · gh#45` [Cross-repo bus: live messaging across repository boundaries](TODO.md.d/cross-repo-bus.md) ~message-bus ~cross-repo-inbox
