@@ -43,75 +43,40 @@ see it as a `messages · …` line in your pane. You never address agents yourse
 it's how they reach each other, not you.
 
 **And you get to watch.** A fleet sidebar mounts automatically as a pinned left
-pane in every gardener and landscaper window: a live tree of every
+pane in every gardener and landscaper window: a live tree of every registered
 repository, the features under it, what each one is doing *right now*, and any
-sub-agents in flight — all read straight off the courier (agents broadcast
-`orchid:activity:<text>` and `orchid:subagent:start|done:<label>` as ordinary
-messages; no extra machinery). Rows carry a status emoji, flash when something
-is waiting on **you**, and arrow keys + Enter jump you straight to that work's
-tmux window. It shows the current repository by default; list more in
-`~/.config/orchids/sidebar-repos` (one path per line) or `ORCHIDS_SIDEBAR_REPOS`.
+sub-agents in flight — all read straight off the orchard topic tree, waking no
+agent. Rows carry a status emoji, flash when something is waiting on **you**,
+show staleness as colour (done green, failed red, not-heard-from gray), and
+arrow keys + Enter jump you straight to that work's tmux window.
 
-## Courier messages, as built (audit inventory, 2026-07-25)
+## Courier messages: the orchard transport
 
-The complete set of pre-fixed / formatted messages that exist in the codebase
-today (`tools/courier.py` + the agent definitions), recorded here as the baseline
-for the redesign. Delivery is unconditional fan-out: every message is copied
-into every registered session's spool folder — dead inboxes included — and
-every live agent's courier sidecar wakes on every copy.
+One script, `tools/courier.py` — the transitional `bus.py` shim is retired.
+**No fan-out**: the old broadcast-to-every-inbox delivery (and its measured
+token leak) is gone. Messaging runs on a flat, user-wide runtime tree:
 
-| Format | Sent by | Defined in |
-|---|---|---|
-| `announce` — identity envelope (session id, feature) | courier sidecar at session start | `courier.py announce` |
-| `depart` — departure broadcast | courier sidecar at session end | `courier.py depart` |
-| `signal --state started·building·testing·done·finished·blocked·abandoned` | agent (to parent, else broadcast), always as itself | `courier.py signal` |
-| `orchid:activity:<free text>` | **agents directly** (`courier.py broadcast`, "never spend a courier-agent turn on it") | gardener/landscaper/bloomer/groomer definitions |
-| `orchid:subagent:start:<label>` / `orchid:subagent:done:<label>` | agent via its courier sidecar | gardener/landscaper definitions |
-| `ask --question --option… [--multi]` — blocking question broker; replies `{index}`, `{indices}`, or `{continue}` | agent | `courier.py ask` |
-| Fixed request bodies `identity`, `status` | any agent; answered by the recipient's sidecar without waking its parent | `courier.py` FIXED tuple |
-| Envelope flags: `notify_user`, `operator_origin`, `in_reply_to` | any sender | `make_envelope` |
+```
+$XDG_RUNTIME_DIR/orchard/
+  projects/<repo>.<project>/   # session mailboxes — directed :session:<id> mail
+  topics/<name>/               # pub/sub topics carrying the sidebar's telemetry
+```
 
-Two audit findings the redesign must correct:
+Directed messages are delete-on-read, support a blocking request/reply round
+trip, and cross repositories through a manually-maintained allowlist
+(`~/.config/orchids/sidebar-registry.json`). Topic posts carry lifecycle,
+status, delegation, and outcome events — each stamped with the sender's
+identity and live status; nothing touches another agent's inbox and no agent
+wakes for telemetry. A finish reaches the parent as a directed
+`lifecycle:stopped` with its outcome; questions to the operator ride the
+reserved `:session:operator` mailbox.
 
-- **There is no single send path.** Agents are *instructed* to call `courier.py
-  broadcast` directly for activity; sidecars send announces, relays, and
-  subagent markers; nothing blocks any tool, so any agent can send anything
-  at any time. Single-choke-point sending does not exist today.
-- **The noisiest traffic is not in the codebase at all.** The repeated
-  `awaiting operator (native prompt)` waiting-state broadcasts match no
-  string in any definition or tool — sidecars improvise them, which is why
-  they duplicate freely.
-
-Measured cost of this design (2026-07-24, one heavy day, ~4 live agents):
-the sidecar layer alone consumed ≈150–200k subagent tokens (~1k per message
-per listener); the hand-ups re-invoked parent agents with full context
-≈45 times in the gardener alone — order of 7M cache-read tokens plus
-~0.3M fresh working tokens attributable to courier chatter, dominated by
-duplicate waiting-state rebroadcasts carrying zero information.
-
-**Courier messages, as specified (WIRE GRAMMAR v1).** The free-form layer above
-is retired. Canonical spec: `agents/courier.md`; mechanical enforcement:
-`tools/courier.py` (send and broadcast reject any `orchid:*` body outside the
-grammar). Five classes, each with a declared consumer: `orchid:status:<word>`
-(one/two agent-chosen doing-words, on change only), `orchid:update:<sentence>`
-(log/cockpit-targeted), `orchid:phase:<phase>[:<k>/<n>]` (the five-phase spine
-the sidebar turns into a live percentage), `orchid:subagent:queue|start|done:
-<label>` (counts are the message), `orchid:interrupt:question:<subject>`
-(emitted only by `courier.py ask`). Exactly three DERIVED interrupts may summon
-the operator — QUESTION ⇐ ask, SUCCEEDED ⇐ done/finished, FAILED ⇐
-abandoned/blocked+notify; `--notify-user` is illegal anywhere else, and
-sidecars never author wire text of their own. `courier.py validate [PATH]` audits
-recorded traffic (run against the live courier on 2026-07-24 it measured the old
-grammar at 247 violations across 411 envelopes — the baseline this spec
-retires). The sidebar renders the approved cockpit grammar: solid hue
-headers, one-line feature rows over a progress fill, phase checklist,
-identity line, subagent dots, `?N` question badges, and zero-token footers.
-
-**Topic transport (bus-transport-v2).** Developer-tooling note (not app
-behaviour): `tools/orchard_topic.py post
-<lifecycle|status|delegation|outcome|task> ...` is the only sanctioned writer
-of a project topic; `tools/sidebar_v3.py [--once]` renders the active projects
-and their sessions from those topics.
+**Subjects are a closed corpus** — 22 exact strings validated by membership:
+known or rejected, no patterns, no derivation; variable data rides in the
+body. Canonical spec: `agents/courier.md`. Telemetry stays live for 120
+minutes; older messages archive to `~/.cache/orchard/archives/`. The fleet
+sidebar (`tools/sidebar.py`) is the one renderer, reading the topic tree
+directly.
 
 Fix a lesson once, and every repo knows it on the next sync.
 
