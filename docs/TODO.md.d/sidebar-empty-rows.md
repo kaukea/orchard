@@ -24,8 +24,20 @@
   possibly the same defect (nothing past the header paints), noted, not a
   separate report.
 - `--once` produced a curses traceback under a non-tty (cbreak ERR) —
-  whether the consolidated renderer still has a one-shot mode is unclear;
-  worth restoring for testability (build's call).
+  whether the consolidated renderer still has a one-shot mode is unclear.
+  Pulled INTO scope by operator ruling 2 (below); no longer a loose end.
+- BLOOM ROUND (Decision-050, 2026-07-26): three operator answers, relayed
+  verbatim through the gardener, closed the WHAT. Engine report, taken as
+  given: overall SE 0.518, band "lower", launch-sizing recommendation m
+  (claude-opus-4-8, xhigh), zero misfit flags, no deferral candidates.
+  Caveats: v1 item parameters are LLM-assumed, not corpus-fitted
+  (uncalibrated_items: true); the acceptance dimension converged (SE
+  0.30) while the testability dimension reads non-converged (SE 0.74) as
+  an instrument artifact — its final confirmation item would have
+  re-asked a ruling the operator had already stated twice and was not
+  posed, leaving residual posterior mass on the never-probed "landscaper's
+  call" hypothesis, which ruling 2 overrode. Substance is settled; the
+  band, taken as given, routes the launch decision back to the gardener.
 
 ## Proposal
 
@@ -37,10 +49,36 @@ Diagnose why the built model yields zero rows for a project with a live
 marker and fresh events; fix; keep the header hue contract
 (solid per-repo hue) alive past the header.
 
+Scope, settled by operator rulings (2026-07-26 bloom round, below):
+restore the `--once` one-shot render mode inside this fix so the renderer
+is testable, and ship an automated regression test that fails when a
+project with a live marker and fresh events yields zero rows — the exact
+defect class of this bug.
+
+Voluntary deferrals: none — the round's only loose end (`--once`
+restoration) was pulled into scope by ruling 2.
+
 ## Testing
 
-Live, operator eyeball (the standing check-a gate): with the gardener
-session running, the bar shows the orchids header WITH its hue and one
-session row carrying current status; the row updates on a fresh
-`orchard_topic.py post status` without restart. Passing this closes
-check (a) and re-arms the release-cut trigger.
+Live, operator eyeball (the standing check-a gate), confirmed as written
+by ruling 1: with the gardener session running, the bar shows the orchids
+header WITH its hue and one session row carrying current status; the row
+updates on a fresh `orchard_topic.py post status` without restart.
+Missing hue keeps check (a) failing even with rows working. Passing this
+closes check (a) and re-arms the release-cut trigger.
+
+Build-time, automated (ruling 3): a regression test, runnable through the
+restored `--once` path, failing whenever a project that holds a live
+`<sessionid>.marker` and fresh events yields zero session rows.
+
+## Decision entries
+
+Operator rulings, 2026-07-26, answered in the Decision-050 bloom round
+and relayed verbatim through the gardener:
+
+1. The check (a) pass bar is rows AND hue — the Testing gate stands as
+   written; missing hue keeps check (a) failing even with rows working.
+2. `--once` (one-shot render) is restored as part of this fix so the
+   renderer is testable; acceptance remains the operator's live eyeball.
+3. An automated regression test ships with the fix: it fails when a
+   project with a live marker and fresh events yields zero rows.
