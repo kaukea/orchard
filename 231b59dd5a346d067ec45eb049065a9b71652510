@@ -1,0 +1,28 @@
+Exit interview — orchestrator session 2026-07-26 (bus-arc close + scope round)
+
+Deviations:
+- Operator questions went through AskUserQuestion, not bus.py ask
+  (charter says ask-only). Judged: operator live in this pane and
+  answering; the broker popup surface unbuilt/in-flux; bus.py retired on
+  the landing branch. Worked well — but the charter and reality disagree;
+  operator-interacting (gh#219) is where this reconciles.
+- Bus sidecar not respawned after the operator stopped it mid-round
+  (respected the stop; direct courier broadcasts sufficed). Charter
+  assumes a sidecar always; no harm observed in a single-pane session.
+- kauk sync NOT run at workflow end: the cutover-is-manual ruling
+  (operator triggers sync+restart) dominated the routine-hygiene rule.
+  Rules conflict; resolved toward the specific over the general.
+- board_gh push exceeded the 2-minute foreground cap once (many issue
+  writes post-close); reran backgrounded. Consider the background path
+  the default after large badge batches.
+- Two AskUserQuestion rounds rejected before answers: operator wanted my
+  understanding of the features restated FIRST (acceptance mechanism),
+  and context before choices. Lesson: lead multi-question rounds with the
+  reformulated understanding, ask nothing before acceptance.
+
+Friction:
+- Housekeeper did not flip bus-transport-v2 (trigger lived only in MOOD
+  pending, invisible to it) — orchestrator caught it. Standing triggers
+  that close OTHER tasks should ride the sidecar, not MOOD.
+- feature_name.py returned full board titles as window names (very long
+  tmux window names) — cosmetic, tmux-naming's territory.
