@@ -190,6 +190,34 @@ terminals that genuinely cannot do better, and is corrected there too: the
 chromatic one, having previously resolved the orchids purple to gray. A
 header is also no longer inverted merely by being the default selection.
 
+## [2026-07-26 CEST] Decision-NNN: A round-trip test needs a static-data companion
+#testing #rule #fixtures
+
+Operator rule, given verbatim: "never test code where the caller and the
+callee are the same code without another test with static daata vaidated at
+feature riting time."
+
+A test in which our own writer produces the input our own reader consumes
+proves only that the two agree with each other. When both are wrong in the
+same way it still passes, so the suite reports health while the behaviour is
+broken. Any such round-trip test must therefore be ACCOMPANIED by a test
+over static data — fixture content hand-validated at the time the feature is
+written, ideally captured from the running system — so the contract is
+pinned to something neither side of the code can move.
+
+This branch is the worked example of why. Its writer and reader agreed on a
+marker shape that cached agent identity; every round-trip test passed, and
+the shape was still wrong, being rejected outright once the operator saw the
+model it implied. Earlier in the same feature a suite of 332 tests passed
+against a sidebar that rendered an empty pane, because every fixture in it
+described the one agent role the code happened to handle. Green tests
+written this way measure agreement, not correctness.
+
+A corollary governs maintenance: when a static fixture disagrees with the
+code, the fixture is not the thing to fix. It is the older, independently
+validated party, and the disagreement is the signal the rule exists to
+produce.
+
 ## [2026-07-26 CEST] Decision-NNN: A watcher's death must not silently freeze the sidebar
 #sidebar #liveness #robustness
 
@@ -221,6 +249,48 @@ acceptance gate and cannot be self-approved)
   eyeball on a running sidebar. Automated coverage is met; the visual gate
   is his.
 
+### Confidence — what is verified, and what is not
+
+Stated per change, because it differs sharply and a single number would
+mislead.
+
+VERIFIED AGAINST REALITY, fails loudly rather than quietly:
+- row eligibility (an architect session reappeared live), `--once` (raw pty
+  bytes captured from a real pane, exit 0), filename validation (checked
+  against every name actually present in the live tree, including
+  `operator.marker`, through which operator questions are delivered — it is
+  accepted, so the new raising validator does not break that path), and task
+  persistence (reproduced by deleting every event file).
+
+WORKS HERE, LESS CERTAIN ELSEWHERE:
+- HUE depends on this machine's terminfo shipping a `*-direct` entry. Where
+  none exists it falls back to the chroma-gated 256-colour cube, which is
+  unit-tested but eyeballed only once. Degrades to an approximate colour,
+  never a crash.
+- MARKER SEMANTICS: the static-fixture rule already exposed one hole here
+  (`working` was unreachable for a marker-only task). Assume siblings exist.
+  In particular the MULTI-TASK LIST SHAPE HAS NEVER EXISTED IN PRODUCTION —
+  today one feature maps to exactly one task, so that shape is exercised
+  only by fixtures written in this session.
+- WATCHER RESTART is proven for the tested failure, a killed child.
+  Untested: inotify watch-limit exhaustion, the root being replaced by a new
+  inode, and a permanently-failing binary, where it retries on a one-second
+  backoff indefinitely.
+
+WEAKEST, AND DELIBERATELY ON THE RECORD:
+- THE ENFORCEMENT HOOK FAILS OPEN. Documented behaviour: a hook exiting
+  non-zero-but-not-2 is a non-blocking error and execution continues. So if
+  the script goes missing, loses its execute bit, or `jq` is absent after a
+  sync, enforcement silently disappears and nothing reports it. Fail-closed
+  on identity, fail-open on its own breakage.
+- COMMAND MATCHING has a stated ceiling: a call written to a file and then
+  executed, an encoded payload decoded at runtime, or nesting past three
+  unwrapping levels still passes. Matching command text is not parsing a
+  shell, and the hook's header says so rather than implying completeness.
+- NOTHING HAS RUN POST-SYNC. The hook and the rewritten charters take effect
+  only after this merges and `kauk sync` converges the vendored copies. The
+  configuration that will actually run has never run.
+
 ### Follow-ups returned to the gardener — NOT written to the board here
 
 1. `:session:` routing prefix leaks into filenames. The live tree holds
@@ -244,8 +314,32 @@ acceptance gate and cannot be self-approved)
    harmless, and the file self-clears with the tmpfs, so this was left
    alone rather than chased.
 5. `_fold_sessions`'s latest-snapshot-wins fold is sensitive to `iterdir()`
-   order when two events of one session tie on mtime. Pre-existing, noticed
-   while testing, not touched.
+   order when two events of one session tie on mtime. Pre-existing. Seen
+   INDEPENDENTLY BY TWO agents during this feature — once while building the
+   model and once while writing the static fixtures, the second of which had
+   to work around it in test scaffolding to get a deterministic result.
+   Raised from "not worth chasing" to a real follow-up on that basis: two
+   independent sightings in one feature is a defect asserting itself, not a
+   curiosity.
+7. THE ENFORCEMENT HOOK FAILS OPEN and nothing detects it. If
+   `hooks/courier-only-transport.sh` goes missing, loses its execute bit, or
+   `jq` is unavailable, the documented behaviour is that a non-blocking hook
+   error lets the call proceed — so the single-caller rule silently ceases
+   to exist with no signal. Worth a companion check that verifies the hook
+   is live, in the spirit of `courier-init.sh`'s "detection, not a capability
+   gate" note. NOT built here; it is a different problem from the one the
+   operator scoped.
+8. The general Bash/Python permission posture. The operator observed that
+   both "should be an ask in general anyway or an outright deny". Evidence
+   gathered while scoping it: permission RULE LISTS are session-wide, so a
+   deny cannot be relaxed for the courier — `permissions.md` is explicit
+   that hook decisions do not bypass permission rules and that a tool denied
+   at any level cannot be allowed at another. Per-agent frontmatter DOES
+   support `tools`, `disallowedTools`, `permissionMode` and `hooks`, so
+   posture can be set per role; only the allow/ask/deny lists cannot. The
+   documented recipe for this shape is the inverse of a deny list: allow
+   broadly and let a pre-tool hook block specifics, which is what this
+   branch built. A wider posture decision remains open and is the operator's.
 6. THE SIDEBAR NEVER RE-MOUNTS ITSELF. Operator expectation, raised in
    session: "a CTRL+C seem yo have closed the sidebar. Im expecting that any
    activity would reopen it righy?" It does not. `tools/sidebar-mount.sh` is
@@ -317,6 +411,26 @@ Rolling — folded from each sower's `ingest_increment` as it returned.
   they finish, along with their name, model and activity. The task is the
   one thing that does not disappear, so a task whose agents have all
   stopped remains as a single row carrying its final state.
+
+- 🔒 Message filenames are validated at a single writer. Two write paths
+  previously built their own destinations, and both produced names the
+  transport's design forbids — one lost its file extension, and a routing
+  prefix applied twice leaked a colon into a marker name, leaving one
+  session owning two markers and counted twice. Names outside the permitted
+  shapes are now rejected rather than repaired.
+
+- 🔒 The courier is the only caller of the message transport, enforced by
+  the harness rather than agreed by convention. A pre-tool hook refuses the
+  posting commands for any agent that is not the courier, using an identity
+  the harness supplies rather than one the agent can set. The rule fails
+  closed, so a role added later is denied by construction. Its limits are
+  stated in the file: it stops accidental and casual bypass, not a
+  determined one.
+
+- 🐛 A task whose telemetry has been archived now still reads as working
+  rather than turning gray while the work is genuinely running. Staleness is
+  unchanged and still checked first, so a task nothing has written to within
+  the liveness window continues to read as not-heard-from.
 
 ## Readme delta
 
@@ -395,6 +509,28 @@ Ledger of everything the operator asked for in-session, as received.
    session. Panes were restored on the branch build and the incident was
    reported at once. Recorded because the operator should not have to
    discover it.
-8. "Im expecting that any activity would reopen it righy?" — it does not;
+ 8. "Im expecting that any activity would reopen it righy?" — it does not;
    the mount is launch-only. RETURNED as follow-up 6 by operator ruling, NOT
    built here.
+9. "the tree shuld have a timstamp as per previous decisiosn" and "filename
+   valdation should be part o tis job" — IMPLEMENTED: one writer, one
+   validator, and both malformed shapes fixed at source.
+10. "There are areas of functionality on github and on issues, prblem to be
+   fixed hilistically" — corrects an earlier finding of mine that no area
+   existed anywhere; areas live on GitHub and on issues. NOT built: returned
+   as follow-up 2, to be solved across those sources rather than by
+   inventing a per-sidecar field.
+11. "we'll leave the pruner behind for a wile" — DEFERRED, unchanged.
+12. "the posting of messages straight through the script must be forbidden
+   rather than propose-like done… find a way an agent CANNOT call the script
+   without having called the subagent" — IMPLEMENTED as far as the harness
+   permits, with the ceiling stated plainly in the hook and in Confidence
+   above. It is not absolute and is not described as such.
+13. "RULE OF TESTING: never test code where the caller and the callee are the
+   same code without another test with static daata vaidated at feature
+   riting time" — IMPLEMENTED and recorded as a decision. It immediately
+   found a real defect that 404 round-trip tests had passed over.
+14. "you absolutely can change thepermission per agent" — correct, and my
+   claim otherwise was wrong. Verified against the documentation: per-agent
+   `tools`, `disallowedTools`, `permissionMode` and `hooks` are all
+   supported; only the allow/ask/deny rule lists are session-wide.
