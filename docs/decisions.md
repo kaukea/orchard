@@ -1677,3 +1677,331 @@ that make close orchestration work.
   landscaper and closing it against the operator's own client) rides the next
   real landscaper spawn — the standing voluntary deferral; the private-server
   test covers the mechanics.
+
+## [2026-07-26] Decision-098: Sidebar session rendering and hue colour span — operator ruling during sidebar-empty-rows bloom
+#sidebar #courier #transport #session-rows #orchard #bus-finishing #check-a
+
+**Context:** The sidebar fix for gh#275 required defining the visual contract and
+testing scope. During the Decision-050 bloom round for sidebar-empty-rows
+## [2026-07-26 CEST] Decision-098: The fleet display is five levels, and only the task persists
+#sidebar #hierarchy #orchard #marker #retention
+
+The display hierarchy is `project -> feature -> task -> agents -> subagents`.
+An AGENT is an own-session delegation sent to complete a task; there may be
+several per task and they are usually sequential — a sower, a valve running
+alongside, a cleanup — until the work returns to the orchestrator. A
+SUBAGENT is what an agent spins up. A TASK is created by the orchestrator
+and is normally a board item, though not always, since work is sometimes
+asked for outside the workflow.
+
+Agents and subagents are EPHEMERAL. They appear while working and stop
+displaying when they finish, and that includes an agent's name, model and
+activity — those are a subscript of the task it is working, never a thing
+that outlives it. The task is the one that does not disappear. On screen: a
+task being worked shows its agent's subscript and that agent's subagent rows
+beneath it; once every agent on the task has stopped, the task remains as a
+single row carrying its terminal state, with nothing beneath it.
+
+The earlier reading of this feature treated agent and task as one row,
+because in practice a single agent works a single task and the two were used
+interchangeably. That conflation is what made an earlier draft of this build
+cache agent identity and delegation labels for persistence — the two things
+that must NOT persist.
+
+## [2026-07-26 CEST] Decision-099: The orchard marker is the durable task node, keyed by project and feature
+#sidebar #orchard #marker #retention #transport
+
+The marker stops being a zero-byte per-session heartbeat and becomes the
+durable record of the TASK: one file per `(project, feature)`, carrying the
+area and the tasks under that feature with their states, so a completed task
+survives without activity. It holds nothing agent-shaped — no role, name,
+model or activity — because those are live-only and are read from the event
+stream alone. Events supply what is happening now; the marker supplies what
+remains when nothing is happening.
+
+Pruning archives the node rather than deleting it, so moving the file back
+rehydrates the feature's tasks when new work starts in it. AREA is stored
+inside the marker, not in its filename — keying the filename on the feature
+alone keeps revival a single direct lookup instead of a glob across archived
+areas, which would fork one feature into two nodes whenever a new task
+arrived in an unseen area.
+
+## [2026-07-26 CEST] Decision-100: Retention is until restart; the pruner is deliberately undesigned
+#sidebar #retention #marker
+
+Operator ruling: a completed feature or task stays for the lifetime of the
+session, until restart. How long beyond that, and when pruning runs, is
+explicitly UNDECIDED and treated as a later user-interface concern — no
+pruning policy or process is designed or built now. What ships is only the
+shape a future pruner needs: archiving a node rather than deleting it, and
+restoring it by moving the file back. This refines Decision-094 (staleness
+is a colour, not a removal), which assumed rows survive because their events
+do; they do not, since the 120-minute archival of Decision-091 removes the
+events a rebuilt-every-scan model depends on.
+
+## [2026-07-26 CEST] Decision-101: The sidebar renders a row for any identity, not only landscapers
+#sidebar #rows #identity
+
+A session earns a row the first time an identity is seen for it, whatever
+its role; the gardener continues to supply the repo header. The previous
+landscaper-only filter silently dropped every other role — an architect
+session with a live marker and fresh events rendered nothing — which is the
+defect that failed live acceptance check (a). Identity decides that a row
+EXISTS and labels it; the marker decides how long it LIVES. Mailboxes that
+never carry an identity, such as `operator`, never become rows.
+
+## [2026-07-26 CEST] Decision-102: Exact hue comes from a direct-colour terminfo, not palette redefinition
+#sidebar #colour #hue #terminal
+
+The renderer selects a direct-colour terminfo (`tmux-direct` / `xterm-direct`,
+`RGB`, `colors#0x1000000`) when truecolor is advertised, so ncurses accepts
+the mock's exact RGB values as colour numbers and no approximation runs at
+all. `can_change_color()` — false under `tmux-256color`, which is what forced
+the approximation — stops being relevant, because direct colour needs no
+palette redefinition. The 256-colour path survives only as a fallback for
+terminals that genuinely cannot do better, and is corrected there too: the
+24-step grayscale ramp may only win for near-neutral colours, never for a
+chromatic one, having previously resolved the orchids purple to gray. A
+header is also no longer inverted merely by being the default selection.
+
+## [2026-07-26 CEST] Decision-103: A round-trip test needs a static-data companion
+#testing #rule #fixtures
+
+Operator rule, given verbatim: "never test code where the caller and the
+callee are the same code without another test with static daata vaidated at
+feature riting time."
+
+A test in which our own writer produces the input our own reader consumes
+proves only that the two agree with each other. When both are wrong in the
+same way it still passes, so the suite reports health while the behaviour is
+broken. Any such round-trip test must therefore be ACCOMPANIED by a test
+over static data — fixture content hand-validated at the time the feature is
+written, ideally captured from the running system — so the contract is
+pinned to something neither side of the code can move.
+
+This branch is the worked example of why. Its writer and reader agreed on a
+marker shape that cached agent identity; every round-trip test passed, and
+the shape was still wrong, being rejected outright once the operator saw the
+model it implied. Earlier in the same feature a suite of 332 tests passed
+against a sidebar that rendered an empty pane, because every fixture in it
+described the one agent role the code happened to handle. Green tests
+written this way measure agreement, not correctness.
+
+A corollary governs maintenance: when a static fixture disagrees with the
+code, the fixture is not the thing to fix. It is the older, independently
+validated party, and the disagreement is the signal the rule exists to
+produce.
+
+## [2026-07-26 CEST] Decision-104: A watcher's death must not silently freeze the sidebar
+#sidebar #liveness #robustness
+
+`watch()` consumed its `inotifywait` child's output with a `for` loop, so the
+child exiting ended the loop, returned from `watch()`, terminated the watch
+thread and left the user interface redrawing a stale frame indefinitely —
+with no exception, no log line and no fall-through to the polling branch
+already present in the same function. Observed live: the archiver compacting
+the projects tree killed the watcher, and the pane showed a frozen frame for
+twenty minutes while a second sidebar started afterwards rendered correctly
+from identical data. A supervising loop is mandatory: the watcher is
+restarted, or the polling fallback takes over, and the display never stops
+following the tree while the process lives.
+
+Decisions taken in the ROUND 2 planning conversation (2026-07-26), for
+mechanical folding:
+
+## [2026-07-26 CEST] Decision-105: A feature spans many tasks; the display is seven levels
+#sidebar #hierarchy #feature #task #taxonomy
+
+The full tree is `area -> component -> feature -> task -> step -> agent ->
+subagent`. Area and component come from the ARCHITECTURE.md taxonomy; the
+renderer enters at FEATURE and builds downward, because the work is code.
+
+It USED to be true that only tasks existed, that a task was always the role
+of an orchestrator, and that feature, task and orchestrator session were one
+to one. THAT IS NO LONGER TRUE, and every artifact still assuming it is
+wrong. A feature spans multiple tasks as a tree. Operator's worked example:
+"message bus version two" is the FEATURE; idempotent sending, outbox
+buffering and messaging prioritization are three TASKS under it.
+
+Within a task the five STEPS run — ideation, scoping, designing, building,
+releasing. The steps belong to the TASK, not to the feature. Several tasks
+of one feature are commonly worked at the same time, and more than one agent
+may work a single step, which is rare but real: a step holds a LIST of
+agents and a feature a LIST of open tasks, neither being a single-slot
+field.
+
+This supersedes the five-level reading recorded earlier in this same
+feature, which omitted area and component above and collapsed step into the
+task below.
+
+## [2026-07-26 CEST] Decision-106: Nothing is ever hidden except by the two collapses
+#sidebar #retention #collapse #revival
+
+Nothing is hidden merely for being inactive: a feature is NOT hidden because
+one of its tasks is idle. There are exactly two collapses. A TASK collapses
+once everything in it is complete, folding its steps, identity lines and
+subagent rows inside a single row carrying its terminal state. A FEATURE
+collapses once ALL of its tasks have completed, leaving one row. A finished
+STEP folds to a plain line as the next opens, keeping its place in the five.
+
+The two levels have DIFFERENT LIFETIMES, and that asymmetry is the entire
+reason for caching and revival. A TASK is terminal: it is completed or it is
+not, and it never reopens — a change, an addition or a bug fix becomes a NEW
+task, never a revisit. A FEATURE is not terminal and is not idempotent:
+adding a task expands what the feature does, so a collapsed feature REOPENS
+and its completed tasks are revived alongside the new one rather than lost.
+A feature's completed mark is therefore never a permanent state, only its
+current one — which is what the archive-a-node-and-move-it-back shape exists
+to serve.
+
+## [2026-07-26 CEST] Decision-107: The active step is derived from the agent's role, in the UI
+#sidebar #step #role #ui
+
+OPERATOR RULING, given for the THIRD time before it was written down. Twice
+before — once when the model was first mapped, once on repeat — it was
+stated and never recorded, and that omission is precisely why the same
+ground was re-covered. The failure was the recording, not the ruling.
+
+WHICH step is active is computed CLIENT-SIDE by the renderer from
+information already collected off the bus. It is a user-interface concern,
+not a bus concern: no event names a step, and nothing is added to the
+transport to supply one.
+
+The derivation is the AGENT ROLE, because each role currently sits in
+exactly one step — gardener in ideation, landscaper in building,
+groundskeeper in releasing, and so on. The map lives in each agent charter's
+frontmatter, so a role's step travels with the role's own definition and
+survives a rename, `groomer` being mid-rename as this is written. It FAILS
+OPEN: an unknown or unmapped role still renders, without a step, because the
+entire defect class this feature exists to fix is rows silently vanishing.
+The map is a FALLBACK, so an explicit phase on the wire — deliberately
+deferred as a second step — would win over it and arrive as an addition
+rather than a rewrite.
+
+## [2026-07-26 CEST] Decision-108: Messaging carries which task an agent is on
+#transport #identity #task #sidebar
+
+The role gives the step but not the TASK. With a feature spanning many
+tasks, an identity block carrying only the feature cannot place an agent,
+and nothing downstream can infer that placement. The identity block
+therefore gains `task` alongside `feature`, written by the transport.
+
+This is structure rather than presentation — only the agent knows which task
+it is working — and it is not a step, so it stands with the ruling above
+rather than against it. The division is: the bus says WHO and ON WHAT, and
+the interface works out WHERE IN THE PIPELINE that puts them.
+
+## [2026-07-26 CEST] Decision-109: A subagent speaks through its spawner, or it should be an agent
+#transport #delegation #subagent #sidebar
+
+A subagent has no session of its own. It is registered under its parent's
+full session ID as the parent plans it, and it carries no model, no status
+text and no identity. Anything it has to report travels through the agent
+that spawned it — which is exactly why the delegation schedule / begin / end
+messages exist, and why the display needs nothing beyond the three facts
+they carry: that the subagent was PLANNED, that it is DOING, that it is
+DONE.
+
+The operator's corollary is the design test: if a unit of work genuinely
+needs to post its own updates, that is the signal it should have been an
+AGENT with its own session rather than a subagent. The reporting shape
+decides the kind, not the other way around.
+
+Subagent rows are live-only and are folded away when their task collapses,
+like everything else inside it.
+
+## [2026-07-27 CEST] Decision-110: Depth is carried by background colour, and colour encodes lineage
+#sidebar #colour #layout #contrast #accessibility
+
+Nesting in the fleet display is expressed by BACKGROUND COLOUR rather than by
+indentation, which frees the horizontal space indentation was consuming — at
+32 columns an agent line has 24 usable cells and its quote plus role is
+exactly 24, so indentation and content were competing for the same cells.
+
+The bands: the project header is centred and carries a gradient from a first
+colour to a second; the feature row is painted the whole available line in the
+second; the task row sits on that with a left vertical bar whose FOREGROUND is
+the task's own colour; each of the five steps is a full line from cell one,
+centred, in small caps, on a third colour. An OPEN step and everything inside
+it — its agents, their quotes and attributions, their subagent bubbles — share
+a DIMMER variant of that third colour, so the expanded stage reads as one
+block whose bounding box is easy to find. Step labels are centred rather than
+left-aligned: the full-width band already gives the eye an edge at both ends,
+so a centred small-caps label reads as a section header over left-aligned
+content, and no indent cell is spent.
+
+COLOUR IS DERIVED IN THREE GRADES — feature base, then task base, then content
+base — so colour encodes LINEAGE: which feature a task belongs to, and which
+task a block of content belongs to, are both legible without reading a word.
+A task's colour is drawn from within its feature's range, randomly rather than
+ordinally: no ramp, no lightness ladder, no evenly spaced rotation, because a
+task's colour carries identity alone and must not imply sequence, age or
+priority. Separation between siblings comes from choosing well — a candidate
+too close to a live sibling is redrawn — not from a scheme. The colour must
+nonetheless be STABLE for the life of the task, so it is derived
+deterministically from the task's identity rather than sampled at render time;
+a task that changed colour as it repainted, or two panes disagreeing about a
+task's colour, would both read as defects. Tasks never reopen, so colours may
+be reused freely and no recycling or exhaustion machinery is built.
+
+CONTRAST IS CALCULATED, not eyeballed, against the known guidelines and at
+runtime from the resolved colours rather than from hardcoded pairs — the
+feature hue varies per project and the palette is explicitly open beyond the
+orchid colours. Where a derived pair fails, the FOREGROUND moves; the
+background does not, because it is carrying structure. Where a terminal cannot
+render the derived colour, readability outranks fidelity: a wrong-but-readable
+colour beats an accurate unreadable one.
+
+Feature base colours are assigned as features are created, kept in the
+repository and synchronised with GitHub. A renderer reads that value when
+present and derives one from the project hue when it is absent or
+unparseable — a permanent fallback rather than a stopgap, since a feature
+without an assigned colour must still render sensibly.
+
+## [2026-07-27 CEST] Decision-111: Never combine the dim attribute with a custom background
+#sidebar #curses #terminal #rendering
+
+Found by reproduction and bisection while building the colour bands:
+combining ncurses' `A_DIM` with a custom truecolor pair, immediately followed
+by another custom-pair draw on the next row, CORRUPTS that next row's
+background. Dimming is therefore never expressed as an attribute over a
+non-default background; the foreground is blended toward its own background
+in RGB instead, which produces the same visual result without the state
+corruption.
+
+A second rendering trap was found alongside it: writing to a window's literal
+last column with `addstr` triggers an auto-wrap cursor advance that can
+desync the colour state for the row drawn next. That one cell is written with
+`insch` instead, which cannot safely carry wide or multi-byte characters and
+so is used only for a space.
+
+Both are the same class of defect — a drawing call whose damage lands on the
+NEXT row rather than its own — which is why they were only ever visible as an
+unexplained band of wrong colour somewhere else on screen, and why they were
+found by bisection rather than by reading the code.
+
+Related tooling note, recorded because it cost real time: `tmux capture-pane
+-e` does NOT faithfully reconstruct a busy multi-pair row in this environment,
+even under the project's two-stable-captures protocol. It also emits a colour
+only when it CHANGES, so a row inheriting the previous row's background shows
+no escape at all and reads as unstyled. Ground truth for what was actually
+drawn is the raw `pipe-pane` byte stream.
+
+## [2026-07-26 CEST] Decision-112: A feedback surface must run current code
+#tooling #feedback #sidebar #mount
+
+`tools/sidebar-mount.sh` resolves its own directory through a symlink into
+`.ai/repositories/serialseb/orchids/`, a checkout pinned to `main`, and
+accepts no flag or environment variable pointing elsewhere. The sidebar
+mounted into an agent's window therefore runs MAIN's renderer whatever
+branch the worktree holds, so a feature that changes the sidebar can never
+be seen working in the window of the very session building it.
+
+This cost a full round. The operator's live acceptance check was run against
+pre-change code and reported the pre-change behaviour, while the branch
+build — which already passed both halves of the agreed bar — was never on
+screen. The rule that follows is general: when the purpose of a surface is
+to collect the operator's verdict, it must run the code under judgement,
+mounted at present time and torn down with the verdict. Showing out-of-date
+code to gather feedback produces a verdict about the wrong artifact.
+

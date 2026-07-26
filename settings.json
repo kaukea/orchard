@@ -8,6 +8,18 @@
     ]
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "root=\"$(git rev-parse --show-toplevel 2>/dev/null)\"; [ -x \"$root/.claude/hooks/courier-only-transport.sh\" ] && \"$root/.claude/hooks/courier-only-transport.sh\"; exit 0",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

@@ -103,8 +103,33 @@ def _has_any_bg(raw_line: str) -> bool:
     return False
 
 
+def _skip_extended_colour(codes: list[str], i: int) -> int:
+    """`codes[i]` is "38"/"48" (extended fg/bg) -- index just past however
+    many parameters that extended colour consumes: 5 total for
+    "38;2;r;g;b" (true colour), 3 for "38;5;idx" (palette index)."""
+    if i + 1 < len(codes) and codes[i + 1] == "2":
+        return i + 5
+    if i + 1 < len(codes) and codes[i + 1] == "5":
+        return i + 3
+    return i + 1
+
+
 def _has_basic_red(raw_line: str) -> bool:
-    return any("31" in codes or "41" in codes for codes in _sgr_code_lists(raw_line))
+    """True only for a literal basic-ANSI red code (31 fg / 41 bg) used as
+    its own SGR attribute -- never a false hit off an R/G/B *value* of 31 or
+    41 riding inside an extended-colour sequence ("38;2;r;g;b"/"38;5;idx"),
+    which this renderer now emits once a direct-colour terminfo is active."""
+    for codes in _sgr_code_lists(raw_line):
+        i = 0
+        while i < len(codes):
+            code = codes[i]
+            if code in ("38", "48"):
+                i = _skip_extended_colour(codes, i)
+                continue
+            if code in ("31", "41"):
+                return True
+            i += 1
+    return False
 
 
 @unittest.skipUnless(_HAS_TMUX, "tmux not available in this environment")
@@ -114,7 +139,16 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
     with a working feature — rendered by the real curses app in a detached
     tmux pane and captured with SGR."""
 
-    PANE_WIDTH = 29
+    # Widened from 29 (2026-07-26): the six-level hierarchy (project ->
+    # feature -> task -> step -> agent -> subagent) puts an agent's identity
+    # line at depth 4 — 16 columns of indent before any text — where the
+    # old model drew it as a decoration with a fixed 2-column prefix
+    # regardless of depth. `compose_identity_line` never truncates the
+    # "doing"/role segments (only the model), so a pane too narrow for
+    # indent + doing + role just overflows past the visible column count
+    # rather than eliding the role — this pane needs to be wide enough for
+    # that not to matter.
+    PANE_WIDTH = 60
     PANE_HEIGHT = 50
 
     def setUp(self) -> None:
@@ -169,15 +203,27 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
                          identity=identity, status=status, body={"subagent": sub})
 
     def _seed_signmc(self) -> None:
-        # deliberately idle (no lifecycle/outcome signal posted) -- this
-        # repo exists purely to prove multiple repos render correctly and
-        # that only the genuinely-"working" row (orchids/sidebar-titling)
-        # carries the band sweep; a second concurrently-animating row would
-        # defeat test_working_band_animates_while_other_lines_stay_static's
+        # deliberately STOPPED -- this repo exists purely to prove multiple
+        # repos render correctly and that only the genuinely-"working" row
+        # (orchids/sidebar-titling) carries the band sweep; a second
+        # concurrently-animating row would defeat
+        # test_working_band_animates_while_other_lines_stay_static's
         # "everything else is static" assertion.
+        #
+        # An explicit `lifecycle:stopped` is what makes this row idle. It
+        # previously relied on posting no lifecycle event at all, which was
+        # never a signal of idleness -- it was the absence of one, and a
+        # live session that had simply outlived the 120-minute archival of
+        # its own start event looked identical. That ambiguity was a defect
+        # in the renderer, since a session posting fresh status is plainly
+        # alive; this seed now states what it means rather than relying on
+        # an absence that used to be misread.
+        identity = {"agent": "landscaper", "feature": "focus-returning",
+                    "name": "focus returning"}
         self._event("signmc", "sign-arch", "orchard:agent:status",
-                     identity={"agent": "landscaper", "feature": "focus-returning",
-                               "name": "focus returning"}, body="idle")
+                     identity=identity, body="idle")
+        self._event("signmc", "sign-arch", "orchard:agent:lifecycle:stopped",
+                     identity=identity)
 
     def _pane_size_settled(self) -> bool:
         expected = f"{self.PANE_WIDTH}x{self.PANE_HEIGHT}"
@@ -253,11 +299,16 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         self.assertLess(done_idx, working_idx)
         self.assertTrue(_has_any_bg(lines[working_idx]))
 
-        identity_idx = next(
+        # Identity BLOCK (operator ruling, 2026-07-26, "very compact form"):
+        # the agent's status is a quote ("writing") with its role riding
+        # the SAME line by default ("writing" — 🌿 landscaper) rather than
+        # the old one "⋮"-glued line or a separate attribution line — the
+        # 2-line form is reserved for a frame with real slack to spare.
+        quote_idx = next(
             i for i, l in enumerate(stripped)
-            if i > working_idx and "writing" in l and "⋮" in l
+            if i > working_idx and "“writing”" in l
         )
-        self.assertIn("landscaper", stripped[identity_idx])
+        self.assertIn("landscaper", stripped[quote_idx])
 
         signmc_header_idx = next(i for i, l in enumerate(stripped) if l.strip() == "signmc")
         signmc_feature_idx = next(
@@ -271,13 +322,40 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         for raw_line in lines:
             self.assertFalse(_has_basic_red(raw_line), raw_line)
 
-    def test_working_band_animates_while_other_lines_stay_static(self) -> None:
+    def test_active_step_kitt_sweep_animates_while_other_lines_stay_static(self) -> None:
+        # Two lines carry the frame's per-frame motion (operator ruling,
+        # 2026-07-26/2026-07-27): the KITT sweep on the accordion's ACTIVE
+        # step line, and -- since the task-spinner defect fix -- the
+        # "working" TASK row's own cycling glyph (`_task_row_glyph`; it was
+        # previously frozen because `tick` was never threaded into
+        # `_draw_task_row`). The FEATURE row's own glyph stays STATIC (see
+        # FeatureRowLayoutTests/the module docstring) -- that non-cycling is
+        # specific to the feature row, not every "working" glyph. "landscaper"
+        # (orch-arch's identity) maps to the "building" step (agents/
+        # landscaper.md's `step:` frontmatter), so that is the accordion
+        # line expected to move here.
         self._launch()
         first = self._capture_when_ready()
         stripped_first = [_strip_sgr(line) for line in first]
-        working_idx = next(
+        active_step_text = sidebar.small_caps("building")
+        # Both orch-arch (working) and sign-arch (idle/stopped) map to the
+        # same "building" step via the shared landscaper->step charter, so
+        # the text appears twice -- ONLY the genuinely live one (orchids,
+        # sorted first) should carry the sweep (`Row.live`, `_step_row`).
+        step_indices = [i for i, l in enumerate(stripped_first) if active_step_text in l]
+        self.assertEqual(len(step_indices), 2, stripped_first)
+        working_idx, idle_step_idx = step_indices
+        # The FEATURE row: "sidebar titling" with no task BAR cell
+        # (`sidebar._TASK_BAR_GLYPH`, "▎") -- distinguishes it from the task
+        # row below, which also names "sidebar titling" (same-name task/
+        # feature) and carries the now-cycling glyph instead.
+        feature_idx = next(
             i for i, l in enumerate(stripped_first)
-            if "⠧" in l and "sidebar titling" in l
+            if "sidebar titling" in l and sidebar._TASK_BAR_GLYPH not in l
+        )
+        task_idx = next(
+            i for i, l in enumerate(stripped_first)
+            if "sidebar titling" in l and sidebar._TASK_BAR_GLYPH in l
         )
 
         # Poll for a change rather than compare a single fixed-delay
@@ -295,11 +373,170 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
 
         self.assertEqual(len(first), len(second))
         self.assertNotEqual(first[working_idx], second[working_idx],
-                             "working row never changed within the poll window")
+                             "active step row never changed within the poll window")
+        # The task row's own spinner also advances within the same window
+        # (item 3's fix) -- proven directly here rather than merely
+        # excluded from the "everything else static" sweep below.
+        self.assertNotEqual(first[task_idx], second[task_idx],
+                             "task row's own spinner never changed within the poll window")
+        # The feature row itself, the idle repo's own "building" step, and
+        # every other line stay static; only the live active step's own
+        # KITT sweep and the working task's own spinner move.
+        self.assertEqual(first[feature_idx], second[feature_idx])
+        self.assertEqual(first[idle_step_idx], second[idle_step_idx])
         for i in range(len(first)):
-            if i == working_idx:
+            if i in (working_idx, task_idx):
                 continue
             self.assertEqual(first[i], second[i], f"unexpected change on line {i}")
+
+
+_ONCE_EXIT_RE = re.compile(r"ONCE_EXIT:(\d+)")
+
+# Raw pty bytes (see SidebarOnceCLITests) carry whatever SGR separator the
+# active terminfo entry actually emits -- observed as colon-delimited
+# ("38:2::r:g:b", the ITU-T416 form) under a direct-colour entry, unlike
+# `capture-pane -e`'s reconstruction (semicolon-delimited, what `_SGR_RE`
+# above assumes) which only reflects the CURRENTLY DISPLAYED screen and so
+# is unusable once `--once` has already torn the alt-screen back down.
+# Colon and semicolon are therefore both accepted here; an empty
+# colour-space-id subfield ("2::") collapses away like any other empty
+# split segment.
+_RAW_SGR_RE = re.compile(rb"\x1b\[([0-9;:]*)m")
+
+
+def _raw_param_lists(raw: bytes) -> list[list[bytes]]:
+    return [
+        [p for p in re.split(rb"[;:]", params) if p]
+        for params in _RAW_SGR_RE.findall(raw)
+    ]
+
+
+def _raw_has_subsequence(params: list[bytes], pattern: list[bytes]) -> bool:
+    n = len(pattern)
+    return any(params[i:i + n] == pattern for i in range(len(params) - n + 1))
+
+
+_RAW_ESCAPE_RE = re.compile(rb"\x1b(\[[0-9;:]*[A-Za-z]|[()][A-Za-z0-9]|[=>])")
+
+
+def _raw_strip_escapes(raw: bytes) -> bytes:
+    """Plain text out of a raw pty byte capture -- unlike `_strip_sgr`
+    (SGR colour codes only, applied per already-split line), a one-shot
+    frame's raw stream also carries cursor-addressing codes and a name can
+    be split mid-word across a colour boundary (e.g. the fill/no-fill
+    column split inside a feature name), so escapes are stripped from the
+    whole byte stream before a text substring is looked for."""
+    return _RAW_ESCAPE_RE.sub(b"", raw)
+
+
+def _raw_has_colour(raw: bytes, rgb: tuple[int, int, int]) -> bool:
+    r, g, b = (str(c).encode() for c in rgb)
+    index = str(sidebar._rgb_to_xterm256(rgb)).encode()
+    patterns = [
+        [b"38", b"2", r, g, b], [b"48", b"2", r, g, b],
+        [b"38", b"5", index], [b"48", b"5", index],
+    ]
+    return any(
+        _raw_has_subsequence(params, pattern)
+        for params in _raw_param_lists(raw) for pattern in patterns
+    )
+
+
+@unittest.skipUnless(_HAS_TMUX, "tmux not available in this environment")
+class SidebarOnceCLITests(unittest.TestCase):
+    """`--once` must be the REAL renderer (same terminal/colour/draw path as
+    the live UI, operator ruling) so a test can assert on actual colour —
+    paints exactly one frame and exits, with no input loop and no watch
+    thread. Own tmux socket, killed in addCleanup, never touches an
+    operator session.
+
+    `--once` tears the alt-screen back down the instant it exits (curses'
+    own `endwin()`), so by the time a poll could observe "the process
+    returned to the shell" via `capture-pane`, the painted frame is already
+    gone from the visible pane -- there is no live window to catch, unlike
+    the long-running interactive app the sibling test class drives. `tmux
+    pipe-pane` sidesteps that: it logs the raw bytes the app actually wrote
+    to the pty as they were written, independent of what the pane displays
+    afterwards, so the frame's real SGR colour escapes survive to be
+    asserted on."""
+
+    PANE_WIDTH = 29
+    PANE_HEIGHT = 30
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.runtime_dir = Path(self._tmp.name) / "run"
+        self.runtime_dir.mkdir()
+        self.projects_root = self.runtime_dir / "orchard" / "projects"
+        self.projects_root.mkdir(parents=True)
+        _write_event(self.projects_root, "orchids", "orch-once",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "once-check",
+                               "name": "once check"})
+        self._raw_log = Path(self._tmp.name) / "once-raw.log"
+        self._socket = f"sidebar-once-{uuid.uuid4().hex[:8]}"
+        self.addCleanup(self._kill_tmux_server)
+
+    def _kill_tmux_server(self) -> None:
+        self._tmux("kill-server")
+
+    def _tmux(self, *args: str, check: bool = False) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["tmux", "-L", self._socket, *args], check=check,
+            capture_output=True, text=True,
+        )
+
+    def _await_pane_size(self, timeout: float = 3.0) -> None:
+        expected = f"{self.PANE_WIDTH}x{self.PANE_HEIGHT}"
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            actual = self._tmux("list-windows", "-F", "#{window_width}x#{window_height}").stdout.strip()
+            if actual == expected:
+                return
+            time.sleep(0.05)
+
+    def _launch(self) -> None:
+        self._tmux("new-session", "-d", "-x", str(self.PANE_WIDTH), "-y", str(self.PANE_HEIGHT),
+                    check=True)
+        self._tmux("resize-window", "-x", str(self.PANE_WIDTH), "-y", str(self.PANE_HEIGHT))
+        self._await_pane_size()
+        self._tmux("pipe-pane", "-o", f"cat >> {self._raw_log}", check=True)
+        command = (
+            f"XDG_RUNTIME_DIR={self.runtime_dir} {sys.executable} {_SIDEBAR_PY} --once; "
+            "echo ONCE_EXIT:$?"
+        )
+        self._tmux("send-keys", command, "Enter")
+
+    def _capture(self) -> list[str]:
+        return self._tmux("capture-pane", "-e", "-p", check=True).stdout.splitlines()
+
+    def _await_exit_code(self, timeout: float = 10.0) -> str:
+        """Poll the pane (post-teardown, primary screen) for the trailing
+        `echo`'s digits-only marker -- not merely a line CONTAINING
+        "ONCE_EXIT:", which would also match the shell's own local-echo of
+        the not-yet-substituted "echo ONCE_EXIT:$?" command text an instant
+        before it actually runs."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            for line in self._capture():
+                match = _ONCE_EXIT_RE.search(_strip_sgr(line))
+                if match:
+                    return match.group(1)
+            time.sleep(0.1)
+        self.fail("--once never returned control to the shell within the timeout")
+
+    def test_once_paints_one_real_frame_and_exits_zero(self) -> None:
+        self._launch()
+        exit_code = self._await_exit_code()
+        self.assertEqual(exit_code, "0")
+
+        raw = self._raw_log.read_bytes()
+        text = _raw_strip_escapes(raw)
+        self.assertIn(b"orchids", text)
+        self.assertIn(b"once check", text)
+        self.assertTrue(_raw_has_colour(raw, sidebar.HEADER_FG))
+        self.assertTrue(_raw_has_colour(raw, sidebar.REPO_HUES["orchids"]["header"]))
 
 
 if __name__ == "__main__":

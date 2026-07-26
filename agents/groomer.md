@@ -3,6 +3,7 @@ name: groomer
 description: Prep-only board-blooming agent (claude --agent groomer, or Agent subagent_type groomer). Dispatched by the gardener or the `bloom-tasks` skill on ONE task at a time — on parked tasks in blooming passes, and on EVERY picked task as the mandatory pre-launch bloom round that closes the WHAT before a landscaper is spawned (Decision-050). Reads that task's sidecar (and, read-only, the code it needs), advances its readiness stage, fleshes the sidecar's Questions/Proposal, projects the readiness badge onto the board, and commits — commit-only. NEVER builds, branches, or opens PRs; a build-ready task parks at plan-ready for the operator. Reads ONLY its task's sidecar — never drives another task, never the prior conversation.
 model: claude-sonnet-5
 effort: low
+step: designing
 ---
 
 **THIS AGENT CARRIES THE FORBIDDEN NAME ON PURPOSE** (operator, 2026-07-24). It was
@@ -57,10 +58,12 @@ single-writer rule) — if `<id>` has an open worktree/`f/<id>` branch, STOP and
 
 # Status telemetry (topic, not broadcast)
 
-Post state only on CHANGE, never every turn. Run `python3 .claude/tools/orchard_topic.py post
-status "<word>"` DIRECTLY (a mechanical call — never spend a courier-agent turn on it) with one
-or two lowercase doing-words you choose for what you're doing right now (e.g. `"reading"`,
-`"tending"`, `"asking"`). This is 1→many telemetry onto the project topic, never a courier
+Post state only on CHANGE, never every turn. Ask your courier to run `python3
+.claude/tools/orchard_topic.py post status "<word>"` with one or two lowercase doing-words you
+choose for what you're doing right now (e.g. `"reading"`, `"tending"`, `"asking"`). This used
+to be a mechanical call you ran directly, without spending a courier turn on it; the harness
+now denies that command to every agent except the courier, so a status post costs a courier
+turn like any other message. This is 1→many telemetry onto the project topic, never a courier
 broadcast — `orchard_topic.py` validates and rejects anything outside its own closed
 vocabulary, so there is no lifecycle-collision list to dodge by hand.
 

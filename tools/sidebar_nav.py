@@ -11,9 +11,26 @@ sidebar lives inside the same tmux server it navigates), so plain
 `tmux` is used rather than a `-S <socket>` target.
 
 Window names are the session-naming display forms:
-  - gardener window   -> the bare repo name, e.g. "orchids"
   - landscaper window -> "<repo>/<human name>", e.g. "orchids/fleet sidebar"
-    (separator is "/" U+002F)
+
+The producer (tools/sidebar.py, TARGET_SEPARATOR) composes targets with "/"
+U+002F as the separator, but the REAL windows this resolves against are
+named with " ▸ " (space, U+25B8, space) instead — a mismatch that made
+resolve_window() return None for every feature-row target (2026-07-26 live
+defect). resolve_window() normalises both sides (either separator, +
+collapsed whitespace) before comparing, so it matches regardless of which
+form either side used.
+
+A repo-level target (bare name, no separator) does NOT resolve against a
+window name at all — there is no window named after the bare repo. It
+resolves by SESSION name instead: find the session named after the repo,
+then pick that session's ORCHESTRATOR window (the one whose name carries no
+repo/feature separator — e.g. the gardener's window, named "claude" in the
+live fleet, not "orchids"). See _select_orchestrator_window(). (2026-07-27:
+"repo should be the name of the session and going there on the board should
+bring me to the ex-orchestrator window, that was the original deal" — the
+prior window-name match against the bare repo found nothing live, because
+no window is literally named "orchids".)
 
 `land:<id>` still exists as a PANE TITLE (used by teardown), but is no
 longer a window name and is not used for navigation here.
@@ -29,6 +46,24 @@ LIST_WINDOWS_FORMAT = "#{session_name}\t#{window_id}\t#{window_name}\t#{pane_cur
 LIST_PANES_FORMAT = "#{pane_id} #{pane_title}"
 
 _SHELL_COMMANDS = {"bash", "sh", "zsh", "fish", "dash", "-bash", "-sh", "-zsh", "login", "tmux"}
+
+# Both separators a "repo/feature"-shaped name might use: the producer's "/"
+# and the real tmux window name's " ▸ ". Order doesn't matter — _normalise()
+# folds either one to the same marker before comparing.
+_SEPARATOR_VARIANTS = ("/", " ▸ ")
+
+
+def _normalise(name: str) -> str:
+    """Canonical form for window-name comparison: either known separator
+    folds to the same marker, and whitespace within each segment collapses
+    -- so "repo/feature", "repo ▸ feature" and odd-whitespace variants of
+    either all compare equal. Segments containing a literal "/" that is NOT
+    acting as a separator (there is none in practice — repo and feature
+    names don't contain "/") are not a concern here."""
+    folded = name
+    for sep in _SEPARATOR_VARIANTS:
+        folded = folded.replace(sep, "\x00")
+    return "\x00".join(" ".join(segment.split()) for segment in folded.split("\x00"))
 
 
 def _tmux(*args: str) -> str | None:
@@ -75,10 +110,52 @@ def _prefer_live(matches: list[tuple[str, str, str, str]]) -> tuple[str, str]:
     return (session_name, window_id)
 
 
+def _is_feature_window_name(window_name: str) -> bool:
+    """True if `window_name` carries the repo/feature separator (either
+    form, via _normalise) -- i.e. it names a feature window, not an
+    orchestrator window."""
+    return "\x00" in _normalise(window_name)
+
+
+def _select_orchestrator_window(
+    windows_in_session: list[tuple[str, str, str, str]],
+) -> tuple[str, str, str, str]:
+    """Pick the orchestrator window among a session's windows: the first
+    whose name carries no repo/feature separator. Falls back to the
+    session's first window (tmux list order) if every window in the
+    session looks like a feature window."""
+    for window in windows_in_session:
+        if not _is_feature_window_name(window[2]):
+            return window
+    return windows_in_session[0]
+
+
 def resolve_window(name: str) -> tuple[str, str] | None:
-    """Return (session_name, window_id) for the window_name match. When more
-    than one window shares the name, prefers the live one (see _prefer_live)."""
-    matches = [w for w in _list_windows() if w[2] == name]
+    """Return (session_name, window_id) for `name`.
+
+    A repo-level target (bare name, no repo/feature separator) resolves by
+    SESSION name: find the session named `name`, then return its
+    orchestrator window (see _select_orchestrator_window). Returns None if
+    no session is named `name`.
+
+    A feature-level target ("repo/feature" or "repo ▸ feature") resolves by
+    WINDOW name, separator- and whitespace-tolerant (see _normalise), so a
+    caller passing the producer's "repo/feature" form still finds a real
+    window named "repo ▸ feature". When more than one window shares the
+    name, prefers the live one (see _prefer_live)."""
+    target = _normalise(name)
+    windows = _list_windows()
+
+    if "\x00" not in target:
+        windows_in_session = [w for w in windows if w[0] == name]
+        if not windows_in_session:
+            return None
+        session_name, window_id, _window_name, _active_cmd = _select_orchestrator_window(
+            windows_in_session,
+        )
+        return (session_name, window_id)
+
+    matches = [w for w in windows if _normalise(w[2]) == target]
     if not matches:
         return None
     return _prefer_live(matches)

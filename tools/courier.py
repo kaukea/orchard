@@ -25,7 +25,18 @@ resolve to its PARENT's inbox.
 
 Usage:
   courier.py whoami                                this session's id
-  courier.py init [id]                             create an inbox
+  courier.py init [id] [--agent ROLE]              create an inbox; also
+                                                resolves and persists this
+                                                session's role (for identity_of()
+                                                to recover across a resume, when
+                                                the harness sets no
+                                                CLAUDE_CODE_AGENT): harness env
+                                                wins, else --agent ROLE if given,
+                                                else a best-effort walk of the
+                                                launching `claude` process's own
+                                                command line for its --agent
+                                                flag. Never overwrites an
+                                                already-persisted role.
   courier.py teardown [id]                         remove it (session end)
   courier.py list                                  registry: one agent id per line
   courier.py send --from A --to B [--body X] [--notify-user] [--in-reply-to ID]
@@ -365,6 +376,94 @@ def usage_entries(path: Path):
             yield usage, message.get("model")
 
 
+def _feature_identity(top: str | None) -> tuple[str | None, str | None, str | None]:
+    """(worktree, feature_id, feature_name) — resolved together since they
+    hinge on the same git lookups. Best-effort: a transient failure here
+    (e.g. a git subprocess error `git()` doesn't already swallow, or
+    feature_name.py hitting an unreadable sidecar) must never cost the
+    caller `identity.agent` too — observed live: a gardener session posted
+    orchard:agent:status/delegation:begin with NO identity block at all,
+    because one failed lookup here discarded the whole identity dict
+    upstream. Any exception collapses to (None, None, None) instead of
+    propagating.
+    """
+    try:
+        worktree = Path(top).name if top else None
+        linked = "/worktrees/" in git("rev-parse", "--git-dir")
+        feature_id = worktree if linked else None
+        # Ledger-derived human name (tools/feature_name.py, sidebar-polish item 11):
+        # board short-title, else sidecar H1, else mechanical hyphen->space, so
+        # every consumer reads one already-authored field instead of re-deriving
+        # (Decision-032).
+        feature_name = _feature_name(feature_id, root=top) if feature_id else None
+        return worktree, feature_id, feature_name
+    except Exception:
+        return None, None, None
+
+
+def _task_identity(feature_id: str | None, feature_name: str | None) -> tuple[str | None, str | None]:
+    """(task_id, task_name) — only the agent itself knows which task within
+    its feature it is on, so ORCHID_TASK_ID/ORCHID_TASK_NAME are set by
+    whatever dispatched it (a landscaper handing a step to a sower, say).
+    A feature spans many tasks in general, but today one feature still maps
+    to exactly one task, so with neither env var set, task defaults to the
+    feature id and task_name to the feature's display name — an explicit,
+    commented default rather than an accidental fallthrough.
+    """
+    task_id = os.environ.get("ORCHID_TASK_ID") or feature_id
+    task_name = os.environ.get("ORCHID_TASK_NAME") or feature_name
+    return task_id, task_name
+
+
+def _proc_cmdline(pid: int) -> list[str]:
+    raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    return [part.decode(errors="replace") for part in raw.split(b"\0") if part]
+
+
+def _proc_ppid(pid: int) -> int:
+    stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    fields = stat.rsplit(")", 1)[1].split()
+    return int(fields[1])
+
+
+def _agent_flag_value(cmdline: list[str]) -> str | None:
+    for index, token in enumerate(cmdline):
+        if token == "--agent" and index + 1 < len(cmdline):
+            return cmdline[index + 1]
+        if token.startswith("--agent="):
+            return token.split("=", 1)[1]
+    return None
+
+
+def _nearest_claude_cmdline(pid: int, max_hops: int = 32) -> list[str] | None:
+    for _ in range(max_hops):
+        cmdline = _proc_cmdline(pid)
+        if cmdline and Path(cmdline[0]).name == "claude":
+            return cmdline
+        pid = _proc_ppid(pid)
+        if pid <= 1:
+            return None
+    return None
+
+
+def _role_from_launching_claude() -> str | None:
+    try:
+        cmdline = _nearest_claude_cmdline(os.getpid())
+        return _agent_flag_value(cmdline) if cmdline else None
+    except Exception:
+        return None
+
+
+def resolve_session_role(declared: str | None = None) -> str | None:
+    """This session's role, harness first: CLAUDE_CODE_AGENT (set by the
+    harness, so never guessed) beats a self-declaration (`init --agent`,
+    for a session naming itself when the harness gives nothing — e.g. a
+    resumed session that already knows its own charter) beats a best-effort
+    walk up to the launching `claude` process's own `--agent` flag (the last
+    resort — a resumed process typically has none)."""
+    return os.environ.get("CLAUDE_CODE_AGENT") or declared or _role_from_launching_claude()
+
+
 def identity_of() -> dict:
     """Immutable facts, fixed for this session's whole life.
 
@@ -372,19 +471,18 @@ def identity_of() -> dict:
     are not identity, and pinning them here would bake in a value that goes stale.
     """
     top = git("rev-parse", "--show-toplevel")
-    worktree = Path(top).name if top else None
-    linked = "/worktrees/" in git("rev-parse", "--git-dir")
-    feature_id = worktree if linked else None
+    worktree, feature_id, feature_name = _feature_identity(top)
+    task_id, task_name = _task_identity(feature_id, feature_name)
+    session_id = whoami()
+    agent_type = os.environ.get("CLAUDE_CODE_AGENT") or persisted_session_role(session_id) or None
     return {
-        "session_id": whoami(),
-        "agent_type": os.environ.get("CLAUDE_CODE_AGENT") or None,
+        "session_id": session_id,
+        "agent_type": agent_type,
         "worktree": worktree,
         "feature_id": feature_id,
-        # Ledger-derived human name (tools/feature_name.py, sidebar-polish item 11):
-        # board short-title, else sidecar H1, else mechanical hyphen->space, so
-        # every consumer reads one already-authored field instead of re-deriving
-        # (Decision-032).
-        "name": _feature_name(feature_id, root=top) if feature_id else None,
+        "name": feature_name,
+        "task_id": task_id,
+        "task_name": task_name,
         "parent_session": os.environ.get("ORCHID_PARENT_SESSION") or None,
     }
 
@@ -524,7 +622,16 @@ def cmd_receive(args) -> None:
 def cmd_init(args) -> None:
     box = inbox(args.agent_id)
     box.mkdir(parents=True, exist_ok=True)
+    _persist_role_for_this_session(getattr(args, "declared_role", None))
     print(box)
+
+
+def _persist_role_for_this_session(declared_role: str | None) -> None:
+    try:
+        session_id = whoami()
+    except SystemExit:
+        return
+    persist_session_role(session_id, resolve_session_role(declared_role))
 
 
 def cmd_teardown(args) -> None:
@@ -590,6 +697,13 @@ def cmd_signal(args) -> None:
     if not to:
         print(f"signal {args.state} — no parent known, not delivered")
         return
+    # --to is documented as a bare session id, but every other --to in this
+    # script takes a full `:session:<id>` address — a caller that copies that
+    # habit here would otherwise double the prefix (`:session::session:<id>`)
+    # once wrapped below, which leaked a `:` into a delivered filename
+    # (Decision-091 rejects that outright). Idempotent: a no-op on the
+    # documented bare-id case.
+    to = to.removeprefix(":session:")
 
     parent_project = os.environ.get("ORCHID_PARENT_PROJECT") or project_slug()
     ns = argparse.Namespace(
@@ -919,6 +1033,8 @@ def parse_orchard_address(addr: str) -> tuple[str, str]:
 def _check_path_component(value: str, label: str, *, dot_free: bool = False) -> None:
     if not value or "/" in value or value in (".", ".."):
         sys.exit(f"courier: invalid {label} {value!r}")
+    if ":" in value:
+        sys.exit(f"courier: invalid {label} {value!r} — must not carry a routing prefix")
     if dot_free and "." in value:
         sys.exit(f"courier: invalid {label} {value!r} — must be dot-free")
 
@@ -960,20 +1076,207 @@ def project_slug() -> str:
     return slug or repo_root.name
 
 
-def _stamp_filename(sid: str) -> str:
+ORCHARD_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{6}$")
+
+
+def _valid_orchard_id(component: str) -> bool:
+    return bool(component) and "/" not in component and ":" not in component and component not in (".", "..")
+
+
+def validate_orchard_filename(name: str) -> None:
+    """The single gate every name entering the orchard tree passes through
+    (operator ruling, Decision-091): exactly `<sessionid>.<ts>.json`,
+    `<sessionid>.marker`, or `<feature-id>.marker` — no coercion, no silent
+    repair. Anything else, including a leaked `:` routing prefix in any
+    component, raises."""
+    if name.endswith(".marker"):
+        id_ = name[: -len(".marker")]
+        if not _valid_orchard_id(id_) or "." in id_:
+            raise ValueError(f"invalid orchard filename {name!r} — expected <id>.marker")
+        return
+    if name.endswith(".json"):
+        sid, sep, ts = name[: -len(".json")].partition(".")
+        if not sep or not _valid_orchard_id(sid) or not ORCHARD_TIMESTAMP_RE.match(ts):
+            raise ValueError(f"invalid orchard filename {name!r} — expected <sessionid>.<ts>.json")
+        return
+    raise ValueError(f"invalid orchard filename {name!r} — must be <sessionid>.<ts>.json or <id>.marker")
+
+
+def orchard_message_name(sid: str) -> str:
     return f"{sid}.{stamp()}.json"
 
 
-def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
-    """Atomically write the message, touch/create the marker heartbeat, bump
-    the parent dir's mtime (nested writes don't bubble automatically), then
-    give the compaction pass a chance to run."""
+def orchard_marker_name(id_: str) -> str:
+    return f"{id_}.marker"
+
+
+def _session_role_marker(session_id: str) -> Path | None:
+    """This session's own heartbeat marker, keyed by session id and already
+    owned by courier.py — reused as the resume-durable home for its role
+    rather than inventing a new tree. `None` whenever the orchard root can't
+    be resolved (no XDG_RUNTIME_DIR, no git repo): the caller treats that as
+    "role unavailable", never an error."""
+    try:
+        return project_dir(project_slug()) / orchard_marker_name(session_id)
+    except SystemExit:
+        return None
+
+
+def _read_session_role(path: Path) -> str | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    role = payload.get("role") if isinstance(payload, dict) else None
+    return role if isinstance(role, str) and role else None
+
+
+def persisted_session_role(session_id: str) -> str | None:
+    path = _session_role_marker(session_id)
+    return _read_session_role(path) if path else None
+
+
+def persist_session_role(session_id: str, role: str | None) -> None:
+    """Write-once: a role already on record is never touched again, so a
+    resume with nothing to offer (empty environment, no launching-process
+    flag) can never clobber what an earlier launch established."""
+    if not role:
+        return
+    path = _session_role_marker(session_id)
+    if path is None or _read_session_role(path):
+        return
+    try:
+        write_orchard_file(path.parent, path.name, {"role": role})
+    except Exception:
+        pass
+
+
+def write_orchard_file(dir_path: Path, name: str, payload: dict | None = None) -> Path:
+    """The ONE writer for the orchard tree: every filename is constructed by
+    a caller of orchard_message_name/orchard_marker_name (never assembled
+    inline) and validated here before anything touches disk. `payload=None`
+    touches an empty heartbeat marker (mtime IS the liveness signal, per
+    Decision-091); otherwise `payload` is written as pretty JSON, atomically
+    (temp file + rename, so a watcher never observes a half-written file)."""
+    validate_orchard_filename(name)
     dir_path.mkdir(parents=True, exist_ok=True)
-    final = dir_path / _stamp_filename(sid)
-    tmp = dir_path / f".{final.name}.partial"
-    tmp.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
-    os.replace(tmp, final)
-    (dir_path / f"{sid}.marker").touch(exist_ok=True)
+    final = dir_path / name
+    if payload is None:
+        final.touch(exist_ok=True)
+    else:
+        tmp = dir_path / f".{name}.partial"
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        os.replace(tmp, final)
+    return final
+
+
+# The durable feature-node marker (`<feature-id>.marker`, distinct from the
+# per-session heartbeat marker above): persists the TASKS the feature maps
+# to, never agent/session identity — that is ephemeral. `tasks` is a list
+# keyed WITHIN by task id (never feature id — a feature spans many tasks,
+# so keying a task entry on its feature would conflate the two levels) so
+# sibling tasks under one feature node have room to persist even though,
+# today, a feature maps to exactly one task. Merged in place so a late
+# event still lands on the right node.
+_FEATURE_TASK_STATE_BY_SUBJECT = {
+    "orchard:agent:outcome:success": "done",
+    "orchard:agent:outcome:fail": "failed",
+}
+
+
+def _feature_marker_path(dir_path: Path, feature: str) -> Path:
+    return dir_path / f"{feature}.marker"
+
+
+def _load_feature_marker(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _feature_task_state(subject: str) -> str | None:
+    if subject in _FEATURE_TASK_STATE_BY_SUBJECT:
+        return _FEATURE_TASK_STATE_BY_SUBJECT[subject]
+    if subject.startswith("orchard:agent:lifecycle:"):
+        return "working"
+    return None
+
+
+def _merge_feature_task(tasks: list[dict], task_id: str, task_name: str | None,
+                         subject: str, now: str) -> None:
+    state = _feature_task_state(subject)
+    for task in tasks:
+        if task.get("task") == task_id:
+            task["name"] = task_name or task["name"]
+            task["state"] = state or task["state"]
+            task["updated"] = now
+            return
+    tasks.append({
+        "task": task_id,
+        "name": task_name,
+        "state": state or "working",
+        "updated": now,
+    })
+
+
+def merge_feature_marker(path: Path, project: str, feature: str,
+                          envelope: dict, now: str) -> dict:
+    """Merge-never-truncate for the CURRENT shape only: a rejected earlier
+    shape — the `sessions` identity cache, or a `tasks[]` entry keyed by the
+    now-retired `feature` field (schema 1, which conflated task and
+    feature) or by nothing at all (e.g. a delegation label) — is discarded
+    on sight rather than carried forward. That is not truncating live data,
+    it is dropping a shape the design has rejected; an old-shape marker
+    already on disk is simply read as if its `tasks[]` were empty, never a
+    crash. A `tasks[]` entry that IS current (keyed by `task`) still
+    survives forever, terminal state included.
+
+    The marker stays keyed on the FEATURE at file level (`feature`, `name`
+    — the feature's own display name, `area`, `updated`); each task entry
+    inside `tasks[]` carries its own `task`/`name`/`state`/`updated`. The
+    marker holds nothing agent-shaped (no role, agent name, model, or
+    activity) — that is live-only and never persisted here.
+    """
+    marker = _load_feature_marker(path)
+    marker.pop("sessions", None)
+    identity = envelope.get("identity") or {}
+    marker["schema"] = 2
+    marker["project"] = project
+    marker["feature"] = feature
+    marker["name"] = identity.get("feature_name") or marker.get("name")
+    marker["area"] = identity.get("area") or marker.get("area")
+    tasks = [t for t in marker.get("tasks", []) if t.get("task")]
+    task_id = identity.get("task") or feature
+    task_name = identity.get("task_name") or identity.get("feature_name")
+    _merge_feature_task(tasks, task_id, task_name,
+                         envelope.get("subject", ""), now)
+    marker["tasks"] = tasks
+    marker["updated"] = now
+    return marker
+
+
+def write_feature_marker(dir_path: Path, project: str, envelope: dict) -> None:
+    identity = envelope.get("identity") or {}
+    feature = identity.get("feature")
+    if not feature or "/" in feature or feature in (".", ".."):
+        return
+    path = _feature_marker_path(dir_path, feature)
+    now = datetime.now(timezone.utc).isoformat()
+    marker = merge_feature_marker(path, project, feature, envelope, now)
+    write_orchard_file(dir_path, orchard_marker_name(feature), marker)
+
+
+def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
+    """Atomically write the message, touch/create the marker heartbeat, merge
+    the feature-node marker when the envelope carries one, bump the parent
+    dir's mtime (nested writes don't bubble automatically), then give the
+    compaction pass a chance to run. Both writes go through write_orchard_file
+    — the one place a name is built and validated (Decision-091)."""
+    final = write_orchard_file(dir_path, orchard_message_name(sid), envelope)
+    write_orchard_file(dir_path, orchard_marker_name(sid))
+    if dir_path.parent.name == "projects":
+        write_feature_marker(dir_path, dir_path.name, envelope)
     os.utime(dir_path, None)
     maybe_compact(dir_path)
     return final
@@ -1229,11 +1532,18 @@ def main() -> None:
     p = argparse.ArgumentParser(description="repo-scoped agent message courier")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    for name, fn in (("init", cmd_init), ("teardown", cmd_teardown),
-                     ("receive", cmd_receive)):
+    for name, fn in (("teardown", cmd_teardown), ("receive", cmd_receive)):
         s = sub.add_parser(name)
         s.add_argument("agent_id", nargs="?", default=None)
         s.set_defaults(func=fn)
+
+    s = sub.add_parser("init")
+    s.add_argument("agent_id", nargs="?", default=None)
+    s.add_argument("--agent", dest="declared_role", default=None,
+                   help="self-declared role, used only when the harness sets "
+                        "no CLAUDE_CODE_AGENT — e.g. a resumed session naming "
+                        "itself so identity_of() recovers it")
+    s.set_defaults(func=cmd_init)
 
     sub.add_parser("whoami").set_defaults(func=lambda a: print(whoami()))
     sub.add_parser("list").set_defaults(func=cmd_list)

@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "python3 tools/courier.py send --to :topic:repository/orchids --body hi"
+  },
+  "agent_type": "sower"
+}

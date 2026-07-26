@@ -1,0 +1,16 @@
+{
+  "schema": 2,
+  "project": "kaukea.orchids",
+  "feature": "sidebar-empty-rows",
+  "name": "Sidebar empty rows: header renders, zero session rows off the live orchard tree \u2014 check (a) failing",
+  "area": null,
+  "tasks": [
+    {
+      "task": "sidebar-empty-rows",
+      "name": "Sidebar empty rows: header renders, zero session rows off the live orchard tree \u2014 check (a) failing",
+      "state": "working",
+      "updated": "2026-07-26T22:28:43.449183+00:00"
+    }
+  ],
+  "updated": "2026-07-26T22:28:43.449183+00:00"
+}

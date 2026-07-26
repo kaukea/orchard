@@ -1,0 +1,18 @@
+{
+  "from": ":session:1e6b83cc-f7b1-4010-a66a-6be5951d21aa",
+  "to": ":topic:repository/orchids",
+  "subject": "orchard:agent:delegation:schedule",
+  "body": {
+    "subagent": "close-tmux-topology"
+  },
+  "status": {
+    "model": "claude-fable-5",
+    "context_tokens": 362245,
+    "spend": {
+      "input_tokens": 844,
+      "output_tokens": 600819,
+      "cache_read_input_tokens": 102512274,
+      "cache_creation_input_tokens": 4915924
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{"from": ":session:1e6b83cc-f7b1-4010-a66a-6be5951d21aa", "to": ":topic:repository/orchids",
+ "subject": "orchard:agent:status", "body": "folding",
+ "identity": {"agent": "gardener"},
+ "status": {"model": "claude-fable-5", "context_tokens": 290100,
+            "spend": {"input_tokens": 570, "output_tokens": 470259,
+                      "cache_read_input_tokens": 56166700, "cache_creation_input_tokens": 2953299}}}

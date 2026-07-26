@@ -37,6 +37,7 @@ _TOOLS_DIR = os.path.join(
 if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
+import courier  # noqa: E402
 import orchard_compact  # noqa: E402
 
 from support import make_repo  # noqa: E402
@@ -72,6 +73,33 @@ def _write_registry(home: Path, slugs) -> None:
     (cfg_dir / "sidebar-registry.json").write_text(
         json.dumps(list(slugs)), encoding="utf-8",
     )
+
+
+# ---------------------------------------------------------------------------
+# Static-data fixtures (tests/fixtures/, provenance in
+# tests/fixtures/PROVENANCE.md) — same loading convention as
+# tests/test_static_fixtures.py's _load_fixture/_load_fixture_json, kept
+# local here rather than imported so this module stays independent of that
+# one. OPERATOR RULING, 2026-07-26 (verbatim): "never test code where the
+# caller and the callee are the same code without another test with static
+# daata vaidated at feature riting time" — every STATIC-DATA test below
+# reads bytes from this directory, never anything this test's own call to
+# courier.py/orchard_topic.py produced a moment earlier.
+# ---------------------------------------------------------------------------
+
+_FIXTURES_DIR = Path(os.path.dirname(os.path.abspath(__file__))) / "fixtures"
+
+
+def _load_fixture(name: str) -> str:
+    return (_FIXTURES_DIR / name).read_text(encoding="utf-8")
+
+
+def _load_fixture_bytes(name: str) -> bytes:
+    return (_FIXTURES_DIR / name).read_bytes()
+
+
+def _load_fixture_json(name: str) -> dict:
+    return json.loads(_load_fixture(name))
 
 
 class _OrchardTestCase(unittest.TestCase):
@@ -248,6 +276,251 @@ class LivenessMarkerTests(_OrchardTestCase):
         self.assertGreater(after_mtime, before_mtime)
 
 
+class FeatureMarkerTests(_OrchardTestCase):
+    """`orchard_deliver()` merges a durable `<feature-id>.marker` node
+    alongside the per-session heartbeat marker whenever the envelope's
+    `identity` carries a `feature`. The marker stays keyed on the FEATURE
+    at file level (`feature`, `name` — the feature's own display name,
+    `area`, `updated`); it persists the TASKS that feature maps to as a
+    `tasks[]` list, each entry keyed by `task` (never `feature` — a
+    feature spans many tasks in general, so keying a task entry on its
+    feature would conflate the two levels) and carrying its own
+    `name`/`state`/`updated` — never agent/session identity (role,
+    name-of-agent, parent, per-session state), which is ephemeral and
+    disappears with the agent. `tasks` stays a list so sibling tasks under
+    one feature node can persist even though, in this repo, a feature
+    currently maps to a single task. The per-session `<sid>.marker`
+    heartbeat keeps working unchanged (covered by LivenessMarkerTests);
+    this class covers only the new node.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.project_dir = self.runtime_dir / "orchard" / "projects" / "own.repo"
+        self.project_dir.mkdir(parents=True)
+
+    def _envelope(self, subject: str, *, feature="feat-x", agent="landscaper",
+                  feature_name="Feat X", task=None, task_name=None,
+                  parent=None, body=None) -> dict:
+        env = {"from": ":session:sessA", "subject": subject,
+               "identity": {"feature": feature, "agent": agent,
+                             "feature_name": feature_name, "task": task,
+                             "task_name": task_name, "parent": parent}}
+        if body is not None:
+            env["body"] = body
+        return env
+
+    def _marker(self, feature="feat-x") -> dict:
+        return json.loads((self.project_dir / f"{feature}.marker").read_text())
+
+    def test_no_feature_marker_written_without_identity_feature(self):
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 {"from": ":session:sessA",
+                                  "subject": "orchard:agent:status", "body": "hi"})
+        self.assertEqual(list(self.project_dir.glob("*.marker")),
+                          [self.project_dir / "sessA.marker"])
+
+    def test_feature_marker_created_with_task_shape(self):
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
+        marker = self._marker()
+        self.assertEqual(marker["schema"], 2)
+        self.assertEqual(marker["project"], "own.repo")
+        self.assertEqual(marker["feature"], "feat-x")
+        self.assertEqual(marker["name"], "Feat X")
+        self.assertIsNone(marker["area"])
+        self.assertNotIn("sessions", marker)
+        self.assertEqual(len(marker["tasks"]), 1)
+        task = marker["tasks"][0]
+        # today one feature maps to exactly one task, so with no distinct
+        # ORCHID_TASK_ID the task id defaults to the feature id itself
+        self.assertEqual(task["task"], "feat-x")
+        self.assertEqual(task["name"], "Feat X")
+        self.assertNotIn("feature", task)
+        self.assertNotIn("area", task)
+        self.assertEqual(task["state"], "working")
+        self.assertIn("updated", task)
+        self.assertIn("updated", marker)
+
+    def test_no_agent_identity_is_retained_for_display(self):
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
+        raw = (self.project_dir / "feat-x.marker").read_text()
+        self.assertNotIn("landscaper", raw)
+        self.assertNotIn("sessA", raw)
+
+    def test_outcome_sets_terminal_task_state(self):
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:outcome:fail"))
+        marker = self._marker()
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["state"], "failed")
+
+    def test_completed_task_persists_in_the_marker(self):
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:outcome:success"))
+        marker = self._marker()
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["state"], "done")
+
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:status"))
+        marker = self._marker()
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["state"], "done")
+
+    def test_delegation_traffic_does_not_change_task_state(self):
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
+        courier.orchard_deliver(
+            self.project_dir, "sessA",
+            self._envelope("orchard:agent:delegation:begin", body={"subagent": "sub-1"}))
+        marker = self._marker()
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["state"], "working")
+        self.assertNotIn("label", marker["tasks"][0])
+
+        courier.orchard_deliver(
+            self.project_dir, "sessB",
+            self._envelope("orchard:agent:delegation:end", agent="sower",
+                            body={"subagent": "sub-1"}))
+        marker = self._marker()
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["state"], "working")
+        self.assertNotIn("sessions", marker)
+
+    def test_second_delivery_merges_rather_than_truncates(self):
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
+        first_updated = self._marker()["updated"]
+
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:status"))
+        marker = self._marker()
+        self.assertGreaterEqual(marker["updated"], first_updated)
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["name"], "Feat X")
+
+    def test_topic_delivery_never_writes_a_feature_marker(self):
+        topic_dir = self.runtime_dir / "orchard" / "topics" / "repository/own.repo"
+        courier.orchard_deliver(topic_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
+        self.assertEqual(list(topic_dir.glob("*.marker")),
+                          [topic_dir / "sessA.marker"])
+
+    def test_merge_strips_legacy_shapes_but_keeps_current_task_entries(self):
+        # A marker written by earlier, now-rejected code: a `sessions`
+        # identity cache, a `tasks[]` entry with no `task` key at all (a
+        # delegation label), and a schema-1 entry keyed by the now-retired
+        # `feature` field — none of these are the CURRENT (`task`-keyed)
+        # shape, so merge-never-truncate discards all three rather than
+        # crash on them. A genuinely current entry, for a DIFFERENT task
+        # under this same feature, is carried forward untouched — proving
+        # merge-never-truncate still holds for the shape that matters.
+        (self.project_dir / "feat-x.marker").write_text(json.dumps({
+            "schema": 1, "project": "own.repo", "feature": "feat-x",
+            "sessions": {"s1": {"agent": "architect", "state": "done"}},
+            "tasks": [
+                {"label": "verify-task-persist", "state": "done", "updated": "t0"},
+                {"feature": "feat-x", "name": "Feat X (schema 1)", "area": None,
+                 "state": "done", "updated": "t0"},
+                {"task": "feat-x-step-0", "name": "Step 0", "state": "done",
+                 "updated": "t0"},
+            ],
+            "updated": "t0",
+        }), encoding="utf-8")
+
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
+
+        marker = self._marker()
+        self.assertNotIn("sessions", marker)
+        self.assertEqual(
+            {t["task"] for t in marker["tasks"]}, {"feat-x", "feat-x-step-0"},
+        )
+        survivor = next(t for t in marker["tasks"] if t["task"] == "feat-x-step-0")
+        self.assertEqual(survivor["state"], "done")
+        self.assertEqual(survivor["name"], "Step 0")
+
+
+class SignalPrefixTests(_OrchardTestCase):
+    """`signal --to` is documented as a bare session id, but every other
+    `--to` in this script takes a full `:session:<id>` address — a caller
+    that follows that habit here used to double the prefix
+    (`:session::session:<id>`) once cmd_signal wrapped it again, leaking a
+    `:` into the delivered marker filename (Decision-091 forbids that
+    outright). Both the bare-id (documented) and already-prefixed shape
+    must land on the same, single-prefixed result."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = make_repo(str(Path(self._tmp.name)))
+
+    def _signal(self, to_value: str):
+        return self._courier(
+            self.repo, "sessSignaller",
+            "signal", "--state", "finished", "--to", to_value,
+        )
+
+    def _project_dir(self):
+        return self.runtime_dir / "orchard" / "projects" / self._slug(self.repo)
+
+    def test_bare_to_is_not_doubled(self):
+        proc = self._signal("parentSess")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        project_dir = self._project_dir()
+        self.assertTrue((project_dir / "parentSess.marker").exists())
+        self.assertEqual(list(project_dir.glob("*:*")), [])
+
+    def test_already_prefixed_to_is_not_doubled(self):
+        proc = self._signal(":session:parentSess")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        project_dir = self._project_dir()
+        self.assertTrue((project_dir / "parentSess.marker").exists())
+        self.assertEqual(list(project_dir.glob("*:*")), [])
+
+        files = list(project_dir.glob("parentSess.*.json"))
+        self.assertEqual(len(files), 1)
+        envelope = json.loads(files[0].read_text(encoding="utf-8"))
+        self.assertEqual(envelope["to"], ":session:parentSess")
+
+
+class OrchardFilenameValidationTests(unittest.TestCase):
+    """Decision-091's closed set of orchard filename shapes —
+    `<sessionid>.<ts>.json`, `<sessionid>.marker`, `<feature-id>.marker` —
+    enforced by validate_orchard_filename(), the single gate write_orchard_file()
+    calls before anything touches disk. No coercion, no silent repair:
+    anything outside the closed set raises."""
+
+    def test_valid_shapes_are_accepted(self):
+        courier.validate_orchard_filename("sess1.2026-07-26T14-04-13.469488.json")
+        courier.validate_orchard_filename("sess1.marker")
+        courier.validate_orchard_filename("feat-x.marker")
+
+    def test_routing_prefix_in_any_component_is_rejected(self):
+        with self.assertRaises(ValueError):
+            courier.validate_orchard_filename(":session:sess1.marker")
+        with self.assertRaises(ValueError):
+            courier.validate_orchard_filename(":session:sess1.2026-07-26T14-04-13.469488.json")
+
+    def test_missing_json_extension_is_rejected(self):
+        with self.assertRaises(ValueError):
+            courier.validate_orchard_filename("sess1.2026-07-26T14-04-13.469488")
+
+    def test_write_orchard_file_rejects_rather_than_repairs_a_malformed_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            dir_path = Path(d)
+            with self.assertRaises(ValueError):
+                courier.write_orchard_file(dir_path, "sess1.2026-07-26T14-04-13.469488", {"x": 1})
+            self.assertEqual(list(dir_path.iterdir()), [])
+
+
 class RequestReplyTests(_OrchardTestCase):
     """`request` blocks until a matching `reply` (matched on in_reply_to)
     arrives, then prints the reply body. The reply is sent from a second
@@ -342,6 +615,283 @@ class CompactionTests(_OrchardTestCase):
             names = zf.namelist()
             self.assertTrue(any(old_file.name in n for n in names))
             self.assertFalse(any(recent_file.name in n for n in names))
+
+
+class StaticIdentityEnvelopeShapeTests(unittest.TestCase):
+    """STATIC-DATA test. Paired with FeatureMarkerTests above (round-trip:
+    those tests build the envelope's `identity` block by hand in the same
+    file that reads it back). This class instead pins the same contract —
+    the `identity` block `orchard_topic.py`'s `_attach_snapshot()` embeds —
+    against a REAL event, captured read-only off the live orchard tree
+    (see tests/fixtures/PROVENANCE.md): the branch transport was exercised
+    against that tree once this shape needed proving, so this is a genuine
+    live capture, not tool output frozen in a scratch root."""
+
+    def test_identity_block_carries_task_and_feature_name_alias(self):
+        event = _load_fixture_json("event_identity_new_shape_live.json")
+        identity = event["identity"]
+        for key in ("agent", "feature", "feature_name", "task", "task_name", "parent", "name"):
+            self.assertIn(key, identity, f"missing {key!r} in {identity!r}")
+        self.assertEqual(identity["name"], identity["feature_name"])
+        self.assertEqual(identity["agent"], "landscaper")
+        self.assertEqual(identity["feature"], "sidebar-empty-rows")
+
+
+class StaticFeatureMarkerSchemaTests(unittest.TestCase):
+    """STATIC-DATA companion to
+    FeatureMarkerTests.test_feature_marker_created_with_task_shape (that
+    test's marker comes from this same suite's own orchard_deliver() call;
+    this one reads a REAL `<feature-id>.marker`, captured read-only off the
+    live orchard tree after it was upgraded in place to schema 2 — see
+    PROVENANCE.md), pinning: schema 2, `tasks[]` keyed on `task` (never
+    `feature`), name/state/updated on each task, area/name/feature/updated
+    at the marker's top level."""
+
+    def test_marker_is_schema_2_keyed_on_task_not_feature(self):
+        marker = _load_fixture_json("marker_feature_schema2_live.json")
+        self.assertEqual(marker["schema"], 2)
+        for key in ("area", "name", "feature", "updated"):
+            self.assertIn(key, marker)
+        self.assertEqual(len(marker["tasks"]), 1)
+        task = marker["tasks"][0]
+        self.assertIn("task", task)
+        self.assertNotIn("feature", task)
+        for key in ("name", "state", "updated"):
+            self.assertIn(key, task)
+
+
+class StaticOldSchemaMarkerFailOpenTests(unittest.TestCase):
+    """STATIC-DATA companion to
+    FeatureMarkerTests.test_merge_strips_legacy_shapes_but_keeps_current_task_entries
+    (that test builds its "before" marker by hand). Here the "before"
+    marker is the REAL schema-1 `sidebar-empty-rows.marker` still sitting on
+    the live tree at capture time (see PROVENANCE.md) — genuine evidence the
+    live fleet had not yet run the new writer — fed through the real
+    merge_feature_marker(), proving an old-shape marker already on disk is
+    read as if its tasks[] were empty, never a crash (FAIL-OPEN)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.path = Path(self._tmp.name) / "sidebar-empty-rows.marker"
+        self.path.write_text(_load_fixture("marker_feature_schema1_live.json"), encoding="utf-8")
+
+    def test_old_schema1_marker_is_discarded_not_crashed_on(self):
+        envelope = {
+            "subject": "orchard:agent:lifecycle:starting",
+            "identity": {"feature": "sidebar-empty-rows", "task": "fresh-task",
+                         "task_name": "Fresh Task", "feature_name": "Fresh Feature"},
+        }
+        marker = courier.merge_feature_marker(
+            self.path, "kaukea.orchids", "sidebar-empty-rows", envelope,
+            "2026-07-27T00:00:00+00:00",
+        )
+        self.assertEqual(marker["schema"], 2)
+        self.assertEqual([t["task"] for t in marker["tasks"]], ["fresh-task"])
+        self.assertNotIn("sessions", marker)
+
+
+class FailOpenNoIdentityEventTests(unittest.TestCase):
+    """FAIL-OPEN guarantee, real gardener case (53629e1's own commit message
+    calls this out: "observed live: a gardener session posted
+    orchard:agent:status/delegation:begin with NO identity block at all").
+    The fixture (see PROVENANCE.md) is that exact real event.
+    write_feature_marker() must not raise and must write nothing;
+    orchard_deliver()'s whole pipeline must still complete around it."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.project_dir = Path(self._tmp.name) / "projects" / "kaukea.orchids"
+        self.project_dir.mkdir(parents=True)
+        self.envelope = _load_fixture_json("event_gardener_no_identity_live.json")
+
+    def test_write_feature_marker_does_not_raise_and_writes_nothing(self):
+        courier.write_feature_marker(self.project_dir, "kaukea.orchids", self.envelope)
+        self.assertEqual(list(self.project_dir.glob("*.marker")), [])
+
+    def test_orchard_deliver_completes_around_the_missing_identity(self):
+        sid = self.envelope["from"].removeprefix(":session:")
+        courier.orchard_deliver(self.project_dir, sid, self.envelope)
+        self.assertTrue((self.project_dir / f"{sid}.marker").exists())
+        other_markers = [p for p in self.project_dir.glob("*.marker") if p.name != f"{sid}.marker"]
+        self.assertEqual(other_markers, [])
+
+
+class StaticDelegationEventFeatureMarkerTests(unittest.TestCase):
+    """A REAL delegation event (delegation:schedule for `transport-identity`
+    — the actual sub-job that produced this feature's commit 53629e1; see
+    PROVENANCE.md), merged through write_feature_marker(): must not raise
+    and must not impart any terminal task state — delegation traffic is
+    inert with respect to task state (paired with
+    FeatureMarkerTests.test_delegation_traffic_does_not_change_task_state,
+    which uses a hand-built envelope)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.project_dir = Path(self._tmp.name) / "projects" / "kaukea.orchids"
+        self.project_dir.mkdir(parents=True)
+
+    def test_real_delegation_event_creates_task_in_working_state_not_terminal(self):
+        delegation = _load_fixture_json("event_delegation_schedule_live.json")
+        courier.write_feature_marker(self.project_dir, "kaukea.orchids", delegation)
+        marker = json.loads((self.project_dir / "sidebar-empty-rows.marker").read_text())
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["state"], "working")
+        self.assertNotIn("subagent", marker["tasks"][0])
+
+
+class FailOpenMarkerReaderTests(unittest.TestCase):
+    """A marker that is zero-byte or malformed JSON must never crash a
+    reader (FAIL-OPEN). Zero-byte uses the REAL captured heartbeat marker
+    (PROVENANCE.md) — genuine bytes, not `b""` authored in this test.
+    Malformed JSON has no live analogue worth chasing (garbage-by-
+    construction has no "real" shape to capture), so it is authored inline,
+    same as the rest of this suite's negative-path fixtures."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_zero_byte_marker_role_reads_as_absent(self):
+        path = Path(self._tmp.name) / "sess.marker"
+        path.write_bytes(_load_fixture_bytes("marker_session_heartbeat_empty_live.marker"))
+        self.assertEqual(path.stat().st_size, 0)
+        self.assertIsNone(courier._read_session_role(path))
+
+    def test_zero_byte_marker_as_feature_marker_loads_empty_not_crashed(self):
+        path = Path(self._tmp.name) / "feat.marker"
+        path.write_bytes(_load_fixture_bytes("marker_session_heartbeat_empty_live.marker"))
+        self.assertEqual(courier._load_feature_marker(path), {})
+
+    def test_malformed_json_marker_role_reads_as_absent(self):
+        path = Path(self._tmp.name) / "sess.marker"
+        path.write_text("{not valid json", encoding="utf-8")
+        self.assertIsNone(courier._read_session_role(path))
+
+    def test_malformed_json_feature_marker_loads_empty_not_crashed(self):
+        path = Path(self._tmp.name) / "feat.marker"
+        path.write_text("{not valid json", encoding="utf-8")
+        self.assertEqual(courier._load_feature_marker(path), {})
+
+
+class RolePersistenceNeverOverwritesTests(unittest.TestCase):
+    """ROUND-TRIP: persist_session_role() writes, persisted_session_role()
+    reads its own write back, within this same test — the pairing's
+    round-trip half. Paired with StaticSessionRoleFixtureTests below, which
+    exercises the identical never-overwrite guarantee against a REAL
+    captured marker this test never wrote. `_session_role_marker` is
+    mocked to a plain tmp path so this stays a unit test of the
+    write-once/never-blank contract, independent of git/project-slug
+    resolution (already covered elsewhere in this file)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+
+    def _path(self, sid: str) -> Path:
+        return Path(self._tmp.name) / f"{sid}.marker"
+
+    def test_role_never_overwrites_an_existing_record(self):
+        with mock.patch.object(courier, "_session_role_marker", return_value=self._path("sessA")):
+            courier.persist_session_role("sessA", "sower")
+            courier.persist_session_role("sessA", "landscaper")
+            self.assertEqual(courier.persisted_session_role("sessA"), "sower")
+
+    def test_role_is_never_overwritten_with_nothing(self):
+        with mock.patch.object(courier, "_session_role_marker", return_value=self._path("sessB")):
+            courier.persist_session_role("sessB", "sower")
+            courier.persist_session_role("sessB", None)
+            self.assertEqual(courier.persisted_session_role("sessB"), "sower")
+
+    def test_absent_role_persist_writes_nothing(self):
+        with mock.patch.object(courier, "_session_role_marker", return_value=self._path("sessC")):
+            courier.persist_session_role("sessC", None)
+            self.assertFalse(self._path("sessC").exists())
+
+
+class StaticSessionRoleFixtureTests(unittest.TestCase):
+    """STATIC-DATA companion to RolePersistenceNeverOverwritesTests above
+    and to SessionRoleIdentityFallbackTests below: reads a REAL
+    `<uuid>.marker` this test never wrote — the coordinator's own live
+    session marker, captured read-only off the live tree after `courier.py
+    init` persisted its role there for real (see PROVENANCE.md) — proving
+    both the persisted-role read and the never-overwrite guarantee hold
+    against a role this test did not just produce itself a moment earlier."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.path = Path(self._tmp.name) / "e3e3aabd-6578-47e1-898e-df36b3f7c9b7.marker"
+        self.path.write_text(_load_fixture("marker_session_role_live.marker"), encoding="utf-8")
+
+    def test_real_captured_role_marker_reads_back_as_landscaper(self):
+        self.assertEqual(courier._read_session_role(self.path), "landscaper")
+
+    def test_persisting_over_a_real_captured_role_never_overwrites_it(self):
+        with mock.patch.object(courier, "_session_role_marker", return_value=self.path):
+            courier.persist_session_role("e3e3aabd-6578-47e1-898e-df36b3f7c9b7", "gardener")
+        self.assertEqual(
+            self.path.read_text(encoding="utf-8"),
+            _load_fixture("marker_session_role_live.marker"),
+        )
+
+
+class SessionRoleIdentityFallbackTests(_OrchardTestCase):
+    """`identity_of()`'s FULL fallback path (session role recovered on
+    resume), exercised through the real `courier.py` CLI with the
+    harness's own CLAUDE_CODE_AGENT explicitly absent — a genuine resume
+    carries none. ROUND-TRIP first (this test's own `init --agent` call,
+    read back by `identity`); then a STATIC-DATA pairing that installs a
+    REAL captured role marker instead (PROVENANCE.md) — a role this test
+    never wrote — proving the SAME fallback path recovers it; then the
+    FAIL-OPEN case: an unparseable role record is treated as absent, never
+    raised."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = make_repo(str(Path(self._tmp.name)))
+
+    def _identity_with_no_harness_agent(self, session_id: str) -> dict:
+        env = self._env(session_id)
+        env.pop("CLAUDE_CODE_AGENT", None)
+        proc = subprocess.run(
+            [sys.executable, _COURIER_PY, "identity"],
+            cwd=self.repo, capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout)
+
+    def test_declared_role_persists_and_is_recovered_with_no_harness_agent(self):
+        env = self._env("sessRole")
+        env.pop("CLAUDE_CODE_AGENT", None)
+        init = subprocess.run(
+            [sys.executable, _COURIER_PY, "init", "--agent", "sower"],
+            cwd=self.repo, capture_output=True, text=True, env=env,
+        )
+        self.assertEqual(init.returncode, 0, init.stderr)
+
+        identity = self._identity_with_no_harness_agent("sessRole")
+        self.assertEqual(identity["agent_type"], "sower")
+
+    def test_static_captured_role_marker_is_recovered_with_no_harness_agent(self):
+        slug = self._slug(self.repo)
+        project_dir = self.runtime_dir / "orchard" / "projects" / slug
+        project_dir.mkdir(parents=True)
+        (project_dir / "sessStatic.marker").write_text(
+            _load_fixture("marker_session_role_live.marker"), encoding="utf-8",
+        )
+        identity = self._identity_with_no_harness_agent("sessStatic")
+        self.assertEqual(identity["agent_type"], "landscaper")
+
+    def test_malformed_role_marker_is_treated_as_absent_not_raising(self):
+        slug = self._slug(self.repo)
+        project_dir = self.runtime_dir / "orchard" / "projects" / slug
+        project_dir.mkdir(parents=True)
+        (project_dir / "sessBad.marker").write_text("{not json", encoding="utf-8")
+        identity = self._identity_with_no_harness_agent("sessBad")
+        self.assertIsNone(identity.get("agent_type"))
 
 
 if __name__ == "__main__":
