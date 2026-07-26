@@ -246,6 +246,23 @@ acceptance gate and cannot be self-approved)
 5. `_fold_sessions`'s latest-snapshot-wins fold is sensitive to `iterdir()`
    order when two events of one session tie on mtime. Pre-existing, noticed
    while testing, not touched.
+6. THE SIDEBAR NEVER RE-MOUNTS ITSELF. Operator expectation, raised in
+   session: "a CTRL+C seem yo have closed the sidebar. Im expecting that any
+   activity would reopen it righy?" It does not. `tools/sidebar-mount.sh` is
+   invoked at LAUNCH ONLY — `agents/gardener.md:26` mounts it into the
+   gardener's window at boot, `agents/gardener.md:178` mounts it into each
+   landscaper's window at spawn, and `ARCHITECTURE.md:177` describes it as
+   "mounted at launch … strictly best-effort". No hook in `settings.json`
+   calls it. So a pane closed for any reason — a stray interrupt, a crash,
+   the renderer exiting — stays closed until the next gardener boot; a
+   landscaper spawn only mounts into its OWN new window and never repairs an
+   existing one. The script is already idempotent and no-ops when a pane is
+   present, so it is built for repeated calling and simply has nothing
+   calling it. Fix shape: invoke it from a hook (UserPromptSubmit for
+   self-healing on any activity, or SessionStart for a narrower repair).
+   RETURNED rather than built by operator ruling, because hooks live in the
+   shared `settings.json` and an edit there reaches every consuming repo on
+   its next sync — a decision of its own, not a rider on this feature.
 
 ## Changelog entry
 
@@ -368,3 +385,16 @@ Ledger of everything the operator asked for in-session, as received.
 5. "Can we fix why ncurses does the chroma thing anyway?" — investigated:
    the approximation was ours, not ncurses'. Fixed at the root via a
    direct-colour terminfo. IMPLEMENTED (build step 4).
+6. Corrected the display hierarchy to five levels and ruled that only the
+   task persists, agents and subagents being ephemeral. IMPLEMENTED (steps
+   8a, 8b, 9) — this reversed an earlier part of the build.
+7. "im not doing any of this you an just reload it" — reload the sidebar
+   rather than hand the operator steps. DONE, but badly: the reload sent an
+   interrupt to a mis-resolved tmux target, which closed both sidebar panes
+   and submitted a stray shell command as a prompt into the gardener's
+   session. Panes were restored on the branch build and the incident was
+   reported at once. Recorded because the operator should not have to
+   discover it.
+8. "Im expecting that any activity would reopen it righy?" — it does not;
+   the mount is launch-only. RETURNED as follow-up 6 by operator ruling, NOT
+   built here.
