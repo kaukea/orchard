@@ -23,10 +23,16 @@ Runs under both `python3 -m unittest discover` and `pytest`; stdlib only.
 import itertools
 import json
 import os
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
+from datetime import datetime, timezone
+from unittest import mock
 from pathlib import Path
 
 _TOOLS_DIR = os.path.join(
@@ -79,6 +85,43 @@ def _write_event(projects_root, slug, sid, subject, *,
     if mtime is not None:
         os.utime(path, (mtime, mtime))
     os.utime(project_dir, None)
+    return path
+
+
+def _iso(ts) -> str:
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _marker_session(agent, *, name=None, parent=None, state="working", last_seen=None):
+    """One entry of a marker's `sessions` map (frozen schema v1)."""
+    return {"agent": agent, "name": name, "parent": parent, "state": state,
+            "last_seen": last_seen or _now_iso()}
+
+
+def _task(label, state, updated=None):
+    """One entry of a marker's `tasks` list (frozen schema v1)."""
+    return {"label": label, "state": state, "updated": updated or _now_iso()}
+
+
+def _write_marker(projects_root, slug, feature_id, *, name=None, area=None,
+                   sessions=None, tasks=None, archived=False):
+    """One `<feature-id>.marker` file under `projects_root`/`slug`/ (or its
+    `_archived/` subdirectory when `archived`), matching the frozen schema
+    v1 the marker-writer produces."""
+    project_dir = Path(projects_root) / slug / ("_archived" if archived else "")
+    project_dir.mkdir(parents=True, exist_ok=True)
+    marker = {
+        "schema": 1, "project": slug, "feature": feature_id,
+        "name": name, "area": area,
+        "sessions": sessions or {}, "tasks": tasks or [],
+        "updated": _now_iso(),
+    }
+    path = project_dir / f"{feature_id}.marker"
+    path.write_text(json.dumps(marker), encoding="utf-8")
     return path
 
 
@@ -484,6 +527,117 @@ class StalenessTests(_FixtureTestCase):
 
 
 # --------------------------------------------------------------------------
+# Feature-node markers (frozen schema v1, `<feature-id>.marker`) — the
+# structural tree source: any identity earns a row (not just landscaper),
+# and a marker-known session still renders after its event files are gone
+# (the archiver's 120-minute sweep). See sidebar.py's `_iter_marker_sessions`,
+# `_apply_marker_session`, `_assemble_repo`.
+# --------------------------------------------------------------------------
+
+class MarkerModelTests(_FixtureTestCase):
+    def test_non_landscaper_identity_with_live_events_renders_a_row(self):
+        self._event("own.repo", "s1", "orchard:agent:lifecycle:starting",
+                     identity={"agent": "architect", "feature": "feat-a"})
+        feature = self._repo().features[0]
+        self.assertEqual(feature.name, "feat-a")
+        self.assertEqual(feature.role, "architect")
+        self.assertEqual(feature.status, "working")
+
+    def test_marker_only_session_with_no_surviving_events_renders(self):
+        sessions = {"s1": _marker_session("architect", state="done")}
+        _write_marker(self.projects_root, "own.repo", "feat-a", sessions=sessions)
+        feature = self._repo().features[0]
+        self.assertEqual(feature.name, "feat-a")
+        self.assertEqual(feature.role, "architect")
+        self.assertEqual(feature.status, "done")
+
+    def test_marker_working_session_stays_working_within_the_active_window(self):
+        sessions = {"s1": _marker_session("landscaper", state="working")}
+        _write_marker(self.projects_root, "own.repo", "feat-a", sessions=sessions)
+        feature = self._repo().features[0]
+        self.assertEqual(feature.status, "working")
+
+    def test_marker_working_session_reads_stale_past_the_active_window(self):
+        stale_ts = _iso(StalenessTests._stale_ts())
+        sessions = {"s1": _marker_session("landscaper", state="working", last_seen=stale_ts)}
+        _write_marker(self.projects_root, "own.repo", "feat-a", sessions=sessions)
+        feature = self._repo().features[0]
+        self.assertEqual(feature.status, "stale")
+
+    def test_marker_row_survives_after_its_events_are_archived(self):
+        self._event("own.repo", "s1", "orchard:agent:outcome:success",
+                     identity={"agent": "landscaper", "feature": "feat-a"})
+        sessions = {"s1": _marker_session("landscaper", state="done")}
+        _write_marker(self.projects_root, "own.repo", "feat-a", sessions=sessions)
+        # Simulate the archiver removing the 120-minute-old event JSONs —
+        # the marker alone must keep the row alive.
+        for f in (self.projects_root / "own.repo").glob("*.json"):
+            f.unlink()
+        feature = self._repo().features[0]
+        self.assertEqual(feature.status, "done")
+
+    def test_archived_marker_subdirectory_is_ignored(self):
+        sessions = {"s1": _marker_session("architect", state="done")}
+        _write_marker(self.projects_root, "own.repo", "feat-old",
+                       sessions=sessions, archived=True)
+        fleet = self._model()
+        self.assertEqual(fleet.repos[0].features, [])
+
+    def test_mailbox_marker_without_an_identity_never_becomes_a_row(self):
+        sessions = {"operator": _marker_session(None, state="working")}
+        _write_marker(self.projects_root, "own.repo", "operator", sessions=sessions)
+        fleet = self._model()
+        self.assertEqual(fleet.repos[0].features, [])
+
+
+# --------------------------------------------------------------------------
+# Marker-cached tasks (`_merge_subagents`): a task recorded as completed in
+# a feature marker's `tasks` list stays visible once the archiver removes
+# the delegation events that first reported it, and a task the model can
+# see both live and in the marker still renders once, live-wins.
+# --------------------------------------------------------------------------
+
+class MarkerTaskPersistenceTests(_FixtureTestCase):
+    def test_completed_marker_task_survives_after_its_events_are_archived(self):
+        self._landscaper("own.repo", "s1", "feat-a", mtime=1)
+        self._event("own.repo", "s1", "orchard:agent:delegation:begin",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-a"}, mtime=2)
+        self._event("own.repo", "s1", "orchard:agent:delegation:end",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-a"}, mtime=3)
+        _write_marker(self.projects_root, "own.repo", "feat-a",
+                      sessions={"s1": _marker_session("landscaper", state="working")},
+                      tasks=[_task("sub-a", "done")])
+        # Simulate the archiver's 120-minute sweep removing the event JSONs
+        # — the marker's tasks list alone must keep the completed row.
+        for f in (self.projects_root / "own.repo").glob("*.json"):
+            f.unlink()
+        feature = self._repo().features[0]
+        self.assertEqual([(s.label, s.status) for s in feature.subagents],
+                          [("sub-a", "done")])
+
+    def test_task_present_in_both_live_and_marker_renders_once_live_wins(self):
+        self._landscaper("own.repo", "s1", "feat-a", mtime=1)
+        self._event("own.repo", "s1", "orchard:agent:delegation:begin",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body={"subagent": "sub-a"}, mtime=2)
+        _write_marker(self.projects_root, "own.repo", "feat-a",
+                      sessions={"s1": _marker_session("landscaper", state="working")},
+                      tasks=[_task("sub-a", "done")])
+        feature = self._repo().features[0]
+        self.assertEqual([(s.label, s.status) for s in feature.subagents],
+                          [("sub-a", "working")])
+
+    def test_working_tasks_sort_ahead_of_done_tasks(self):
+        _write_marker(self.projects_root, "own.repo", "feat-a",
+                      sessions={"s1": _marker_session("landscaper", state="working")},
+                      tasks=[_task("sub-done", "done"), _task("sub-working", "working")])
+        feature = self._repo().features[0]
+        self.assertEqual([s.label for s in feature.subagents], ["sub-working", "sub-done"])
+
+
+# --------------------------------------------------------------------------
 # End-to-end smoke test: post through the REAL orchard_topic.py writer (a
 # real git repo + session id + XDG_RUNTIME_DIR), then read it back with
 # build_model() — confirms sidebar.py's reader stays compatible with the
@@ -573,6 +727,140 @@ class DumpCLITests(unittest.TestCase):
         lines = self._dump()
         sub_line = next(l for l in lines if "sub-a" in l)
         self.assertIn(sidebar.SUBAGENT_GLYPH, sub_line)
+
+
+# --------------------------------------------------------------------------
+# CLI --once, non-tty path — real subprocess with no controlling terminal
+# (capture_output pipes, same as DumpCLITests above): must exit non-zero
+# with a diagnostic message, never a raw curses traceback. The real-terminal
+# path (paints an actual frame and exits 0) is covered in
+# tests/test_sidebar_frame.py, which drives it inside a tmux pane.
+# --------------------------------------------------------------------------
+
+class OnceCLINonTtyTests(unittest.TestCase):
+    def test_once_without_a_terminal_exits_nonzero_with_a_message(self):
+        proc = subprocess.run(
+            [sys.executable, _SIDEBAR_PY, "--once"],
+            capture_output=True, text=True, stdin=subprocess.DEVNULL,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertTrue(proc.stderr.strip())
+
+
+# --------------------------------------------------------------------------
+# watch()'s inotifywait supervision — a dying/killed child must not freeze
+# the sidebar (the child is a real `inotifywait` subprocess, killed for
+# real; this is a regression test for a defect observed in production).
+# --------------------------------------------------------------------------
+
+@unittest.skipUnless(shutil.which("inotifywait"), "inotifywait not installed")
+class WatchSupervisorTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.projects_root = Path(self._tmp.name) / "projects"
+        self.projects_root.mkdir(parents=True)
+        self.events = []
+        self._events_lock = threading.Lock()
+        self._watch_thread = threading.Thread(
+            target=sidebar.watch, args=(self._on_change, self.projects_root),
+            daemon=True,
+        )
+        self._watch_thread.start()
+        self.addCleanup(self._kill_child_inotifywaits)
+
+    def _on_change(self, fleet) -> None:
+        with self._events_lock:
+            self.events.append(fleet)
+
+    def _event_count(self) -> int:
+        with self._events_lock:
+            return len(self.events)
+
+    def _wait_for_event_count(self, count, timeout=10):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._event_count() >= count:
+                return
+            time.sleep(0.05)
+        self.fail(f"timed out waiting for {count} on_change call(s); "
+                   f"got {self._event_count()}")
+
+    def _child_inotifywait_pids(self):
+        own_pid = str(os.getpid())
+        pids = []
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            try:
+                status = Path(f"/proc/{entry}/status").read_text()
+                cmdline = Path(f"/proc/{entry}/cmdline").read_bytes()
+            except OSError:
+                continue
+            ppid = next(
+                (l.split()[1] for l in status.splitlines() if l.startswith("PPid:")),
+                None,
+            )
+            if ppid == own_pid and b"inotifywait" in cmdline:
+                pids.append(int(entry))
+        return pids
+
+    def _wait_for_inotifywait_child(self, timeout=10):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            pids = self._child_inotifywait_pids()
+            if pids:
+                return pids
+            time.sleep(0.05)
+        self.fail("watch() never spawned an inotifywait child")
+
+    def _kill_child_inotifywaits(self):
+        for pid in self._child_inotifywait_pids():
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+    def test_killed_watcher_child_still_delivers_later_changes(self):
+        self._wait_for_event_count(1)  # initial snapshot
+        pids = self._wait_for_inotifywait_child()
+
+        for pid in pids:
+            os.kill(pid, signal.SIGKILL)
+
+        before = self._event_count()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and self._child_inotifywait_pids():
+            time.sleep(0.05)  # let the supervisor reap + restart
+
+        (self.projects_root / "own.repo").mkdir()
+        _write_event(self.projects_root, "own.repo", "s1",
+                      "orchard:agent:lifecycle:starting",
+                      identity={"agent": "landscaper", "feature": "feat-a"})
+
+        self._wait_for_event_count(before + 1)
+
+    def test_killed_watcher_child_leaves_no_zombie(self):
+        self._wait_for_event_count(1)
+        pids = self._wait_for_inotifywait_child()
+
+        for pid in pids:
+            os.kill(pid, signal.SIGKILL)
+
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            states = []
+            for pid in pids:
+                try:
+                    stat = Path(f"/proc/{pid}/stat").read_text()
+                    states.append(stat.rsplit(")", 1)[1].split()[0])
+                except FileNotFoundError:
+                    states.append(None)
+            if all(s in (None, "") for s in states):
+                return
+            time.sleep(0.05)
+        self.fail(f"killed inotifywait child left as a zombie: {states}")
 
 
 # --------------------------------------------------------------------------
@@ -1163,6 +1451,19 @@ class Xterm256Tests(unittest.TestCase):
         self.assertGreaterEqual(index, 232)
         self.assertLessEqual(index, 255)
 
+    def test_orchids_header_purple_maps_into_the_colour_cube_not_gray(self):
+        # regression: this dark, desaturated purple used to lose to the
+        # grayscale ramp on pure distance (788 vs 3601) despite having real
+        # chroma — the chroma gate must force it into the cube instead.
+        index = sidebar._rgb_to_xterm256(sidebar.REPO_HUES["orchids"]["header"])
+        self.assertGreaterEqual(index, 16)
+        self.assertLessEqual(index, 231)
+
+    def test_genuinely_neutral_colour_still_maps_to_gray_ramp(self):
+        index = sidebar._rgb_to_xterm256((60, 60, 60))
+        self.assertGreaterEqual(index, 232)
+        self.assertLessEqual(index, 255)
+
 
 class RoleEmojiTests(unittest.TestCase):
     def test_known_roles_map_to_their_emoji(self):
@@ -1195,6 +1496,44 @@ class HeaderLineTests(unittest.TestCase):
         line = sidebar.render_header_line("a very long project title", 10)
         self.assertEqual(len(line), 10)
         self.assertTrue(line.endswith(sidebar.ELLIPSIS))
+
+
+class DirectColourTests(unittest.TestCase):
+    """`_select_display_term` and friends -- the TERM upgrade that lets
+    ncurses accept exact RGB as colour numbers on a direct-colour terminal,
+    bypassing `_rgb_to_xterm256` entirely. `_terminfo_has_direct_colour` is
+    stubbed rather than relying on this host's terminfo database."""
+
+    def test_rgb_to_direct_colour_id_packs_rgb_as_int(self):
+        self.assertEqual(sidebar._rgb_to_direct_colour_id((0x2C, 0x18, 0x3E)), 0x2C183E)
+
+    def test_direct_term_name_upgrades_known_256color_terms(self):
+        self.assertEqual(sidebar._direct_term_name("tmux-256color"), "tmux-direct")
+        self.assertEqual(sidebar._direct_term_name("xterm-256color"), "xterm-direct")
+
+    def test_direct_term_name_none_for_non_256color_term(self):
+        self.assertIsNone(sidebar._direct_term_name("screen"))
+        self.assertIsNone(sidebar._direct_term_name("xterm-direct"))
+
+    def test_truecolor_advertised_reads_colorterm(self):
+        with mock.patch.dict(os.environ, {"COLORTERM": "truecolor"}):
+            self.assertTrue(sidebar._truecolor_advertised())
+        with mock.patch.dict(os.environ, {"COLORTERM": ""}):
+            self.assertFalse(sidebar._truecolor_advertised())
+
+    def test_select_display_term_upgrades_when_truecolor_and_entry_exists(self):
+        with mock.patch.dict(os.environ, {"COLORTERM": "truecolor"}), \
+             mock.patch.object(sidebar, "_terminfo_has_direct_colour", return_value=True):
+            self.assertEqual(sidebar._select_display_term("tmux-256color"), "tmux-direct")
+
+    def test_select_display_term_unchanged_without_truecolor(self):
+        with mock.patch.dict(os.environ, {"COLORTERM": ""}):
+            self.assertEqual(sidebar._select_display_term("tmux-256color"), "tmux-256color")
+
+    def test_select_display_term_unchanged_when_entry_missing(self):
+        with mock.patch.dict(os.environ, {"COLORTERM": "truecolor"}), \
+             mock.patch.object(sidebar, "_terminfo_has_direct_colour", return_value=False):
+            self.assertEqual(sidebar._select_display_term("tmux-256color"), "tmux-256color")
 
 
 class PrivateHelperTests(unittest.TestCase):

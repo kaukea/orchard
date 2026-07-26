@@ -61,6 +61,11 @@ CLI:
   python3 tools/sidebar.py          run the interactive curses UI
   python3 tools/sidebar.py --dump   print one frame as plain text and exit 0
                                     (headless — no TTY required)
+  python3 tools/sidebar.py --once   paint one real curses frame (same
+                                    terminal/colour/draw path as the live
+                                    UI) and exit 0 — no input loop, no watch
+                                    thread. Requires a real terminal; exits
+                                    non-zero with a message otherwise.
 
 STDLIB ONLY.
 """
@@ -78,6 +83,7 @@ import time
 import unicodedata
 import zlib
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -182,10 +188,10 @@ STATUS_EMOJI = {
     "failed": "❌",
 }
 
-# Subagent presence glyph (sidebar-titling item 4, unchanged by this step): a
-# subagent row has no verifiable state beyond "it currently exists in the
-# model" — it disappears the moment it's done — so it is never rendered
-# "working" and has no "idle" counterpart glyph.
+# Subagent presence glyph (sidebar-titling item 4). A subagent row once had no
+# state beyond "it currently exists in the model", because it vanished the
+# moment it finished; a completed task now persists from its feature marker,
+# so the row carries its own working/done/failed state.
 SUBAGENT_GLYPH = "●"
 
 NO_ACTIVITY_TEXT = "⋮ no activity ⋮"
@@ -444,6 +450,11 @@ def _is_bare_uuid(text: str | None) -> bool:
 @dataclass
 class Subagent:
     label: str
+    # working/done/failed — same vocabulary _status_for() derives for a
+    # Feature, sourced either from live delegation traffic (always
+    # "working", the only state `_merge_subagents` derives from it) or from
+    # the feature marker's persisted `tasks` entry once live events age out.
+    status: str = "working"
 
 
 @dataclass
@@ -520,13 +531,82 @@ def _latest(rec: dict, key: str, ts: float) -> bool:
     return True
 
 
+_MARKER_ARCHIVE_DIR = "_archived"
+_MARKER_STATE_OUTCOME = {"done": "success", "failed": "fail"}
+
+
+def _parse_iso_ts(text: str | None) -> float:
+    """ISO-8601 UTC (courier.py's `datetime.now(timezone.utc).isoformat()`
+    shape) -> epoch seconds; 0.0 — maximally stale, never a crash — on
+    anything unparsable or missing."""
+    if not text:
+        return 0.0
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _iter_marker_sessions(project_dir: Path):
+    """Yield (feature_id, marker, sid, session) for every identity-bearing
+    session an on-disk feature-node marker (frozen schema v1,
+    `<feature-id>.marker`) still remembers — the structural source a
+    Feature row survives on even once the archiver has removed its event
+    files (retention ruling, 2026-07-25: a finished node persists until
+    restart). `_archived/` is never scanned; a legacy zero-byte
+    `<session-id>.marker` heartbeat (courier.py's mailbox touch) has no
+    JSON to parse and is skipped; a session entry with no `agent` (a
+    mailbox that never carried an identity, e.g. operator's) is skipped
+    too."""
+    for f in project_dir.iterdir():
+        if f.name == _MARKER_ARCHIVE_DIR or not f.is_file():
+            continue
+        if not f.name.endswith(".marker") or f.stat().st_size == 0:
+            continue
+        try:
+            marker = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        feature_id = f.name.removesuffix(".marker")
+        for sid, session in (marker.get("sessions") or {}).items():
+            if session.get("agent"):
+                yield feature_id, marker, sid, session
+
+
+def _apply_marker_session(rec: dict, feature_id: str, marker: dict, session: dict) -> None:
+    """Seed a session record's structural baseline off its marker entry —
+    identity plus a status a plain `_status_for` read already understands,
+    so a session with no surviving events still renders correctly. The
+    marker's `tasks` list (label/state/updated, merged in place by
+    courier.py and never truncated) rides along on the record too, so a
+    task stays available for `_merge_subagents` even once the delegation
+    events that first reported it are archived away."""
+    rec["identity"] = {
+        "agent": session.get("agent"),
+        "name": session.get("name") or marker.get("name"),
+        "feature": marker.get("feature") or feature_id,
+    }
+    rec["marker_tasks"] = marker.get("tasks") or []
+    rec["_seen_ts"] = max(rec.get("_seen_ts", 0.0), _parse_iso_ts(session.get("last_seen")))
+    state = session.get("state")
+    outcome = _MARKER_STATE_OUTCOME.get(state)
+    if outcome:
+        rec["outcome"] = outcome
+    elif state == "working":
+        rec["state"] = "starting"
+
+
 def _fold_sessions(project_dir: Path) -> dict[str, dict]:
-    """Fold one project's event files into one record per session — latest
-    of each kind wins. Folded from the retired sidebar_v3.py's sessions(),
-    unchanged: per-session event files are `<sessionid>.<ts>.json`;
-    `<sessionid>.marker` heartbeat files sit alongside them and are skipped
-    (no envelope to parse)."""
+    """Fold one project's feature-node markers and event files into one
+    record per session. Markers (`_iter_marker_sessions()`) seed the
+    structural baseline first; event files then layer live state on top,
+    latest of each kind winning — folded from the retired sidebar_v3.py's
+    sessions(), unchanged: per-session event files are
+    `<sessionid>.<ts>.json`."""
     found: dict[str, dict] = {}
+    for feature_id, marker, sid, session in _iter_marker_sessions(project_dir):
+        rec = found.setdefault(sid, {"sid": sid, "subs": {}})
+        _apply_marker_session(rec, feature_id, marker, session)
     for f in project_dir.iterdir():
         if f.name.startswith(".") or not f.name.endswith(".json") or not f.is_file():
             continue
@@ -622,6 +702,33 @@ def _apply_common(row: Feature | Repo, rec: dict, now: float) -> None:
     row.subagents_queued = sum(1 for s in subs.values() if s == "scheduled")
 
 
+_SUBAGENT_TASK_SORT_RANK = {"working": 0, "done": 1, "failed": 1}
+
+
+def _merge_subagents(subs: dict[str, str], marker_tasks: list[dict]) -> list[Subagent]:
+    """One Subagent row per label, unioning this session's live delegation
+    traffic (`subs`, from `orchard:agent:delegation:begin|end`) with the
+    owning feature marker's persisted `tasks` — the structural source a
+    completed task survives on once the archiver removes the events that
+    reported it (retention ruling, 2026-07-26). A label present in both
+    renders once; live wins, since only a still-open delegation can produce
+    "active" here at all. Working tasks sort ahead of done/failed ones so a
+    growing pile of finished work never crowds the still-running rows out
+    of view."""
+    merged = {
+        task["label"]: task["state"]
+        for task in marker_tasks
+        if task.get("label") and task.get("state")
+    }
+    for sub_label, state in subs.items():
+        if state == "active":
+            merged[sub_label] = "working"
+    return sorted(
+        (Subagent(label=label, status=status) for label, status in merged.items()),
+        key=lambda sub: (_SUBAGENT_TASK_SORT_RANK.get(sub.status, 1), sub.label),
+    )
+
+
 def _assemble_repo(dir_name: str, sess: dict[str, dict], now: float) -> Repo:
     repo = Repo(name=_repo_display_name(dir_name), activity="", status="idle",
                 waiting_on_operator=False)
@@ -636,7 +743,12 @@ def _assemble_repo(dir_name: str, sess: dict[str, dict], now: float) -> Repo:
 
     for sid in sorted(sess):
         rec = sess[sid]
-        if (rec.get("identity") or {}).get("agent") != "landscaper":
+        agent = (rec.get("identity") or {}).get("agent")
+        # Any identity earns a row, whatever its role — the gardener alone
+        # is excluded (it already supplied the repo header above); a
+        # session never seen with an identity at all contributes nothing
+        # (ruling: any-role rows, 2026-07-26).
+        if not agent or agent == "gardener":
             continue
         label = _row_label(rec)
         if label is None:
@@ -644,14 +756,12 @@ def _assemble_repo(dir_name: str, sess: dict[str, dict], now: float) -> Repo:
         feature = Feature(name=label, activity="", status="idle",
                            waiting_on_operator=False)
         _apply_common(feature, rec, now)
-        # subagents surfaced by the landscaper's own delegation traffic
-        # (orchard:agent:delegation:begin/end) — the only subagent source
-        # this grammar has (see module docstring: a child session that
-        # announces itself without a delegation:begin from its parent is
-        # not shown).
-        for sub_label, state in sorted(rec.get("subs", {}).items()):
-            if state == "active":
-                feature.subagents.append(Subagent(label=sub_label))
+        # subagents: this session's own live delegation traffic
+        # (orchard:agent:delegation:begin/end) merged with its owning
+        # feature marker's persisted tasks (see module docstring: a child
+        # session that announces itself without a delegation:begin from
+        # its parent is still not shown — only a labelled task is).
+        feature.subagents = _merge_subagents(rec.get("subs", {}), rec.get("marker_tasks", []))
         repo.features.append(feature)
 
     repo.has_session = gardener is not None or bool(repo.features)
@@ -679,21 +789,30 @@ def build_model(root: Path | None = None) -> Fleet:
     return fleet
 
 
-def watch(on_change, root: Path | None = None) -> None:
-    """Call on_change(fleet) whenever the projects root changes.
+_WATCH_RESTART_BACKOFF_SECONDS = 1.0
 
-    Prefers `inotifywait -m -r` on the root when it already exists and the
-    binary is available; falls back to a 2s re-scan otherwise — the same
-    fallback shape the retired sidebar_model.watch() used, pointed at the
-    new layout. Resilient to a projects root that does not exist yet:
-    build_model() on a missing root is just an empty Fleet, never a crash.
+
+def watch(on_change, root: Path | None = None) -> None:
+    """Call on_change(fleet) whenever the projects root changes. Never
+    returns while the process lives.
+
+    Prefers `inotifywait -m -r` on the root, supervised for the whole
+    lifetime of the call: a dying inotifywait child is reaped and, as long
+    as the binary is installed, restarted — with a short backoff if it
+    keeps exiting immediately, so a crash loop never busy-spins. While the
+    root doesn't exist (or inotifywait isn't installed at all) this falls
+    back to a 2s re-scan, matching the retired sidebar_model.watch()
+    shape; a root that later reappears is picked back up by inotifywait on
+    the next iteration. build_model() on a missing root is just an empty
+    Fleet, never a crash.
     """
     root = root or projects_root()
+    has_inotifywait = shutil.which("inotifywait") is not None
 
     def rescan_and_notify() -> None:
         on_change(build_model(root))
 
-    if shutil.which("inotifywait") and root.is_dir():
+    def run_inotify_until_exit() -> None:
         cmd = [
             "inotifywait", "-m", "-r",
             "-e", "create", "-e", "moved_to", "-e", "modify", "-e", "delete",
@@ -703,17 +822,21 @@ def watch(on_change, root: Path | None = None) -> None:
             cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
         )
         try:
-            rescan_and_notify()  # initial snapshot before the first event
             for _ in proc.stdout:
                 rescan_and_notify()
         finally:
             proc.terminate()
-        return
+            proc.wait()
 
-    # Fallback: polling re-scan every 2 seconds.
     while True:
         rescan_and_notify()
-        time.sleep(2)
+        if has_inotifywait and root.is_dir():
+            started_at = time.monotonic()
+            run_inotify_until_exit()
+            if time.monotonic() - started_at < _WATCH_RESTART_BACKOFF_SECONDS:
+                time.sleep(_WATCH_RESTART_BACKOFF_SECONDS)
+        else:
+            time.sleep(2)
 
 
 # --------------------------------------------------------------------------
@@ -755,9 +878,12 @@ def flatten(fleet: Fleet) -> list[Row]:
     titling item 3).
 
     Within a repo's features, `done` features sort FIRST (stable sort,
-    done-first), ahead of everything still live — sidebar-titling item 7;
-    subagent rows are exempt (they never persist past their own completion,
-    so there is nothing to sort or retain)."""
+    done-first), ahead of everything still live — sidebar-titling item 7.
+    A feature's own subagent rows keep `_merge_subagents`' order instead
+    (working-first, so a persisted done/failed task never crowds the
+    still-running ones out of view — the opposite priority from the
+    feature sort above, deliberately: a feature list is scanned for what
+    finished, a task list for what's still moving)."""
     rows: list[Row] = []
     for repo in fleet.repos:
         if not repo.has_session:
@@ -782,7 +908,7 @@ def flatten(fleet: Fleet) -> list[Row]:
             for sub in feature.subagents:
                 rows.append(Row(
                     depth=2, kind="subagent", target=feature_target, label=sub.label,
-                    status="working", waiting_on_operator=False, is_subagent=True,
+                    status=sub.status, waiting_on_operator=False, is_subagent=True,
                 ))
     return rows
 
@@ -983,12 +1109,42 @@ def _rgb_to_curses(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
     return tuple(round(c * 1000 / 255) for c in rgb)
 
 
+# curses.COLORS reported by a `*-direct` terminfo entry (colors#0x1000000).
+_DIRECT_COLOUR_THRESHOLD = 1 << 24
+
+
+def _has_direct_colour() -> bool:
+    """True once the active terminfo entry is a direct-colour one (`*-direct`,
+    selected at process start by `_select_display_term`) — `curses.COLORS`
+    is the tell, since that's the one fact `setupterm`/`initscr` computes
+    from the terminfo `colors#` capability. Under direct colour there is no
+    palette to redefine, so `curses.can_change_color()` stops being
+    relevant and is never consulted."""
+    return curses.has_colors() and curses.COLORS >= _DIRECT_COLOUR_THRESHOLD
+
+
+def _rgb_to_direct_colour_id(rgb: tuple[int, int, int]) -> int:
+    """Packed-RGB colour id a direct-colour terminfo entry expects: its
+    `setaf`/`setb` decode any colour number >= 8 as r*65536 + g*256 + b
+    (confirmed against tmux-direct/xterm-direct's terminfo source) — exact,
+    no palette allocation and no `_rgb_to_xterm256` approximation."""
+    r, g, b = rgb
+    return (r << 16) | (g << 8) | b
+
+
 # The 6 steps (0-5) of the xterm-256 colour cube map to these 0-255 values.
 _XTERM256_CUBE_STEPS = (0, 95, 135, 175, 215, 255)
 
 
 def _nearest_cube_step(v: int) -> int:
     return min(range(6), key=lambda i: abs(v - _XTERM256_CUBE_STEPS[i]))
+
+
+# Above this max-minus-min channel spread, an RGB triple carries real hue
+# and must never be approximated away onto the grayscale ramp — chosen
+# below the orchids header purple's spread (38) and above the muted
+# near-grays (HEADER_FG/MUTED, 16) that are meant to fall through to gray.
+_NEAR_NEUTRAL_CHROMA = 24
 
 
 def _rgb_to_xterm256(rgb: tuple[int, int, int]) -> int:
@@ -998,12 +1154,21 @@ def _rgb_to_xterm256(rgb: tuple[int, int, int]) -> int:
     palette slot instead. Only searches the machine-computable ranges: the
     6x6x6 colour cube (indices 16-231) and the 24-step grayscale ramp
     (232-255) — never the 16 standard colours, whose actual RGBs vary per
-    terminal theme and so cannot be matched reliably."""
+    terminal theme and so cannot be matched reliably.
+
+    A chromatic colour (chroma above `_NEAR_NEUTRAL_CHROMA`) always maps
+    into the cube: the ramp's coarse 10-unit steps can sit numerically
+    closer than the cube's own coarse 40-95-unit steps for a dark,
+    desaturated-but-still-hued colour, which silently erases its hue (the
+    orchids header purple used to land in the gray ramp this way). Only a
+    genuinely near-neutral triple is left to the distance comparison."""
     r, g, b = rgb
     ri, gi, bi = _nearest_cube_step(r), _nearest_cube_step(g), _nearest_cube_step(b)
-    cube_rgb = (_XTERM256_CUBE_STEPS[ri], _XTERM256_CUBE_STEPS[gi], _XTERM256_CUBE_STEPS[bi])
     cube_index = 16 + 36 * ri + 6 * gi + bi
+    if max(r, g, b) - min(r, g, b) > _NEAR_NEUTRAL_CHROMA:
+        return cube_index
 
+    cube_rgb = (_XTERM256_CUBE_STEPS[ri], _XTERM256_CUBE_STEPS[gi], _XTERM256_CUBE_STEPS[bi])
     gray_index = max(0, min(23, round(((r + g + b) / 3 - 8) / 10)))
     gray_value = 8 + gray_index * 10
     gray_rgb = (gray_value, gray_value, gray_value)
@@ -1029,11 +1194,14 @@ def _init_agent_colours() -> list[int] | None:
     if not curses.has_colors():
         return None
     try:
-        can_custom = curses.COLORS >= 256 and curses.can_change_color()
+        direct = _has_direct_colour()
+        can_custom = not direct and curses.COLORS >= 256 and curses.can_change_color()
         pairs = []
         for i, (_name, rgb, ansi_fallback) in enumerate(ORCHID_PALETTE):
             pair_id = _AGENT_PAIR_BASE + i
-            if can_custom:
+            if direct:
+                curses.init_pair(pair_id, _rgb_to_direct_colour_id(rgb), -1)
+            elif can_custom:
                 colour_id = 64 + i  # arbitrary custom slot, above the 16 standard ones
                 r, g, b = _rgb_to_curses(rgb)
                 curses.init_color(colour_id, r, g, b)
@@ -1066,20 +1234,25 @@ class _ColourCache:
     mechanism to the mock's palette", generalising the pattern the old
     `_init_header_colours`/`_init_agent_colours` used for one hue set each).
 
-    24-bit via `curses.init_color` when the terminal reports
-    `can_change_color()`; otherwise each RGB maps to its nearest xterm-256
-    palette index via `_rgb_to_xterm256` — the same fallback the header/agent
-    colours already used. Silently degrades to attribute-only styling
-    (dim/italic/bold, no colour) once the colour-pair or custom-colour budget
-    runs out, or on a colourless terminal — never raises."""
+    Exact RGB via `_rgb_to_direct_colour_id` when the active terminfo entry
+    is direct-colour (`_has_direct_colour()`, set up by
+    `_select_display_term` at process start); otherwise 24-bit via
+    `curses.init_color` when the terminal reports `can_change_color()`;
+    otherwise each RGB maps to its nearest xterm-256 palette index via
+    `_rgb_to_xterm256` — the same fallback the header/agent colours already
+    used. Silently degrades to attribute-only styling (dim/italic/bold, no
+    colour) once the colour-pair or custom-colour budget runs out, or on a
+    colourless terminal — never raises."""
 
     _FIRST_COLOUR_ID = 128  # clear of agent (64+) and status-pair ranges
     _FIRST_PAIR_ID = 50     # clear of status pairs (1-6) and agent pairs (10-17)
 
     def __init__(self) -> None:
         self.enabled = curses.has_colors()
+        self._direct = self.enabled and _has_direct_colour()
         self._can_custom = (
-            self.enabled and curses.COLORS >= 256 and curses.can_change_color()
+            self.enabled and not self._direct
+            and curses.COLORS >= 256 and curses.can_change_color()
         )
         self._colour_ids: dict[tuple[int, int, int], int] = {}
         self._pair_ids: dict[tuple[tuple[int, int, int], tuple[int, int, int] | None], int] = {}
@@ -1089,16 +1262,19 @@ class _ColourCache:
     def _colour_id(self, rgb: tuple[int, int, int]) -> int:
         if rgb in self._colour_ids:
             return self._colour_ids[rgb]
-        colour_id = _rgb_to_xterm256(rgb)
-        if self._can_custom and self._next_colour_id < curses.COLORS:
-            candidate = self._next_colour_id
-            self._next_colour_id += 1
-            try:
-                r, g, b = _rgb_to_curses(rgb)
-                curses.init_color(candidate, r, g, b)
-                colour_id = candidate
-            except curses.error:
-                pass
+        if self._direct:
+            colour_id = _rgb_to_direct_colour_id(rgb)
+        else:
+            colour_id = _rgb_to_xterm256(rgb)
+            if self._can_custom and self._next_colour_id < curses.COLORS:
+                candidate = self._next_colour_id
+                self._next_colour_id += 1
+                try:
+                    r, g, b = _rgb_to_curses(rgb)
+                    curses.init_color(candidate, r, g, b)
+                    colour_id = candidate
+                except curses.error:
+                    pass
         self._colour_ids[rgb] = colour_id
         return colour_id
 
@@ -1136,6 +1312,46 @@ class _ColourCache:
         return attr
 
 
+# --------------------------------------------------------------------------
+# Terminal setup — TERM upgrade to a direct-colour terminfo entry, applied
+# once at process start (before curses ever calls setupterm/initscr).
+# --------------------------------------------------------------------------
+
+def _truecolor_advertised() -> bool:
+    return os.environ.get("COLORTERM", "").strip().lower() in ("truecolor", "24bit")
+
+
+def _direct_term_name(term: str) -> str | None:
+    if not term.endswith("-256color"):
+        return None
+    return term[: -len("-256color")] + "-direct"
+
+
+def _terminfo_has_direct_colour(term: str) -> bool:
+    try:
+        fd = sys.__stdout__.fileno() if sys.__stdout__ else 1
+        curses.setupterm(term, fd)
+        return curses.tigetnum("colors") >= _DIRECT_COLOUR_THRESHOLD
+    except Exception:
+        return False  # missing entry, no fd, or any other terminfo failure
+
+
+def _select_display_term(term: str) -> str:
+    """Upgrades TERM to its `*-direct` terminfo counterpart (tmux-256color
+    -> tmux-direct, xterm-256color -> xterm-direct, matching the actual TERM
+    family) when the outer terminal advertises truecolor (COLORTERM) and
+    that entry actually exists on this machine — so ncurses accepts exact
+    RGB values as colour numbers and no approximation (`_rgb_to_xterm256`)
+    ever runs. Falls back to the original TERM, unchanged, when either
+    condition fails."""
+    if not _truecolor_advertised():
+        return term
+    candidate = _direct_term_name(term)
+    if candidate and _terminfo_has_direct_colour(candidate):
+        return candidate
+    return term
+
+
 def _safe_addstr(stdscr, y: int, x: int, text: str, attr: int) -> None:
     if not text:
         return
@@ -1156,8 +1372,11 @@ def _draw_header(
     """SOLID per-repo hue block (sidebar-titling OVERRIDE 1, hue now sourced
     from `_repo_hue(title)["header"]`) with the centred title drawn on top,
     thin/DIM and never bold — STATIC, no per-frame movement. PAUSED stays
-    flat light-gray. A selected header keeps a visible A_REVERSE on the
-    title."""
+    flat light-gray. `selected` here means "the cursor is here AND the user
+    has actually moved it" (see `_draw`'s `has_moved`/`main`'s tracking of
+    it) — the resting first frame never inverts a header merely because
+    `selected == 0` happens to default there; A_REVERSE only appears once
+    the operator has genuinely navigated."""
     bg_rgb = PAUSED_HEADER_GRAY if paused else _repo_hue(title)["header"]
     text = render_header_line(title, width)
     fill_attr = colours.pair(HEADER_FG, bg_rgb)
@@ -1367,7 +1586,7 @@ def _draw_working_decorations(stdscr, y: int, width: int, row: Row, colours: _Co
 def _draw(
     stdscr, rows: list[Row], selected: int, offset: int,
     colour_pairs: dict[str, int], agent_colours: list[int] | None,
-    colours: _ColourCache, tick: int,
+    colours: _ColourCache, tick: int, has_moved: bool = False,
 ) -> None:
     stdscr.erase()
     max_y, max_x = stdscr.getmaxyx()
@@ -1382,7 +1601,7 @@ def _draw(
         if y >= max_y:
             break
         if row.kind == "repo":
-            _draw_header(stdscr, y, max_x, row.label, row.paused, i == selected, colours)
+            _draw_header(stdscr, y, max_x, row.label, row.paused, i == selected and has_moved, colours)
             y += 1
             continue
         if row.kind == "feature":
@@ -1424,16 +1643,31 @@ def _clamp_selected(selected: int, count: int) -> int:
     return max(0, min(selected, count - 1))
 
 
-def main(stdscr) -> None:
+def _init_draw_state(stdscr) -> tuple[dict[str, int], list[int] | None, _ColourCache]:
     curses.curs_set(0)
     # ~125ms/frame target (bus-message-specifying B5 item 3, matching the
     # mock's FPS=8) — the band sweep rides this loop's tick, same as the
     # spinner used to; a slower actual cadence is accepted (geometry over
     # framerate) rather than tightened with extra timers.
     stdscr.timeout(125)
-    colour_pairs = _init_colours()
-    agent_colours = _init_agent_colours()
-    colours = _ColourCache()
+    return _init_colours(), _init_agent_colours(), _ColourCache()
+
+
+def _draw_frame(
+    stdscr, fleet: Fleet, selected: int, scroll_offset: int,
+    colour_pairs: dict[str, int], agent_colours: list[int] | None,
+    colours: _ColourCache, tick: int, has_moved: bool,
+) -> tuple[list[Row], int, int]:
+    rows = flatten(fleet)
+    selected = _clamp_selected(selected, len(rows))
+    max_y, _max_x = stdscr.getmaxyx()
+    scroll_offset = clamp_scroll_offset(scroll_offset, selected, len(rows), max_y)
+    _draw(stdscr, rows, selected, scroll_offset, colour_pairs, agent_colours, colours, tick, has_moved)
+    return rows, selected, scroll_offset
+
+
+def main(stdscr) -> None:
+    colour_pairs, agent_colours, colours = _init_draw_state(stdscr)
 
     shared = _SharedFleet()
     thread = threading.Thread(target=_watch_thread, args=(shared,), daemon=True)
@@ -1442,21 +1676,23 @@ def main(stdscr) -> None:
     selected = 0
     scroll_offset = 0
     tick = 0
+    has_moved = False  # header A_REVERSE stays off until the operator navigates
 
     while True:
-        rows = flatten(shared.get())
-        selected = _clamp_selected(selected, len(rows))
-        max_y, _max_x = stdscr.getmaxyx()
-        scroll_offset = clamp_scroll_offset(scroll_offset, selected, len(rows), max_y)
-        _draw(stdscr, rows, selected, scroll_offset, colour_pairs, agent_colours, colours, tick)
+        rows, selected, scroll_offset = _draw_frame(
+            stdscr, shared.get(), selected, scroll_offset,
+            colour_pairs, agent_colours, colours, tick, has_moved,
+        )
 
         key = stdscr.getch()
         tick += 1
 
         if key in (curses.KEY_UP, ord("k")):
             selected = max(0, selected - 1)
+            has_moved = True
         elif key in (curses.KEY_DOWN, ord("j")):
             selected = min(len(rows) - 1, selected + 1) if rows else 0
+            has_moved = True
         elif key in (10, 13, curses.KEY_ENTER):
             _navigate_selected(rows, selected)
         elif key in (ord("q"), ord("Q")):
@@ -1477,7 +1713,24 @@ def _run_dump() -> int:
     return 0
 
 
+def _paint_once(stdscr) -> None:
+    colour_pairs, agent_colours, colours = _init_draw_state(stdscr)
+    _draw_frame(stdscr, build_model(), 0, 0, colour_pairs, agent_colours, colours, tick=0, has_moved=False)
+
+
+def _run_once() -> int:
+    try:
+        curses.wrapper(_paint_once)
+    except curses.error as exc:
+        print(f"sidebar --once: no terminal available ({exc})", file=sys.stderr)
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
     if "--dump" in sys.argv[1:]:
         sys.exit(_run_dump())
+    os.environ["TERM"] = _select_display_term(os.environ.get("TERM", ""))
+    if "--once" in sys.argv[1:]:
+        sys.exit(_run_once())
     curses.wrapper(main)

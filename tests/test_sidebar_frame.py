@@ -103,8 +103,33 @@ def _has_any_bg(raw_line: str) -> bool:
     return False
 
 
+def _skip_extended_colour(codes: list[str], i: int) -> int:
+    """`codes[i]` is "38"/"48" (extended fg/bg) -- index just past however
+    many parameters that extended colour consumes: 5 total for
+    "38;2;r;g;b" (true colour), 3 for "38;5;idx" (palette index)."""
+    if i + 1 < len(codes) and codes[i + 1] == "2":
+        return i + 5
+    if i + 1 < len(codes) and codes[i + 1] == "5":
+        return i + 3
+    return i + 1
+
+
 def _has_basic_red(raw_line: str) -> bool:
-    return any("31" in codes or "41" in codes for codes in _sgr_code_lists(raw_line))
+    """True only for a literal basic-ANSI red code (31 fg / 41 bg) used as
+    its own SGR attribute -- never a false hit off an R/G/B *value* of 31 or
+    41 riding inside an extended-colour sequence ("38;2;r;g;b"/"38;5;idx"),
+    which this renderer now emits once a direct-colour terminfo is active."""
+    for codes in _sgr_code_lists(raw_line):
+        i = 0
+        while i < len(codes):
+            code = codes[i]
+            if code in ("38", "48"):
+                i = _skip_extended_colour(codes, i)
+                continue
+            if code in ("31", "41"):
+                return True
+            i += 1
+    return False
 
 
 @unittest.skipUnless(_HAS_TMUX, "tmux not available in this environment")
@@ -300,6 +325,155 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
             if i == working_idx:
                 continue
             self.assertEqual(first[i], second[i], f"unexpected change on line {i}")
+
+
+_ONCE_EXIT_RE = re.compile(r"ONCE_EXIT:(\d+)")
+
+# Raw pty bytes (see SidebarOnceCLITests) carry whatever SGR separator the
+# active terminfo entry actually emits -- observed as colon-delimited
+# ("38:2::r:g:b", the ITU-T416 form) under a direct-colour entry, unlike
+# `capture-pane -e`'s reconstruction (semicolon-delimited, what `_SGR_RE`
+# above assumes) which only reflects the CURRENTLY DISPLAYED screen and so
+# is unusable once `--once` has already torn the alt-screen back down.
+# Colon and semicolon are therefore both accepted here; an empty
+# colour-space-id subfield ("2::") collapses away like any other empty
+# split segment.
+_RAW_SGR_RE = re.compile(rb"\x1b\[([0-9;:]*)m")
+
+
+def _raw_param_lists(raw: bytes) -> list[list[bytes]]:
+    return [
+        [p for p in re.split(rb"[;:]", params) if p]
+        for params in _RAW_SGR_RE.findall(raw)
+    ]
+
+
+def _raw_has_subsequence(params: list[bytes], pattern: list[bytes]) -> bool:
+    n = len(pattern)
+    return any(params[i:i + n] == pattern for i in range(len(params) - n + 1))
+
+
+_RAW_ESCAPE_RE = re.compile(rb"\x1b(\[[0-9;:]*[A-Za-z]|[()][A-Za-z0-9]|[=>])")
+
+
+def _raw_strip_escapes(raw: bytes) -> bytes:
+    """Plain text out of a raw pty byte capture -- unlike `_strip_sgr`
+    (SGR colour codes only, applied per already-split line), a one-shot
+    frame's raw stream also carries cursor-addressing codes and a name can
+    be split mid-word across a colour boundary (e.g. the fill/no-fill
+    column split inside a feature name), so escapes are stripped from the
+    whole byte stream before a text substring is looked for."""
+    return _RAW_ESCAPE_RE.sub(b"", raw)
+
+
+def _raw_has_colour(raw: bytes, rgb: tuple[int, int, int]) -> bool:
+    r, g, b = (str(c).encode() for c in rgb)
+    index = str(sidebar._rgb_to_xterm256(rgb)).encode()
+    patterns = [
+        [b"38", b"2", r, g, b], [b"48", b"2", r, g, b],
+        [b"38", b"5", index], [b"48", b"5", index],
+    ]
+    return any(
+        _raw_has_subsequence(params, pattern)
+        for params in _raw_param_lists(raw) for pattern in patterns
+    )
+
+
+@unittest.skipUnless(_HAS_TMUX, "tmux not available in this environment")
+class SidebarOnceCLITests(unittest.TestCase):
+    """`--once` must be the REAL renderer (same terminal/colour/draw path as
+    the live UI, operator ruling) so a test can assert on actual colour —
+    paints exactly one frame and exits, with no input loop and no watch
+    thread. Own tmux socket, killed in addCleanup, never touches an
+    operator session.
+
+    `--once` tears the alt-screen back down the instant it exits (curses'
+    own `endwin()`), so by the time a poll could observe "the process
+    returned to the shell" via `capture-pane`, the painted frame is already
+    gone from the visible pane -- there is no live window to catch, unlike
+    the long-running interactive app the sibling test class drives. `tmux
+    pipe-pane` sidesteps that: it logs the raw bytes the app actually wrote
+    to the pty as they were written, independent of what the pane displays
+    afterwards, so the frame's real SGR colour escapes survive to be
+    asserted on."""
+
+    PANE_WIDTH = 29
+    PANE_HEIGHT = 30
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.runtime_dir = Path(self._tmp.name) / "run"
+        self.runtime_dir.mkdir()
+        self.projects_root = self.runtime_dir / "orchard" / "projects"
+        self.projects_root.mkdir(parents=True)
+        _write_event(self.projects_root, "orchids", "orch-once",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "once-check",
+                               "name": "once check"})
+        self._raw_log = Path(self._tmp.name) / "once-raw.log"
+        self._socket = f"sidebar-once-{uuid.uuid4().hex[:8]}"
+        self.addCleanup(self._kill_tmux_server)
+
+    def _kill_tmux_server(self) -> None:
+        self._tmux("kill-server")
+
+    def _tmux(self, *args: str, check: bool = False) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["tmux", "-L", self._socket, *args], check=check,
+            capture_output=True, text=True,
+        )
+
+    def _await_pane_size(self, timeout: float = 3.0) -> None:
+        expected = f"{self.PANE_WIDTH}x{self.PANE_HEIGHT}"
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            actual = self._tmux("list-windows", "-F", "#{window_width}x#{window_height}").stdout.strip()
+            if actual == expected:
+                return
+            time.sleep(0.05)
+
+    def _launch(self) -> None:
+        self._tmux("new-session", "-d", "-x", str(self.PANE_WIDTH), "-y", str(self.PANE_HEIGHT),
+                    check=True)
+        self._tmux("resize-window", "-x", str(self.PANE_WIDTH), "-y", str(self.PANE_HEIGHT))
+        self._await_pane_size()
+        self._tmux("pipe-pane", "-o", f"cat >> {self._raw_log}", check=True)
+        command = (
+            f"XDG_RUNTIME_DIR={self.runtime_dir} {sys.executable} {_SIDEBAR_PY} --once; "
+            "echo ONCE_EXIT:$?"
+        )
+        self._tmux("send-keys", command, "Enter")
+
+    def _capture(self) -> list[str]:
+        return self._tmux("capture-pane", "-e", "-p", check=True).stdout.splitlines()
+
+    def _await_exit_code(self, timeout: float = 10.0) -> str:
+        """Poll the pane (post-teardown, primary screen) for the trailing
+        `echo`'s digits-only marker -- not merely a line CONTAINING
+        "ONCE_EXIT:", which would also match the shell's own local-echo of
+        the not-yet-substituted "echo ONCE_EXIT:$?" command text an instant
+        before it actually runs."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            for line in self._capture():
+                match = _ONCE_EXIT_RE.search(_strip_sgr(line))
+                if match:
+                    return match.group(1)
+            time.sleep(0.1)
+        self.fail("--once never returned control to the shell within the timeout")
+
+    def test_once_paints_one_real_frame_and_exits_zero(self) -> None:
+        self._launch()
+        exit_code = self._await_exit_code()
+        self.assertEqual(exit_code, "0")
+
+        raw = self._raw_log.read_bytes()
+        text = _raw_strip_escapes(raw)
+        self.assertIn(b"orchids", text)
+        self.assertIn(b"once check", text)
+        self.assertTrue(_raw_has_colour(raw, sidebar.HEADER_FG))
+        self.assertTrue(_raw_has_colour(raw, sidebar.REPO_HUES["orchids"]["header"]))
 
 
 if __name__ == "__main__":
