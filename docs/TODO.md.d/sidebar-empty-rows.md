@@ -291,6 +291,76 @@ WEAKEST, AND DELIBERATELY ON THE RECORD:
   only after this merges and `kauk sync` converges the vendored copies. The
   configuration that will actually run has never run.
 
+### PRIORITY 0 FOLLOW-UP — the outbox, for token savings (operator, in session)
+
+Operator: "write up the outbox because i need the token savings as a
+priority 0". Written up here in full so the next round starts from evidence
+rather than re-deriving it. NOT built on this branch.
+
+THE COST, MEASURED THIS SESSION. Every courier round-trip pays a fixed
+overhead independent of payload:
+  parent side (Opus):  SendMessage call ~80-150, result blob ~80,
+                       task notification ~100-150  => ~330 per round-trip
+  courier side (Haiku): turn preamble ~250, plus ~130 per command
+Measured from this session's own courier: cumulative 31,195 at announce
+(one-off charter load), then deltas of +927 for 5 commands, +1,800 for 9,
++1,250 for 6, +675 for 3, +412 for 1.
+So five separate asks cost ~1,650 parent tokens; one ask carrying five costs
+~330. The dominant term is PARENT-SIDE, on the expensive model, and it is
+the envelopes and notifications rather than the instructions.
+Caching does not remove this: the courier's context is cached, so each
+resume re-reads rather than rebuilds it — but that read happens once PER
+TURN over a context that keeps growing. Turns are the unit of cost.
+
+THE DESIGN.
+1. OUTBOX, correctly located. `orchard_deliver` currently writes
+   `.{name}.partial` INSIDE the destination directory and renames within it,
+   so the staging area is the recipient's own mailbox. The temp file and an
+   outbox are the same concept in the wrong place (operator). Give each
+   sender a real outbox; delivery becomes one atomic move across the
+   boundary. Same-filesystem requirement already holds, both being under
+   `$XDG_RUNTIME_DIR/orchard`.
+2. ANY AGENT MAY WRITE ITS OWN OUTBOX. That act is private, published to
+   nobody, affects no other agent — so nothing needs enforcing and no
+   courier turn is spent. Parent cost per message falls from ~330 to ~50: a
+   plain script call, no SendMessage, no notification.
+3. PUBLICATION IS THE COURIER'S. Only the move has an outside effect, so
+   only the move is restricted. The courier sweeps and publishes N queued
+   messages in ONE turn. Cost stops scaling with how often agents speak and
+   starts scaling with how often the courier sweeps — an operator-controlled
+   number. This also gives the courier the first responsibility on this path
+   that the script cannot perform for its caller (see the finding below that
+   it currently injects, removes and verifies NOTHING when posting).
+4. AUTH HANDSHAKE (operator design). The publishing step expects an auth
+   value known to the sender script — sender agent plus a uuid, or a
+   subagent-script handshake. A bypass then still SUCCEEDS at writing but is
+   never forwarded, and the sender is told so. This is deliberately not
+   prohibition: it makes a bypass ineffective and self-reporting rather than
+   blocked. Derive it per sender rather than as one shared secret, so a
+   leaked value implicates one agent and rotates without a fleet reset.
+5. "SENT" STATUS IN THE BUS, SURFACED IN THE UI (operator: "UI matters
+   too"). A message carries a delivery state, and the sidebar shows it. This
+   is what makes a skipped courier visible rather than silent — the gap
+   `hooks/courier-init.sh` already names when it says it can detect a
+   skipped courier but not withhold anything.
+6. SUBSCRIPTION FILTERING. Recipients declare what they want relayed, so
+   couriers stop paying to hand up traffic nobody asked for. Inbound side of
+   the same economy.
+
+POSTURE, ruling this round: "I'm working on the working assumption that you
+cannot completely forbid... just make it either too much work for the agent
+or if it does the work, it passes, then no one will know none the wiser and
+fair do." Raise the cost; do not chase absolutes. An agent that does the
+work to bypass has done no harm and the outcome is accepted. All artifacts
+must describe the mechanism that way — `agents/courier.md` was corrected on
+this branch for claiming harness enforcement it does not deliver.
+
+CONSEQUENCE FOR WHAT THIS BRANCH BUILT: guarding the MOVE is a far smaller
+target than guarding the whole posting surface by matching command text. The
+`PreToolUse` hook would shrink rather than grow, the charters could let
+agents write directly again, and the regex ceiling documented in
+`hooks/courier-only-transport.sh` would stop being load-bearing.
+
 ### Follow-ups returned to the gardener — NOT written to the board here
 
 1. `:session:` routing prefix leaks into filenames. The live tree holds
