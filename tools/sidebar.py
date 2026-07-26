@@ -1751,12 +1751,11 @@ def _task_progress_glyph(task: Task) -> str | None:
 
 
 def _task_rows(
-    task: Task, target: str, depth: int, hide_name: bool = False,
+    task: Task, target: str, depth: int,
     task_colour: tuple[int, int, int] | None = None,
 ) -> list[Row]:
     """A task's own row (name left-aligned, its progress circle right-
-    aligned — `_task_progress_glyph`; `hide_name` blanks the name instead
-    of repeating the feature's own — see `_feature_rows`; `task_colour` is
+    aligned — `_task_progress_glyph`); `task_colour` is
     this task's own already-allocated Ct, grade 2, computed once per
     feature by `_assign_task_colours` — None for a terminal task, which
     uses a fixed done/failed colour instead, curses-only), plus — while it
@@ -1766,7 +1765,7 @@ def _task_rows(
     than that step's own row, and any role-unmapped agent (fails open,
     rendered directly under the task, no step to nest it in). A terminal
     task (`TERMINAL_TASK_STATUSES`) folds: its own row is all that shows."""
-    name = "" if hide_name else task.name
+    name = task.name
     rows = [Row(depth=depth, kind="task", target=target, label=name, status=task.status,
                  progress_glyph=_task_progress_glyph(task), task_colour=task_colour)]
     if task.status in TERMINAL_TASK_STATUSES:
@@ -1788,23 +1787,6 @@ def _feature_collapsed(feature: Feature) -> bool:
     An empty task list is never collapsed — there is nothing to have
     finished."""
     return bool(feature.tasks) and all(t.status == "done" for t in feature.tasks)
-
-
-def _hide_solo_task_name(feature: Feature) -> bool:
-    """True when a feature holds exactly ONE task whose name equals the
-    feature's own — the original complaint this fixes (operator, 2026-07-
-    26: "first two lines have the same text, not sure which one is which")
-    still held once the feature row alone got its full-width band, because
-    the marker gives a solo task the feature's own name verbatim. Only
-    while the task is still OPEN: a terminal task's own row is the only
-    thing left to show for it, so blanking its name there would leave a
-    genuinely empty-looking line instead of the progress circle + accordion
-    this is meant to reveal in its place. Never applied when the names
-    genuinely differ, or when there is more than one task."""
-    if len(feature.tasks) != 1:
-        return False
-    task = feature.tasks[0]
-    return task.name == feature.name and task.status not in TERMINAL_TASK_STATUSES
 
 
 def _assign_task_colours(
@@ -1832,10 +1814,9 @@ def _feature_rows(feature: Feature, repo_name: str, depth: int) -> list[Row]:
                  status=feature.status, repo_name=repo_name)]
     if _feature_collapsed(feature):
         return rows
-    hide_name = _hide_solo_task_name(feature)
     task_colours = _assign_task_colours(_repo_hue(repo_name), feature.feature_id, feature.tasks)
     for task in feature.tasks:
-        rows.extend(_task_rows(task, target, depth + 1, hide_name=hide_name,
+        rows.extend(_task_rows(task, target, depth + 1,
                                 task_colour=task_colours.get(task.task_id)))
     return rows
 
