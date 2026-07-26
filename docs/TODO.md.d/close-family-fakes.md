@@ -63,10 +63,26 @@ SUPERVISING CONTROLLER, started immediately when [[bus-finishing]] lands:
   subagent) — formal supersession entry recorded on the implementing branch,
   not before (Decision-006 precedent). Settles the controller-home question:
   the supervisor is built ONCE here; [[summon-restarting]] consumes it.
+- OPERATOR REFINEMENTS (2026-07-26, same session): the supervisor EXTRACTS
+  the information the next agent needs before calling it (the extract builds
+  the next agent's context); it SELECTS which agents run based on that data.
+  It OWNS the pipeline from the moment the gardener launches it to the
+  moment the gardener is notified of the result — so death/timeout
+  verification is the supervisor's job: checking on another agent is done by
+  ASKING the supervisor. It sleeps waiting for status changes and wakes on a
+  3-MINUTE fallback when no event arrives, self-checking that the pipeline
+  still works — an operator-ruled bounded exception to the no-timer ban.
+  (Reading of the dictated ruling confirmed pending — see Questions.)
+- The side agent — real-time decision enforcement: monitors a working
+  agent's ACTIVITY, enforces recorded decisions, yes/no at each relevant
+  phase, a no forces rework at the moment of deviation — is NAMED Valve 💧
+  and is a SEPARATE agent from the supervisor (operator, 2026-07-26): the
+  supervisor routes and never judges, Valve judges and never routes. Valve
+  is designed in its own round immediately after this design ([[valve]]).
 - The close moves out of the landscaper: the supervisor's groundskeeper
   fires on the landscaper's directed `orchard:agent:lifecycle:stopped`
-  (outcome via `orchard:agent:outcome:success|fail`) or on detected death —
-  detection mechanism per Question below — and releases what its creator
+  (outcome via `orchard:agent:outcome:success|fail`) or on the supervisor's
+  own death/timeout verification (above) — and releases what its creator
   scope created — worktree, branch, window — in reverse creation order.
 - The landscaper becomes a pure scope: its courier, monitors, sowers and log
   all die inside it before exit (final State + `_closed` + telemetry are its
