@@ -1,0 +1,7 @@
+tmux-topology close telemetry — deviations (handover exit interview):
+- Builders dispatched as general-purpose: the builder/sower agent type was unregistered by a mid-session orchard + bus->courier migration that stripped .claude/agents.
+- The same migration deleted 12 .claude/** files in this worktree mid-build; operator chose restore-to-clean-base, which held; commits staged specific files only.
+- Operator gave MAKE IT SO before answering the 2 design questions (spec home, naming separator); proceeded with recommended defaults: dedicated doc docs/tmux-topology.md; naming contract declared, the ▸-vs-/ separator fix + pane-title mechanism deferred to tmux-naming.
+- Discovery: 1 inline reconciliation (repo-tree-vs-vendored naming contradiction) instead of a 6th explorer.
+- Build: 2 builders + 2 inline steps (spec = core design; peek-verify = no-op re-confirm; ARCHITECTURE = delicate shared file kept disjoint from close-family-fakes). Applied a pipe-delimiter space-safety fix on top of builder B output (it missed a spacey-session false-match in the gardener-window resolution).
+- Tested 8/8 on a private tmux server; full real-fleet close confirmation deferred to the next real landscaper spawn.
