@@ -109,25 +109,48 @@ and relayed verbatim through the gardener:
 
 Decisions taken in the build round (2026-07-26), for mechanical folding:
 
-## [2026-07-26 CEST] Decision-NNN: The orchard marker is the durable tree node, keyed by project and feature
+## [2026-07-26 CEST] Decision-NNN: The fleet display is five levels, and only the task persists
+#sidebar #hierarchy #orchard #marker #retention
+
+The display hierarchy is `project -> feature -> task -> agents -> subagents`.
+An AGENT is an own-session delegation sent to complete a task; there may be
+several per task and they are usually sequential — a sower, a valve running
+alongside, a cleanup — until the work returns to the orchestrator. A
+SUBAGENT is what an agent spins up. A TASK is created by the orchestrator
+and is normally a board item, though not always, since work is sometimes
+asked for outside the workflow.
+
+Agents and subagents are EPHEMERAL. They appear while working and stop
+displaying when they finish, and that includes an agent's name, model and
+activity — those are a subscript of the task it is working, never a thing
+that outlives it. The task is the one that does not disappear. On screen: a
+task being worked shows its agent's subscript and that agent's subagent rows
+beneath it; once every agent on the task has stopped, the task remains as a
+single row carrying its terminal state, with nothing beneath it.
+
+The earlier reading of this feature treated agent and task as one row,
+because in practice a single agent works a single task and the two were used
+interchangeably. That conflation is what made an earlier draft of this build
+cache agent identity and delegation labels for persistence — the two things
+that must NOT persist.
+
+## [2026-07-26 CEST] Decision-NNN: The orchard marker is the durable task node, keyed by project and feature
 #sidebar #orchard #marker #retention #transport
 
-The sidebar's display is a TREE — project, then feature/task, then subagent
-— and the tree position is what must survive, because it is the structure in
-which the data means anything. The marker therefore stops being a zero-byte
-per-session heartbeat and becomes that tree node: one file per
-`(project, feature)`, carrying the area, the node's state, and the feature's
-already-completed tasks. Events supply live state; the marker supplies
-structure and memory. Three properties follow from the one mechanism: a
-completed feature or task persists without activity; a late update from a
-subagent whose upstream agents' messages have already been archived still
-lands in the right node, because the marker retains the parentage the events
-no longer carry; and pruning archives the node rather than deleting it, so
-moving the file back rehydrates the whole feature when a new task starts in
-it. AREA is stored inside the marker, not in its filename — keying the
-filename on the feature alone keeps revival a single direct lookup instead
-of a glob across archived areas, which would fork one feature into two nodes
-whenever a new task arrived in an unseen area.
+The marker stops being a zero-byte per-session heartbeat and becomes the
+durable record of the TASK: one file per `(project, feature)`, carrying the
+area and the tasks under that feature with their states, so a completed task
+survives without activity. It holds nothing agent-shaped — no role, name,
+model or activity — because those are live-only and are read from the event
+stream alone. Events supply what is happening now; the marker supplies what
+remains when nothing is happening.
+
+Pruning archives the node rather than deleting it, so moving the file back
+rehydrates the feature's tasks when new work starts in it. AREA is stored
+inside the marker, not in its filename — keying the filename on the feature
+alone keeps revival a single direct lookup instead of a glob across archived
+areas, which would fork one feature into two nodes whenever a new task
+arrived in an unseen area.
 
 ## [2026-07-26 CEST] Decision-NNN: Retention is until restart; the pruner is deliberately undesigned
 #sidebar #retention #marker
@@ -216,14 +239,24 @@ Rolling — folded from each sower's `ingest_increment` as it returned.
   untouched, and the reverse-video highlight appears only once the operator
   has actually navigated.
 
+- 🐛 A completed item now reads as completed. Terminal rows carry their own
+  tick or cross rather than the generic presence dot, and render in green or
+  red instead of an accidental third colour — the status and identity
+  colours were being combined into an arbitrary one, because a colour pair
+  is a bitfield and the two cannot be merged.
+
 ### ✨ New features
 
 - ✨ The orchard transport writes a durable per-feature marker alongside the
-  existing per-session heartbeat. Where the old marker only proved a session
-  was alive, the new one accumulates the feature's structure across its
-  whole life — one entry per session and one per delegated task, merged in
-  place and never truncated — so a late message arriving after its parent's
-  events have been archived still lands in the right place.
+  existing per-session heartbeat, recording the task a feature maps to: its
+  name, its area and its state, merged in place and never truncated, so a
+  task that has completed survives without any activity to keep it alive.
+  The marker holds nothing agent-shaped. Agents are delegations sent to
+  complete a task and there may be several, usually in sequence; they and
+  the subagents they spin up appear while working and stop displaying when
+  they finish, along with their name, model and activity. The task is the
+  one thing that does not disappear, so a task whose agents have all
+  stopped remains as a single row carrying its final state.
 
 ## Readme delta
 
