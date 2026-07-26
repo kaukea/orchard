@@ -138,11 +138,11 @@ class _FixtureTestCase(unittest.TestCase):
     def _event(self, slug, sid, subject, **kw):
         return _write_event(self.projects_root, slug, sid, subject, **kw)
 
-    def _model(self) -> sidebar.Fleet:
-        return sidebar.build_model(self.projects_root)
+    def _model(self, now=None) -> sidebar.Fleet:
+        return sidebar.build_model(self.projects_root, now=now)
 
-    def _repo(self, slug="own.repo") -> sidebar.Repo:
-        fleet = self._model()
+    def _repo(self, slug="own.repo", now=None) -> sidebar.Repo:
+        fleet = self._model(now=now)
         self.assertEqual(len(fleet.repos), 1)
         return fleet.repos[0]
 
@@ -575,6 +575,33 @@ class MarkerModelTests(_FixtureTestCase):
         feature = self._repo().features[0]
         self.assertEqual(feature.status, "stale")
 
+    def test_marker_only_task_with_working_state_inside_the_window_renders_working(self):
+        # bug fix, 2026-07-26: a marker-only task declaring "working" must
+        # be reachable to "working" once its own event telemetry has aged
+        # out — this was never true before (see `_marker_task_rec`).
+        _write_marker(self.projects_root, "own.repo", "feat-a", state="working")
+        feature = self._repo().features[0]
+        self.assertEqual(feature.status, "working")
+
+    def test_marker_only_task_with_working_state_outside_the_window_still_reads_stale(self):
+        # Decision-094: staleness is a colour, not a removal, and it is not
+        # bypassed by a marker's own claim of "working" — a task not heard
+        # from within ACTIVE_WINDOW_SECONDS reads stale regardless.
+        stale_iso = _iso(StalenessTests._stale_ts())
+        _write_marker(self.projects_root, "own.repo", "feat-a", state="working",
+                       updated=stale_iso)
+        feature = self._repo().features[0]
+        self.assertEqual(feature.status, "stale")
+
+    def test_marker_only_task_with_done_state_and_stale_updated_still_reads_done(self):
+        # done/failed are terminal and are never demoted by staleness, no
+        # matter how old the marker's own `updated` is.
+        stale_iso = _iso(StalenessTests._stale_ts())
+        _write_marker(self.projects_root, "own.repo", "feat-a", state="done",
+                       updated=stale_iso)
+        feature = self._repo().features[0]
+        self.assertEqual(feature.status, "done")
+
     def test_marker_only_task_never_restores_agent_identity_even_from_a_legacy_sessions_block(self):
         # corrected contract: role/model are live-only. A marker carrying a
         # stale legacy `sessions` block (tolerated, per the transport's own
@@ -653,10 +680,11 @@ class MarkerModelTests(_FixtureTestCase):
         features = self._repo().features
         self.assertEqual(len(features), 1)
         self.assertEqual(features[0].name, "Sidebar empty rows: head")
-        # a marker-only row never reads "working" (see `_marker_task_rec`) —
-        # a fresh `updated` with no terminal state reads idle, matching the
-        # "○" glyph the captured regression actually showed.
-        self.assertEqual(features[0].status, "idle")
+        # a fresh `updated` with a "working" state now reads "working" (bug
+        # fix, 2026-07-26 — see `_marker_task_rec`/`_MARKER_STATE_LIFECYCLE`);
+        # what stays fixed by this test is that the rejected `label`-only
+        # sibling never contributes a second row or borrows this row's name.
+        self.assertEqual(features[0].status, "working")
 
     def test_live_session_for_the_same_feature_wins_over_its_marker(self):
         self._landscaper("own.repo", "s1", "feat-a")

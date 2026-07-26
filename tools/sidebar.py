@@ -543,6 +543,15 @@ _MARKER_ARCHIVE_DIR = "_archived"
 # A task entry's own persisted terminal state maps onto the same outcome
 # vocabulary `_status_for` already understands.
 _MARKER_STATE_OUTCOME = {"done": "success", "failed": "fail"}
+# A task entry's own persisted "working" state maps onto the same lifecycle
+# vocabulary `_status_for`'s working/idle split already understands (any of
+# starting/started/stopping reads "working" there). This is what makes
+# "working" reachable for a marker-only task at all (bug fix, 2026-07-26:
+# this mapping was previously absent, so a marker-only record could never
+# enter that branch — a task whose events had aged out of the tree but
+# whose marker said "working" rendered idle/stale/done/failed, never
+# "working", however fresh its marker).
+_MARKER_STATE_LIFECYCLE = {"working": "started"}
 
 
 def _parse_iso_ts(text: str | None) -> float:
@@ -582,17 +591,33 @@ def _iter_feature_markers(project_dir: Path):
 
 def _marker_task_rec(task: dict) -> dict:
     """A synthetic `_status_for` input for one of a marker's `tasks[]`
-    entries, standing in for a task with no live agent at all: only a
-    terminal outcome (from the task's own persisted `state`, when it names
-    one) or staleness (from the task's `updated` timestamp) can ever come
-    out of this — lifecycle `state` is never set, so `_status_for` can
-    never resolve it to "working". That is deliberate: "working" is what
-    makes the curses draw path paint the agent subscript and subagent
-    rows, and a marker alone never has either to show."""
+    entries, standing in for a task with no live agent at all. Its own
+    persisted `state` supplies either a terminal outcome (done/failed) or
+    the lifecycle signal that makes `_status_for`'s working/idle split
+    reachable ("working" -> "started", the same value a live "started"
+    lifecycle event carries); any other state, or none at all, leaves
+    `_status_for` to fall through to its own staleness/idle default.
+
+    `_status_for` runs its staleness check BEFORE the lifecycle check, so
+    a marker declaring "working" whose own `updated` has aged past
+    ACTIVE_WINDOW_SECONDS still reads "stale" — staleness is a colour, not
+    a removal, and a marker's word for its own liveness does not override
+    "not heard from in a while" (Decision-094). `done`/`failed` remain
+    terminal and are never demoted by staleness, per `_status_for` itself.
+
+    This stays deliberately narrow: it feeds only `_status_for`'s existing
+    lifecycle/outcome vocabulary. Nothing agent- or subagent-shaped ever
+    comes out of a marker-only record — role, model, activity and all
+    subagent rows stay live-only (operator ruling, 2026-07-26)."""
     rec = {"subs": {}, "_seen_ts": _parse_iso_ts(task.get("updated"))}
-    outcome = _MARKER_STATE_OUTCOME.get(task.get("state"))
+    state = task.get("state")
+    outcome = _MARKER_STATE_OUTCOME.get(state)
     if outcome:
         rec["outcome"] = outcome
+    else:
+        lifecycle = _MARKER_STATE_LIFECYCLE.get(state)
+        if lifecycle:
+            rec["state"] = lifecycle
     return rec
 
 
@@ -788,7 +813,7 @@ def _assemble_repo(dir_name: str, project_dir: Path, sess: dict[str, dict], now:
     return repo
 
 
-def build_model(root: Path | None = None) -> Fleet:
+def build_model(root: Path | None = None, now: float | None = None) -> Fleet:
     """One snapshot of the fleet: every project directory is folded and
     assembled into one Repo, unconditionally — nothing is ever excluded by
     staleness (retention ruling, 2026-07-25 revision: a row leaves the
@@ -796,12 +821,19 @@ def build_model(root: Path | None = None) -> Fleet:
     clears with it). ACTIVE_WINDOW_SECONDS still matters — it is what
     `_status_for` compares `now` against to decide whether an
     unfinished session reads "stale" (gray) rather than "working"/"idle" —
-    but it no longer removes anything from this snapshot."""
+    but it no longer removes anything from this snapshot.
+
+    `now`, when given, stands in for the wall-clock read normally taken at
+    call time — a seam for tests that need the staleness check pinned to a
+    fixed instant relative to a captured fixture's own `updated` timestamp,
+    rather than the real clock racing that fixture's age. Production call
+    sites never pass it, so the default (`time.time()` at call time) is
+    unchanged."""
     root = root or projects_root()
     fleet = Fleet()
     if not root.is_dir():
         return fleet
-    now = time.time()
+    now = time.time() if now is None else now
     for d in sorted(root.iterdir()):
         if not d.is_dir():
             continue
