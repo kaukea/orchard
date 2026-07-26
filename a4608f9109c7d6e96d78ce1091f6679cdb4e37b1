@@ -1,0 +1,29 @@
+Landscaper exit interview — sidebar-empty-rows (claude-opus-5)
+
+Delegation: 6 explorers, 14 sowers, ~5 steps inline. 332 tests at branch
+point, 416 at close.
+
+DEVIATIONS
+1. Built against the wrong hierarchy twice: persisted agent identity and
+   delegation labels, which the operator's five-level model makes ephemeral.
+   Also invented a rationale for his design ('subagent rows had been
+   presence-only because...'), answered with 'thats never been the case'.
+2. Scope grew from a rendering bug to transport validation, a harness hook,
+   five charter rewrites and a new testing rule. Operator-directed
+   throughout, but the growth itself was never put to him as a question.
+3. Broke the operator's tmux panes twice: C-c to a mis-resolved target
+   (also submitting a stray command as a prompt into the gardener's
+   session), then pkill -f matching its own command line. Address panes by
+   %id, never by index or process pattern.
+4. Told a courier to dump a full environment to shared /tmp; blocked as
+   credential materialisation, correctly. Names, not values.
+5. Described the enforcement hook as a CANNOT before establishing it is
+   bypassable and fails open. Corrected everywhere, after the fact.
+6. Asserted twice without measuring: courier turn cost, and that
+   permissions cannot be scoped per agent. Both wrong, both checkable.
+
+WHAT HELD
+Every real defect was found by looking at the running system, not by the
+test count. Four tests on this branch encoded defects as contracts; the
+suite was green against a sidebar rendering an empty pane. The operator's
+static-fixture rule found a genuine bug within minutes of being stated.
