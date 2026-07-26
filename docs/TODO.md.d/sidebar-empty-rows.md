@@ -82,6 +82,55 @@ undecided, a UI concern); the `:session:` routing prefix leaking into
 marker/event filenames and double-prefixing `to` addresses, which gives one
 session two markers — a transport addressing defect, not a renderer one.
 
+### ROUND 2 (2026-07-26) — the agreed plan after the failed eyeball
+
+The round-1 diagnosis above was correct as far as it went and its four
+defects are built. What it got WRONG is the model: it treated feature and
+task as one thing, because that used to be true. The operator corrected the
+whole hierarchy this session, and the display is rebuilt to it.
+
+WHY THE EYEBALL FAILED — not a live-half defect. `sidebar-mount.sh` resolves
+its own directory through a symlink into `.ai/repositories/serialseb/
+orchids/`, a checkout pinned to `main`, and has no flag or environment
+variable pointing elsewhere. The sidebar mounted into an agent's window
+therefore runs MAIN's renderer whatever branch the worktree holds. Captured
+side by side at identical pane size (32x51) against the identical tree: the
+main-build pane drew three lines and no activity; the branch-build pane drew
+the same rows PLUS live activity subscripts and the five stage dots, with a
+status posted two minutes earlier appearing without a restart, and the
+header carrying `ESC[48;2;44;24;62m`, the exact orchids purple. Rows and hue
+both already pass on the branch build. A full round was spent on a defect
+that was not there, because the operator was shown pre-change code.
+
+IN SCOPE, agreed this session:
+1. The renderer gets the real hierarchy: project -> feature -> task -> step
+   -> agent -> subagent. Six levels where it has three.
+2. A SESSION STOPS BEING A ROW. It resolves to an agent on a step of a task.
+   Two sessions on one feature draw ONE feature, not two — the duplicate the
+   operator saw on screen.
+3. The three collapse rules, and nothing else ever hidden: a finished step
+   folds to a plain line as the next opens; a task folds once all its steps
+   are complete; a feature folds once all its tasks are. A new task REOPENS
+   its feature and revives the completed siblings from the marker cache.
+4. Identity gains `task` alongside `feature`, written by the transport. Only
+   the agent knows which task it is on and nothing can infer it.
+5. The step is derived client-side from the AGENT ROLE via a static map in
+   each agent charter's frontmatter, so it survives the pending `groomer`
+   rename. The map FAILS OPEN — an unmapped role still renders, without a
+   step — and is a FALLBACK, so an explicit phase on the wire later is an
+   addition rather than a rewrite.
+6. The gardener's events carry no `identity` block at all, so its session is
+   dropped and every delegation it scheduled is orphaned: no subagent row
+   can render, and the gardener is never matched as the header supplier.
+   Fixed.
+7. The mount runs current code, so the operator's own window can show a
+   branch build.
+
+DEFERRED, returned to the gardener: an explicit phase on the wire (the
+operator's own "second step"); the AREA and COMPONENT levels above the
+feature, which is why the marker's `area` field must stop pretending to be a
+per-task attribute; the pruner, unchanged.
+
 ## Testing
 
 Live, operator eyeball (the standing check-a gate), confirmed as written
@@ -232,10 +281,198 @@ from identical data. A supervising loop is mandatory: the watcher is
 restarted, or the polling fallback takes over, and the display never stops
 following the tree while the process lives.
 
+Decisions taken in the ROUND 2 planning conversation (2026-07-26), for
+mechanical folding:
+
+## [2026-07-26 CEST] Decision-NNN: A feature spans many tasks; the display is seven levels
+#sidebar #hierarchy #feature #task #taxonomy
+
+The full tree is `area -> component -> feature -> task -> step -> agent ->
+subagent`. Area and component come from the ARCHITECTURE.md taxonomy; the
+renderer enters at FEATURE and builds downward, because the work is code.
+
+It USED to be true that only tasks existed, that a task was always the role
+of an orchestrator, and that feature, task and orchestrator session were one
+to one. THAT IS NO LONGER TRUE, and every artifact still assuming it is
+wrong. A feature spans multiple tasks as a tree. Operator's worked example:
+"message bus version two" is the FEATURE; idempotent sending, outbox
+buffering and messaging prioritization are three TASKS under it.
+
+Within a task the five STEPS run — ideation, scoping, designing, building,
+releasing. The steps belong to the TASK, not to the feature. Several tasks
+of one feature are commonly worked at the same time, and more than one agent
+may work a single step, which is rare but real: a step holds a LIST of
+agents and a feature a LIST of open tasks, neither being a single-slot
+field.
+
+This supersedes the five-level reading recorded earlier in this same
+feature, which omitted area and component above and collapsed step into the
+task below.
+
+## [2026-07-26 CEST] Decision-NNN: Nothing is ever hidden except by the two collapses
+#sidebar #retention #collapse #revival
+
+Nothing is hidden merely for being inactive: a feature is NOT hidden because
+one of its tasks is idle. There are exactly two collapses. A TASK collapses
+once everything in it is complete, folding its steps, identity lines and
+subagent rows inside a single row carrying its terminal state. A FEATURE
+collapses once ALL of its tasks have completed, leaving one row. A finished
+STEP folds to a plain line as the next opens, keeping its place in the five.
+
+The two levels have DIFFERENT LIFETIMES, and that asymmetry is the entire
+reason for caching and revival. A TASK is terminal: it is completed or it is
+not, and it never reopens — a change, an addition or a bug fix becomes a NEW
+task, never a revisit. A FEATURE is not terminal and is not idempotent:
+adding a task expands what the feature does, so a collapsed feature REOPENS
+and its completed tasks are revived alongside the new one rather than lost.
+A feature's completed mark is therefore never a permanent state, only its
+current one — which is what the archive-a-node-and-move-it-back shape exists
+to serve.
+
+## [2026-07-26 CEST] Decision-NNN: The active step is derived from the agent's role, in the UI
+#sidebar #step #role #ui
+
+OPERATOR RULING, given for the THIRD time before it was written down. Twice
+before — once when the model was first mapped, once on repeat — it was
+stated and never recorded, and that omission is precisely why the same
+ground was re-covered. The failure was the recording, not the ruling.
+
+WHICH step is active is computed CLIENT-SIDE by the renderer from
+information already collected off the bus. It is a user-interface concern,
+not a bus concern: no event names a step, and nothing is added to the
+transport to supply one.
+
+The derivation is the AGENT ROLE, because each role currently sits in
+exactly one step — gardener in ideation, landscaper in building,
+groundskeeper in releasing, and so on. The map lives in each agent charter's
+frontmatter, so a role's step travels with the role's own definition and
+survives a rename, `groomer` being mid-rename as this is written. It FAILS
+OPEN: an unknown or unmapped role still renders, without a step, because the
+entire defect class this feature exists to fix is rows silently vanishing.
+The map is a FALLBACK, so an explicit phase on the wire — deliberately
+deferred as a second step — would win over it and arrive as an addition
+rather than a rewrite.
+
+## [2026-07-26 CEST] Decision-NNN: Messaging carries which task an agent is on
+#transport #identity #task #sidebar
+
+The role gives the step but not the TASK. With a feature spanning many
+tasks, an identity block carrying only the feature cannot place an agent,
+and nothing downstream can infer that placement. The identity block
+therefore gains `task` alongside `feature`, written by the transport.
+
+This is structure rather than presentation — only the agent knows which task
+it is working — and it is not a step, so it stands with the ruling above
+rather than against it. The division is: the bus says WHO and ON WHAT, and
+the interface works out WHERE IN THE PIPELINE that puts them.
+
+## [2026-07-26 CEST] Decision-NNN: A subagent speaks through its spawner, or it should be an agent
+#transport #delegation #subagent #sidebar
+
+A subagent has no session of its own. It is registered under its parent's
+full session ID as the parent plans it, and it carries no model, no status
+text and no identity. Anything it has to report travels through the agent
+that spawned it — which is exactly why the delegation schedule / begin / end
+messages exist, and why the display needs nothing beyond the three facts
+they carry: that the subagent was PLANNED, that it is DOING, that it is
+DONE.
+
+The operator's corollary is the design test: if a unit of work genuinely
+needs to post its own updates, that is the signal it should have been an
+AGENT with its own session rather than a subagent. The reporting shape
+decides the kind, not the other way around.
+
+Subagent rows are live-only and are folded away when their task collapses,
+like everything else inside it.
+
+## [2026-07-27 CEST] Decision-NNN: Depth is carried by background colour, and colour encodes lineage
+#sidebar #colour #layout #contrast #accessibility
+
+Nesting in the fleet display is expressed by BACKGROUND COLOUR rather than by
+indentation, which frees the horizontal space indentation was consuming — at
+32 columns an agent line has 24 usable cells and its quote plus role is
+exactly 24, so indentation and content were competing for the same cells.
+
+The bands: the project header is centred and carries a gradient from a first
+colour to a second; the feature row is painted the whole available line in the
+second; the task row sits on that with a left vertical bar whose FOREGROUND is
+the task's own colour; each of the five steps is a full line from cell one,
+centred, in small caps, on a third colour. An OPEN step and everything inside
+it — its agents, their quotes and attributions, their subagent bubbles — share
+a DIMMER variant of that third colour, so the expanded stage reads as one
+block whose bounding box is easy to find. Step labels are centred rather than
+left-aligned: the full-width band already gives the eye an edge at both ends,
+so a centred small-caps label reads as a section header over left-aligned
+content, and no indent cell is spent.
+
+COLOUR IS DERIVED IN THREE GRADES — feature base, then task base, then content
+base — so colour encodes LINEAGE: which feature a task belongs to, and which
+task a block of content belongs to, are both legible without reading a word.
+A task's colour is drawn from within its feature's range, randomly rather than
+ordinally: no ramp, no lightness ladder, no evenly spaced rotation, because a
+task's colour carries identity alone and must not imply sequence, age or
+priority. Separation between siblings comes from choosing well — a candidate
+too close to a live sibling is redrawn — not from a scheme. The colour must
+nonetheless be STABLE for the life of the task, so it is derived
+deterministically from the task's identity rather than sampled at render time;
+a task that changed colour as it repainted, or two panes disagreeing about a
+task's colour, would both read as defects. Tasks never reopen, so colours may
+be reused freely and no recycling or exhaustion machinery is built.
+
+CONTRAST IS CALCULATED, not eyeballed, against the known guidelines and at
+runtime from the resolved colours rather than from hardcoded pairs — the
+feature hue varies per project and the palette is explicitly open beyond the
+orchid colours. Where a derived pair fails, the FOREGROUND moves; the
+background does not, because it is carrying structure. Where a terminal cannot
+render the derived colour, readability outranks fidelity: a wrong-but-readable
+colour beats an accurate unreadable one.
+
+Feature base colours are assigned as features are created, kept in the
+repository and synchronised with GitHub. A renderer reads that value when
+present and derives one from the project hue when it is absent or
+unparseable — a permanent fallback rather than a stopgap, since a feature
+without an assigned colour must still render sensibly.
+
+## [2026-07-26 CEST] Decision-NNN: A feedback surface must run current code
+#tooling #feedback #sidebar #mount
+
+`tools/sidebar-mount.sh` resolves its own directory through a symlink into
+`.ai/repositories/serialseb/orchids/`, a checkout pinned to `main`, and
+accepts no flag or environment variable pointing elsewhere. The sidebar
+mounted into an agent's window therefore runs MAIN's renderer whatever
+branch the worktree holds, so a feature that changes the sidebar can never
+be seen working in the window of the very session building it.
+
+This cost a full round. The operator's live acceptance check was run against
+pre-change code and reported the pre-change behaviour, while the branch
+build — which already passed both halves of the agreed bar — was never on
+screen. The rule that follows is general: when the purpose of a surface is
+to collect the operator's verdict, it must run the code under judgement,
+mounted at present time and torn down with the verdict. Showing out-of-date
+code to gather feedback produces a verdict about the wrong artifact.
+
 ## Result
 
-Result: done (pending the operator's live eyeball, which is the agreed
-acceptance gate and cannot be self-approved)
+Result: in-progress — the live eyeball FAILED on 2026-07-26 and the feature
+is reopened. The previous `done` staged below the fold was premature and is
+withdrawn.
+
+### LIVE EYEBALL FAILURE, 2026-07-26 (operator verdict, verbatim)
+
+- Static data renders: "project name, feature name etc showing static data
+  for this project".
+- Live data does NOT: "No agent or activity anywhere" — no session row
+  appeared, and none appeared even as a fresh status post landed on the
+  runtime tree during the look.
+- New observation to fix alongside it: "Missing difference between feature
+  and task" — the rendered rows do not distinguish the two levels.
+- Operator ruling on ordering: "Cosmetic changes once it works" — function
+  first. Ruling 1's bar (rows AND hue) still gates the eventual close.
+
+So the marker half of the build works and the EVENT half does not: structure
+paints, liveness does not. Diagnosis in progress; nothing below is closed.
+
+### Prior build state, retained for reference (NOT a result)
 
 - branch: `f/sidebar-empty-rows`
 - base: `53aae9d` (local `main`)
@@ -380,6 +617,20 @@ agents write directly again, and the regex ceiling documented in
 
 ### Follow-ups returned to the gardener — NOT written to the board here
 
+0. FEATURE BASE COLOURS ARE ASSIGNED AT CREATION, STORED IN THE REPO AND
+   SYNCHRONISED WITH GITHUB (operator, 2026-07-27): "Feature base colours can
+   be decided in advance as features get created, kept in repo and
+   synchronized with github". This is grade 1 of the three-grade colour model
+   becoming DATA rather than derivation. SPLIT deliberately: this branch
+   builds only the READ side — the renderer reads a feature's stored base
+   colour when present and falls back to deriving one from the project hue
+   when absent or unparseable, which is every feature today since nothing
+   writes it yet. Assigning at creation, persisting to the repository and
+   synchronising with GitHub touches the board and `board_gh.py`, which are
+   the gardener's and never a landscaper's to edit, so they are RETURNED
+   rather than built. The fallback is permanent, not a stopgap: a feature
+   with no assigned colour must always render sensibly.
+
 1. `:session:` routing prefix leaks into filenames. The live tree holds
    `:session:<uuid>.marker` and `:session:<uuid>.<ts>.json`, and inside
    those envelopes `to` reads `:session::session:<uuid>` — the prefix
@@ -519,6 +770,25 @@ Rolling — folded from each sower's `ingest_increment` as it returned.
   unchanged and still checked first, so a task nothing has written to within
   the liveness window continues to read as not-heard-from.
 
+### ROUND 2 — the display gets its real shape
+
+- ✨ Each pipeline-role charter now carries a `step:` key in its frontmatter,
+  mapping the role to its stage — ideation, scoping, designing, building or
+  releasing — so the sidebar can work out which step a task is on from the
+  role of whoever is working it, with nothing about steps travelling on the
+  message bus. The sidecar courier role and the three cloud agents carry no
+  step at all: an absent step renders as no step rather than a default,
+  because silently inventing a placement is the defect class this work
+  exists to remove.
+
+- 🐛 The sidebar pane mounted into an agent's window now runs the renderer
+  belonging to the checkout that asked for it, falling back unchanged to the
+  shared copy for any repository that carries no renderer of its own. It
+  previously always ran the shared copy, which tracks the main branch, so a
+  branch changing the sidebar could not be seen working in the window of the
+  session building it — a full round of review was spent judging code that
+  was never on screen.
+
 ## Readme delta
 
 Staged for the gardener to apply via the `readme-sync` skill at ingest
@@ -621,3 +891,167 @@ Ledger of everything the operator asked for in-session, as received.
    claim otherwise was wrong. Verified against the documentation: per-agent
    `tools`, `disallowedTools`, `permissionMode` and `hooks` are all
    supported; only the allow/ask/deny rule lists are session-wide.
+
+Round 2 (2026-07-26), after the failed live eyeball:
+
+15. Revert the staged Result to in-progress and diagnose why LIVE activity
+   does not render. IMPLEMENTED. Result reverted; cause found and it was not
+   a live-half defect — the pane was running main's renderer, not the
+   branch's.
+16. "Cosmetic changes once it works" — function first, with the rows-AND-hue
+   bar of ruling 1 still gating the close. HONOURED as ordering; no cosmetic
+   work was done in this round.
+17. "Missing difference between feature and task" — IMPLEMENTED as scope:
+   the renderer gains the task level it never had.
+18. The corrected hierarchy, given at length: a feature spans many tasks as
+   a tree; five steps run within a task; agents with identity sit on steps
+   and a step may hold more than one; subagents share their parent's session
+   id and surface only as scheduled / doing / done; nothing is ever hidden
+   except a completed task and a wholly-completed feature; a feature reopens
+   when a new task arrives. IMPLEMENTED as the whole of the round-2 scope.
+19. "the real way to do it is to make sure messaging does provide which
+   feature slash task is worked on ... and then the static mapping can happen
+   on the [client] side" — IMPLEMENTED: identity gains `task`, the step stays
+   UI-derived from the role. He also called an explicit phase on the wire "a
+   second step"; DEFERRED on his own framing.
+20. "any subagent that wants to post updates should do it through its
+   spawner. Otherwise it should probably be an agent" — RECORDED as a
+   decision, including the corollary that the reporting shape is what decides
+   whether a unit of work is a subagent or an agent.
+27. THE ACCORDION CORRECTION, and it was my error not his: "in an accordion,
+   collapse keeps the line, it doesn't go to the previous one". I had told
+   the sower to put all five steps on ONE line and abbreviate them until they
+   fitted 32 columns. His earlier ruling already said otherwise — "a finished
+   step folds to a plain line as the next opens, keeping its place among the
+   five" — and I mis-read "keeping its place" as keeping a slot in a shared
+   line rather than keeping its own line. Corrected mid-flight. Five step
+   lines, always, one per step; a collapsed step keeps its line and shows no
+   contents; the active one expands. This also dissolves the truncation
+   defect rather than solving it: with a line each there is nothing to
+   abbreviate away.
+
+28. DEPTH IS BACKGROUND COLOUR, NOT INDENT (operator, final layout model):
+   "Instead of focusing on indent, lets focus on background color: orchids:
+   gradient from A to B. MessageBus would be baground B alll the way (paint
+   wole avail line). Task: ue vertical br left with BG B abd FG Ct where Ct is
+   a backgroud colour for that task. We are back to blocks so we ca center
+   aligh again, from cell 1 sowe takeeachof the 5 steps and make them a full
+   ligne centred, bacground C. Inside each the logic above is the correct one,
+   i woulld put the moving gradient on the current stage."
+   He offered left-aligned steps at the cost of an extra indent cell and asked
+   for an opinion; the answer given was CENTRED, on the grounds that the
+   full-width band already supplies the edge, and that at 32 columns the saved
+   cell is real — the agent line has 24 usable columns and the quote plus role
+   is exactly 24. Indentation therefore stops being the structure, and the
+   `│` continuation characters retire with it.
+   MINE, NOT HIS, and overrulable on sight: the agent and subagent lines inside
+   a step stay on background C so the section reads as one block, and Ct varies
+   per task so two open tasks are told apart by bar colour alone.
+   Operator process note, taken as a standing instruction: "this is going to go
+   back and forth so either we drop this discussion or we very accurately
+   agree" — the drip-feed of one refinement per turn was my failure. The
+   correction is to state a complete specification once and build it, not to
+   ask again.
+
+29. COLOUR IS DERIVED IN THREE GRADES, AND CONTRAST IS COMPUTED (operator):
+   "calculate contrast levels guidelines are knwn orchid colours but others
+   are permitted. Each task get its own colour as long as it is in the colour
+   range chosen for the featrure. so feature color base -> task color base ->
+   content color base, that's three grades". Plus: "background oclour is
+   dimmer in a stage when its open, visually it'seasy to find the bounding
+   box".
+   Colour therefore encodes LINEAGE rather than decoration — a task's colour
+   is allocated from its feature's range, and the content beneath it from the
+   task's, so which feature a task belongs to and which task a block of
+   content belongs to are both readable without a word. The orchid palette is
+   the starting point but is explicitly not a closed set.
+   Contrast is CALCULATED against the known guidelines at runtime from the
+   resolved colours — not hardcoded pairs — because the feature hue varies per
+   project. Where a derived pair fails, the foreground moves; the derived
+   background does not, since it is carrying structure. Sibling tasks need a
+   minimum perceptual separation as well as containment in the range, so how
+   allocation behaves when a feature has more tasks than the range can
+   separate is an open implementation question put to the sower.
+
+26. NOT YET DONE at the time of writing, found by my own look at the live
+   pane after the renderer landed at 49724aa — recorded here so none of it
+   can be quietly lost. The six-level structure works (one feature row, one
+   task row, one accordion line, both sessions merged as agents, subagents
+   attached), but: the accordion TRUNCATES to two of five steps, which is
+   omission and breaks the feature's own spine; the agent quote has lost its
+   attribution, rendering `“committing”` with no role at all; the vestigial
+   `0%` still sits on the feature row after progress moved to the task's
+   circle; feature and task STILL print the same text, which is the
+   operator's original complaint unresolved; and the gradient header, the
+   full-width dimmer band and the KITT sweep are unbuilt. Dispatched as step
+   3b. The band is treated as LOAD-BEARING rather than decorative, since it
+   is what makes a feature visibly not a task — the visual item and the
+   original complaint are one fix.
+
+25. LAYOUT, given in full while waiting on the renderer, with the operator
+   explicitly lifting his own "cosmetics later" ordering for it so the work
+   lands in the same pass rather than costing a second round: "Orchids is the
+   gradient centered, feature left aligned below, full length dimmer
+   backgound colour, next line accordion for the feve steps, centered small
+   caps, the actuve ones thata are expanded get the kit animation, the oher
+   ones are collapsd. Within an active steps (ideation, scoping etc) goes the
+   agent, status, model we agreed (italics for the quote?) and they get
+   (finally) an indent, whote, net line the agent, next lines with the bubbles
+   as correctly fisplayed the pending ones. Steps small caps always" — plus
+   "very compact form" as an overriding constraint, and "accordion is under
+   the task of course" settling the one placement I had flagged as my own
+   reading. Italics on the quote: he asked, I answered yes. IMPLEMENTED as
+   scope in the renderer step.
+   The identity line becomes a book-style epigraph — italic quote, then the
+   role and model as an attribution beneath — degrading version, then model,
+   then the attribution rejoining the quote line, then the role, with the
+   quote itself never dropping. Compactness wins at every choice point, but
+   nothing is ever OMITTED to save a line: not a pending subagent bubble, not
+   a step, not a task. Collapse and abbreviate, never omit.
+
+24. "you cannot call yourself for a resume as you already know you come from
+   resume and you know who you are" — CORRECT, and a better primary
+   mechanism than the process-tree walk I had specified. A resumed session
+   knows its own role because it has just loaded its own charter; the role is
+   unavailable to the HARNESS, not to the session. IMPLEMENTED as an explicit
+   self-declaration argument to `courier.py init`, with precedence:
+   harness-supplied wins, self-declaration fills a gap only, then the
+   persisted record, then the launching command line as a last resort. A
+   self-declared role never overwrites a harness-supplied one, which keeps
+   the existing intent that identity comes from something the agent cannot
+   set. Materially better than the original: it repairs the CURRENTLY RUNNING
+   gardener, which persistence-at-first-launch alone could not.
+
+23. "is that because its force launched at startup rather than calling it
+   through /gardener?" — RIGHT INSTINCT, adjacent cause. Established by
+   direct observation: the gardener process is `claude --resume
+   1e6b83cc-...`, parent `-bash`, with NO `--agent` flag on the command line
+   and none of CLAUDE_CODE_AGENT, CLAUDE_AGENT, ORCHID_PARENT_SESSION,
+   ORCHID_PARENT_PROJECT, CLAUDE_CODE_SESSION_ID or AI_AGENT in its
+   environment. A spawned landscaper by contrast runs `claude --agent
+   landscaper --name ...` and does get CLAUDE_CODE_AGENT. So the role is lost
+   not by being force-launched but by being RESUMED: a resume drops the flag
+   the role came from, and nothing on the process can name it afterwards.
+   This is fleet-wide — any resumed agent goes anonymous on the bus, not only
+   the gardener. IMPLEMENTED as step 1b, via the SessionStart hook that
+   already runs `courier.py init`, so no shared settings.json edit is needed.
+   Honest limit: it cannot repair the currently-running gardener session,
+   which never had a record written; it takes effect from a session's next
+   launch. The renderer failing open covers the display meanwhile.
+
+22. "steps flash from time to time (or i saw two) but no content within
+   them. First two lines hav the same text not sure which one is which" —
+   observed live on the pre-rebuild renderer. Both confirmed by capture and
+   both are in scope for the renderer step: the two identical lines are ONE
+   feature minted twice, once per session (a dead predecessor and the live
+   one), and the step block flashes because it is drawn under only whichever
+   row is currently working, so it appears and disappears as staleness flips
+   between them — while every dot is empty because no step carries the
+   agents working it. Relayed to the sower in flight as acceptance criteria.
+   IMPLEMENTED pending that step's return and the live re-check.
+
+21. Two role-to-step assignments are MINE, not his, and are flagged for his
+   review: `bloomer -> scoping` and `sower -> building`. He named only
+   gardener/ideation, landscaper/building, groundskeeper/releasing and
+   designing as the renamed groomer. OPEN — cheap to correct, being one
+   frontmatter line each.
