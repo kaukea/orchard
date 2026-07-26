@@ -13,8 +13,7 @@ if ! command -v tmux >/dev/null 2>&1 || [ -z "${TMUX:-}" ]; then
 fi
 
 # Resolve through the .claude/tools symlink to the real tools dir, so the
-# co-located courier.py / sidebar_model.py are found (same resolution as
-# sidebar-mount.sh).
+# co-located courier.py is found (same resolution as sidebar-mount.sh).
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 
 if command -v pgrep >/dev/null 2>&1 \

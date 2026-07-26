@@ -1,10 +1,11 @@
 """Emulator frame check for tools/sidebar.py's curses renderer.
 
-Runs the REAL curses app inside a detached tmux pane, against a fixture courier
-built from the scenario baked into the blessed reference frame
-(.git/the-works/bus-message-specifying/approved-frame.ans and its generator,
-sidebar-mock.py) — the source of truth for the visual grammar declared in
-sidebar.py's own module docstring (bus-message-specifying B5).
+Runs the REAL curses app inside a detached tmux pane, seeded with fixture
+event files written straight into a temp `$XDG_RUNTIME_DIR/orchard/projects/`
+tree — the on-disk layout tools/sidebar.py's `build_model()` reads directly
+(bus-finishing: sidebar_model.py/sidebar_v3.py are both retired and folded
+into sidebar.py; there is no more repo-list env var to seed, `build_model()`
+scans the whole projects root).
 
 Assertions are SEMANTIC (glyphs, text, colour family) rather than a byte
 diff against the mock: curses may map truecolor down to the nearest
@@ -13,8 +14,17 @@ row's band sweep animates. Colour-family checks accept either the mock's
 exact truecolor RGB or tools/sidebar.py's own `_rgb_to_xterm256` fallback
 for that RGB — never a hand-guessed index.
 
+NOT asserted here (no source in the new event grammar — see sidebar.py's
+module docstring): phase checklist content, identity-line footer stats
+(age/worked/tokens/dollars), open-question badges/rows. progress_pct is
+never populated by build_model() either, so a "done" row's percentage tail
+always reads "0%" here, not "100%" — an acknowledged, in-docstring gap, not
+something this test pretends is otherwise.
+
 Skips cleanly (unittest.skipUnless) when tmux is not on PATH.
 """
+import itertools
+import json
 import os
 import re
 import shutil
@@ -33,24 +43,33 @@ if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
 import sidebar  # noqa: E402
-import sidebar_model  # noqa: E402
-
-from support import envelope, identity_body, lifecycle_body, write_message  # noqa: E402
 
 _SIDEBAR_PY = os.path.join(_TOOLS_DIR, "sidebar.py")
 _SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
 
 _HAS_TMUX = shutil.which("tmux") is not None
 
+_counter = itertools.count()
 
-def _make_named_repo(tmp_root: str, name: str) -> str:
-    repo_dir = os.path.join(tmp_root, name)
-    os.makedirs(repo_dir, exist_ok=True)
-    subprocess.run(
-        ["git", "init", "--quiet"], cwd=repo_dir, check=True,
-        capture_output=True, text=True,
-    )
-    return repo_dir
+
+def _write_event(projects_root, slug, sid, subject, *, identity=None, status=None, body=None):
+    """One event file under `projects_root`/`slug`/ — the same shape
+    orchard_topic.py's build_envelope()/write_message() produce (see
+    tests/test_sidebar.py, which owns the fuller build_model() unit-test
+    coverage; this file only needs enough fixture machinery to drive the
+    real curses app end to end)."""
+    project_dir = Path(projects_root) / slug
+    project_dir.mkdir(parents=True, exist_ok=True)
+    envelope = {"from": f":session:{sid}", "subject": subject}
+    if body is not None:
+        envelope["body"] = body
+    if identity is not None:
+        envelope["identity"] = identity
+    if status is not None:
+        envelope["status"] = status
+    path = project_dir / f"{sid}.{next(_counter):08d}.json"
+    path.write_text(json.dumps(envelope), encoding="utf-8")
+    return path
 
 
 def _strip_sgr(raw_line: str) -> str:
@@ -91,8 +110,9 @@ def _has_basic_red(raw_line: str) -> bool:
 @unittest.skipUnless(_HAS_TMUX, "tmux not available in this environment")
 class SidebarEmulatorFrameTests(unittest.TestCase):
     """One fixture fleet — an orchids repo with a done feature and a working
-    feature, plus a signmc repo with an open-question feature — rendered by
-    the real curses app in a detached tmux pane and captured with SGR."""
+    feature (three running subagents, see _seed_orchids), plus a signmc repo
+    with a working feature — rendered by the real curses app in a detached
+    tmux pane and captured with SGR."""
 
     PANE_WIDTH = 29
     PANE_HEIGHT = 50
@@ -100,14 +120,12 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
-        self.orchids_repo = _make_named_repo(self._tmp.name, "orchids")
-        self.signmc_repo = _make_named_repo(self._tmp.name, "signmc")
-        self._seed_orchids_courier()
-        self._seed_signmc_courier()
-        self._repolist_path = os.path.join(self._tmp.name, "repolist.txt")
-        Path(self._repolist_path).write_text(
-            f"{self.orchids_repo}\n{self.signmc_repo}\n", encoding="utf-8",
-        )
+        self.runtime_dir = Path(self._tmp.name) / "run"
+        self.runtime_dir.mkdir()
+        self.projects_root = self.runtime_dir / "orchard" / "projects"
+        self.projects_root.mkdir(parents=True)
+        self._seed_orchids()
+        self._seed_signmc()
         self._socket = f"sidebar-frame-{uuid.uuid4().hex[:8]}"
         self.addCleanup(self._kill_tmux_server)
 
@@ -120,58 +138,46 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
             capture_output=True, text=True,
         )
 
-    def _courier_root(self, repo_path: str) -> Path:
-        roots = sidebar_model.iter_courier_roots([repo_path])
-        assert roots, f"no courier root resolved for {repo_path}"
-        return roots[0]
+    def _event(self, slug, sid, subject, **kw):
+        return _write_event(self.projects_root, slug, sid, subject, **kw)
 
-    def _put(self, courier_root, folder, msg_id, sender, body, notify_user=None) -> None:
-        write_message(
-            courier_root, folder,
-            envelope(msg_id, sender, body=body, notify_user=notify_user),
-        )
+    def _seed_orchids(self) -> None:
+        # a done feature -- outcome:success is the terminal signal.
+        self._event("orchids", "orch-bloomer", "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "bloomer-v1",
+                               "name": "bloomer v1"})
+        self._event("orchids", "orch-bloomer", "orchard:agent:outcome:success",
+                     identity={"agent": "landscaper", "feature": "bloomer-v1",
+                               "name": "bloomer v1"})
 
-    def _put_question(self, courier_root, folder, msg_id, sender, question_id, subject) -> None:
-        env = envelope(
-            msg_id, sender, body=f"orchid:interrupt:question:{subject}", notify_user=True,
-        )
-        env["question_id"] = question_id
-        write_message(courier_root, folder, env)
+        # a working feature with an identity line (role + model) and a mix
+        # of running/queued subagents.
+        identity = {"agent": "landscaper", "feature": "sidebar-titling",
+                    "name": "sidebar titling"}
+        status = {"model": "opus-4.8"}
+        self._event("orchids", "orch-arch", "orchard:agent:lifecycle:starting",
+                     identity=identity, status=status)
+        self._event("orchids", "orch-arch", "orchard:agent:status",
+                     identity=identity, status=status, body="writing")
+        # EXACT subject, no appended subagent id — the subagent rides the
+        # body instead (operator ruling: the orchard subject list is
+        # closed, variable data never belongs in the subject). Only running
+        # subagents are seeded here (`schedule`/queued has its own coverage
+        # in tests/test_sidebar.py's SubagentDelegationTests).
+        for sub in ("sower-a", "sower-b", "sower-c"):
+            self._event("orchids", "orch-arch", "orchard:agent:delegation:begin",
+                         identity=identity, status=status, body={"subagent": sub})
 
-    def _seed_orchids_courier(self) -> None:
-        courier_root = self._courier_root(self.orchids_repo)
-
-        done_session = "orch-bloomer"
-        self._put(courier_root, done_session, "d-id", done_session,
-                   identity_body(done_session, agent_type="landscaper",
-                                 feature_id="bloomer-v1", name="bloomer v1"))
-        self._put(courier_root, done_session, "d-fin", done_session,
-                   lifecycle_body("finished", feature_id="bloomer-v1"))
-
-        live_session = "orch-arch"
-        identity = identity_body(live_session, agent_type="landscaper",
-                                  feature_id="sidebar-titling", name="sidebar titling")
-        identity["model"] = "opus-4.8"
-        self._put(courier_root, live_session, "l-id", live_session, identity)
-        for i, body in enumerate((
-            "orchid:status:writing",
-            "orchid:phase:building:2/4",
-            "orchid:subagent:start:sower-a",
-            "orchid:subagent:start:sower-b",
-            "orchid:subagent:start:sower-c",
-            "orchid:subagent:queue:sower-d",
-            "orchid:subagent:queue:sower-e",
-        )):
-            self._put(courier_root, live_session, f"l-{i}", live_session, body)
-
-    def _seed_signmc_courier(self) -> None:
-        courier_root = self._courier_root(self.signmc_repo)
-        session = "sign-arch"
-        self._put(courier_root, session, "s-id", session,
-                   identity_body(session, agent_type="landscaper",
-                                 feature_id="focus-returning", name="focus returning"))
-        self._put(courier_root, session, "s-phase", session, "orchid:phase:building")
-        self._put_question(courier_root, session, "s-q1", session, "q1", "scope fork")
+    def _seed_signmc(self) -> None:
+        # deliberately idle (no lifecycle/outcome signal posted) -- this
+        # repo exists purely to prove multiple repos render correctly and
+        # that only the genuinely-"working" row (orchids/sidebar-titling)
+        # carries the band sweep; a second concurrently-animating row would
+        # defeat test_working_band_animates_while_other_lines_stay_static's
+        # "everything else is static" assertion.
+        self._event("signmc", "sign-arch", "orchard:agent:status",
+                     identity={"agent": "landscaper", "feature": "focus-returning",
+                               "name": "focus returning"}, body="idle")
 
     def _pane_size_settled(self) -> bool:
         expected = f"{self.PANE_WIDTH}x{self.PANE_HEIGHT}"
@@ -195,7 +201,7 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
                     check=True)
         self._tmux("resize-window", "-x", str(self.PANE_WIDTH), "-y", str(self.PANE_HEIGHT))
         self._await_pane_size()
-        command = f"ORCHIDS_SIDEBAR_REPOS={self._repolist_path} {sys.executable} {_SIDEBAR_PY}"
+        command = f"XDG_RUNTIME_DIR={self.runtime_dir} {sys.executable} {_SIDEBAR_PY}"
         self._tmux("send-keys", command, "Enter")
 
     def _capture(self) -> list[str]:
@@ -205,7 +211,7 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         stripped = [_strip_sgr(line) for line in lines]
         return (any("orchids" in line for line in stripped)
                 and any("signmc" in line for line in stripped)
-                and any("scope fork" in line for line in stripped))
+                and any("focus returning" in line for line in stripped))
 
     def _capture_when_ready(self, timeout: float = 10.0) -> list[str]:
         """Poll until two SUCCESSIVE captures are both complete and
@@ -235,7 +241,7 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
 
         done_idx = next(
             i for i, l in enumerate(stripped)
-            if "✓" in l and "bloomer v1" in l and "100%" in l
+            if "✓" in l and "bloomer v1" in l
         )
         self.assertTrue(_has_fg(lines[done_idx], sidebar.GREEN)
                          or _has_fg(lines[done_idx], sidebar.GREEN_SOFT))
@@ -246,10 +252,6 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         )
         self.assertLess(done_idx, working_idx)
         self.assertTrue(_has_any_bg(lines[working_idx]))
-        self.assertTrue(stripped[working_idx].rstrip().endswith("62%"))
-
-        phase_label_line = stripped[working_idx + 1]
-        self.assertIn(sidebar.small_caps("building"), phase_label_line)
 
         identity_idx = next(
             i for i, l in enumerate(stripped)
@@ -257,36 +259,12 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         )
         self.assertIn("landscaper", stripped[identity_idx])
 
-        checklist_start = next(
-            i for i, l in enumerate(stripped) if i > working_idx and "ideation" in l
-        )
-        expected = [
-            ("ideation", "●"), ("scoping", "●"), ("designing", "●"),
-            ("building", "⠧"), ("releasing", "○"),
-        ]
-        for offset, (word, mark) in enumerate(expected):
-            checklist_line = stripped[checklist_start + offset]
-            self.assertIn(word, checklist_line)
-            self.assertIn(mark, checklist_line)
-        active_line = stripped[checklist_start + 3]
-        self.assertIn("●●●○○", active_line)
-
         signmc_header_idx = next(i for i, l in enumerate(stripped) if l.strip() == "signmc")
-        question_row_idx = next(
+        signmc_feature_idx = next(
             i for i, l in enumerate(stripped)
-            if i > signmc_header_idx and "?1" in l and "focus returning" in l
+            if i > signmc_header_idx and "focus returning" in l
         )
-        question_count_idx = next(
-            i for i, l in enumerate(stripped)
-            if i > question_row_idx and "question" in l
-        )
-        why_idx = next(
-            i for i, l in enumerate(stripped)
-            if i > question_row_idx and "why:" in l and "scope fork" in l
-        )
-        self.assertTrue(_has_fg(lines[question_row_idx], sidebar.AMBER))
-        self.assertTrue(_has_fg(lines[question_count_idx], sidebar.AMBER))
-        self.assertTrue(_has_fg(lines[why_idx], sidebar.AMBER))
+        self.assertGreater(signmc_feature_idx, signmc_header_idx)
 
         full_text = "\n".join(stripped)
         self.assertNotIn("⌚", full_text)
@@ -302,11 +280,22 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
             if "⠧" in l and "sidebar titling" in l
         )
 
-        time.sleep(0.4)
-        second = self._capture()
+        # Poll for a change rather than compare a single fixed-delay
+        # snapshot: the tick-driven band sweep advances roughly every
+        # ~125ms, but exactly when a poll lands relative to that cadence is
+        # not guaranteed under shared-host CPU contention, so a bounded
+        # retry window is the non-flaky way to observe "it does animate."
+        deadline = time.time() + 5.0
+        second = first
+        while time.time() < deadline:
+            second = self._capture()
+            if len(second) == len(first) and second[working_idx] != first[working_idx]:
+                break
+            time.sleep(0.1)
 
         self.assertEqual(len(first), len(second))
-        self.assertNotEqual(first[working_idx], second[working_idx])
+        self.assertNotEqual(first[working_idx], second[working_idx],
+                             "working row never changed within the poll window")
         for i in range(len(first)):
             if i == working_idx:
                 continue

@@ -18,6 +18,16 @@ under ~/.claude/projects, so `identity` resolves to just `{"agent": ...}`
 resolves at all (courier.status_of() finds no transcript, so every key it would
 contribute is empty and _status() drops them all) — asserted absent below
 rather than guessed at.
+
+Accepted events (lifecycle/status/delegation/outcome/task) now land through
+`courier.orchard_deliver()` in the NEW per-session project layout —
+`$XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sid>.<ts>.json`, with a
+sibling `<sid>.marker` and a parent-project-dir mtime bump — matching
+tests/test_orchard_transport.py's `project_slug()`-driven idiom exactly, so
+the slug is asked of courier rather than re-derived here. The reject path is
+unchanged: it still writes telemetry into the OLD
+`topics/telemetry/<repo>/` directory via orchard_topic.py's own local
+`write_message()`, which the script never migrated.
 """
 import json
 import os
@@ -65,12 +75,25 @@ def _run(cwd, runtime_dir, args, sid=SID, agent=DEFAULT_AGENT, parent=None):
     )
 
 
-def _topic_dir(runtime_dir, repo_name):
-    return runtime_dir / "orchard" / "topics" / "repository" / repo_name
+def _project_dir(runtime_dir, slug):
+    return runtime_dir / "orchard" / "projects" / slug
 
 
 def _telemetry_dir(runtime_dir, repo_name):
     return runtime_dir / "orchard" / "topics" / "telemetry" / repo_name
+
+
+def _slug(repo):
+    """Ask courier.project_slug() itself, from within `repo`, rather than
+    re-deriving the <repo>.<project> / basename-fallback algorithm here —
+    matches tests/test_orchard_transport.py's `_project_slug` idiom."""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = _TOOLS_DIR
+    proc = subprocess.run(
+        [sys.executable, "-c", "import courier; print(courier.project_slug())"],
+        cwd=repo, capture_output=True, text=True, env=env, check=True,
+    )
+    return proc.stdout.strip()
 
 
 @pytest.fixture
@@ -106,10 +129,12 @@ def test_lifecycle_post_writes_expected_envelope(repo, runtime_dir, state):
     assert result.returncode == 0, result.stderr
 
     repo_name = Path(repo).name
-    files = list(_topic_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    slug = _slug(repo)
+    files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
     assert len(files) == 1
     written = files[0]
     assert result.stdout.strip() == str(written)
+    assert (_project_dir(runtime_dir, slug) / f"{SID}.marker").exists()
 
     envelope = json.loads(written.read_text(encoding="utf-8"))
     assert envelope["from"] == f":session:{SID}"
@@ -124,8 +149,8 @@ def test_lifecycle_post_carries_parent_when_orchid_parent_session_set(repo, runt
     result = _run(repo, runtime_dir, ["lifecycle", "started"], parent="parent-sid-9")
     assert result.returncode == 0, result.stderr
 
-    repo_name = Path(repo).name
-    files = list(_topic_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    slug = _slug(repo)
+    files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
     assert len(files) == 1
     envelope = json.loads(files[0].read_text(encoding="utf-8"))
     assert envelope["identity"]["agent"] == DEFAULT_AGENT
@@ -138,7 +163,7 @@ def test_lifecycle_bad_state_is_rejected(repo, runtime_dir):
     assert result.stderr.strip().startswith("orchard-topic: rejected")
 
     repo_name = Path(repo).name
-    assert not _topic_dir(runtime_dir, repo_name).exists()
+    assert not _project_dir(runtime_dir, _slug(repo)).exists()
 
     tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
     assert len(tfiles) == 1
@@ -156,7 +181,8 @@ def test_status_post_writes_expected_envelope(repo, runtime_dir, text):
     assert result.returncode == 0, result.stderr
 
     repo_name = Path(repo).name
-    files = list(_topic_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    slug = _slug(repo)
+    files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
     assert len(files) == 1
 
     envelope = json.loads(files[0].read_text(encoding="utf-8"))
@@ -174,7 +200,7 @@ def test_status_zero_words_is_rejected(repo, runtime_dir):
     assert result.stderr.strip().startswith("orchard-topic: rejected")
 
     repo_name = Path(repo).name
-    assert not _topic_dir(runtime_dir, repo_name).exists()
+    assert not _project_dir(runtime_dir, _slug(repo)).exists()
     assert len(list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))) == 1
 
 
@@ -184,7 +210,7 @@ def test_status_three_words_is_rejected(repo, runtime_dir):
     assert result.stderr.strip().startswith("orchard-topic: rejected")
 
     repo_name = Path(repo).name
-    assert not _topic_dir(runtime_dir, repo_name).exists()
+    assert not _project_dir(runtime_dir, _slug(repo)).exists()
     tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
     assert len(tfiles) == 1
     envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
@@ -192,19 +218,26 @@ def test_status_three_words_is_rejected(repo, runtime_dir):
 
 
 # --- delegation ----------------------------------------------------------
+#
+# The subject is EXACT (`orchard:agent:delegation:schedule`/`begin`/`end`)
+# and carries no variable data — the subagent id rides the body instead
+# (operator ruling: the orchard subject list is closed, not extensible, and
+# variable data never belongs in the subject). `schedule` was briefly
+# retired then restored into the closed subject corpus (operator ruling,
+# 2026-07-25): a session-id-less subagent queued/planned to be called.
 
 @pytest.mark.parametrize("action", ["schedule", "begin", "end"])
 def test_delegation_post_writes_expected_envelope(repo, runtime_dir, action):
     result = _run(repo, runtime_dir, ["delegation", action, "builder"])
     assert result.returncode == 0, result.stderr
 
-    repo_name = Path(repo).name
-    files = list(_topic_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    slug = _slug(repo)
+    files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
     assert len(files) == 1
 
     envelope = json.loads(files[0].read_text(encoding="utf-8"))
-    assert envelope["subject"] == f"orchard:agent:delegation:{action}:builder"
-    assert "body" not in envelope
+    assert envelope["subject"] == f"orchard:agent:delegation:{action}"
+    assert envelope["body"] == {"subagent": "builder"}
     assert envelope["identity"]["agent"] == DEFAULT_AGENT
     assert "status" not in envelope
 
@@ -215,7 +248,7 @@ def test_delegation_bad_action_is_rejected(repo, runtime_dir):
     assert result.stderr.strip().startswith("orchard-topic: rejected")
 
     repo_name = Path(repo).name
-    assert not _topic_dir(runtime_dir, repo_name).exists()
+    assert not _project_dir(runtime_dir, _slug(repo)).exists()
     tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
     assert len(tfiles) == 1
     envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
@@ -229,8 +262,8 @@ def test_outcome_post_writes_expected_envelope(repo, runtime_dir, value):
     result = _run(repo, runtime_dir, ["outcome", value])
     assert result.returncode == 0, result.stderr
 
-    repo_name = Path(repo).name
-    files = list(_topic_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    slug = _slug(repo)
+    files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
     assert len(files) == 1
 
     envelope = json.loads(files[0].read_text(encoding="utf-8"))
@@ -246,7 +279,7 @@ def test_outcome_bad_value_is_rejected(repo, runtime_dir):
     assert result.stderr.strip().startswith("orchard-topic: rejected")
 
     repo_name = Path(repo).name
-    assert not _topic_dir(runtime_dir, repo_name).exists()
+    assert not _project_dir(runtime_dir, _slug(repo)).exists()
     tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
     assert len(tfiles) == 1
     envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
@@ -260,8 +293,8 @@ def test_task_post_by_gardener_writes_expected_envelope(repo, runtime_dir, value
     result = _run(repo, runtime_dir, ["task", value], agent="gardener")
     assert result.returncode == 0, result.stderr
 
-    repo_name = Path(repo).name
-    files = list(_topic_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    slug = _slug(repo)
+    files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
     assert len(files) == 1
 
     envelope = json.loads(files[0].read_text(encoding="utf-8"))
@@ -278,7 +311,7 @@ def test_task_post_by_non_gardener_is_rejected(repo, runtime_dir):
     assert "gardener" in result.stderr
 
     repo_name = Path(repo).name
-    assert not _topic_dir(runtime_dir, repo_name).exists()
+    assert not _project_dir(runtime_dir, _slug(repo)).exists()
     tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
     assert len(tfiles) == 1
     envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
@@ -292,7 +325,7 @@ def test_task_bad_value_is_rejected(repo, runtime_dir):
     assert result.stderr.strip().startswith("orchard-topic: rejected")
 
     repo_name = Path(repo).name
-    assert not _topic_dir(runtime_dir, repo_name).exists()
+    assert not _project_dir(runtime_dir, _slug(repo)).exists()
     tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
     assert len(tfiles) == 1
     envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
@@ -307,7 +340,7 @@ def test_unknown_family_is_rejected(repo, runtime_dir):
     assert result.stderr.strip().startswith("orchard-topic: rejected")
 
     repo_name = Path(repo).name
-    assert not _topic_dir(runtime_dir, repo_name).exists()
+    assert not _project_dir(runtime_dir, _slug(repo)).exists()
     tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
     assert len(tfiles) == 1
     envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
@@ -322,7 +355,7 @@ def test_bare_post_with_no_event_is_rejected(repo, runtime_dir):
     assert result.stderr.strip().startswith("orchard-topic: rejected")
 
     repo_name = Path(repo).name
-    assert not _topic_dir(runtime_dir, repo_name).exists()
+    assert not _project_dir(runtime_dir, _slug(repo)).exists()
     tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
     assert len(tfiles) == 1
     envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
@@ -331,45 +364,44 @@ def test_bare_post_with_no_event_is_rejected(repo, runtime_dir):
 
 # --- write mechanics -----------------------------------------------------
 
-def test_no_leftover_dotfile_after_post(repo, runtime_dir):
+def test_no_leftover_partial_tempfile_after_post(repo, runtime_dir):
+    """orchard_deliver()'s atomic write goes through a `.<name>.partial` temp
+    file before the rename to the final `<sid>.<ts>.json` — that temp name
+    must never survive a post. `.compacted` (maybe_compact's own sentinel)
+    and `<sid>.marker` are expected dotted/plain siblings, not leftovers."""
     result = _run(repo, runtime_dir, ["lifecycle", "starting"])
     assert result.returncode == 0, result.stderr
 
-    repo_name = Path(repo).name
-    topic_dir = _topic_dir(runtime_dir, repo_name)
-    names = [p.name for p in topic_dir.iterdir()]
-    assert names, "expected a written message file"
-    assert all(not n.startswith(".") for n in names)
+    project_dir = _project_dir(runtime_dir, _slug(repo))
+    names = [p.name for p in project_dir.iterdir()]
+    assert any(n.endswith(".json") for n in names), "expected a written message file"
+    assert not any(n.endswith(".partial") for n in names)
 
 
-def test_nested_mtime_bumped_up_to_topics_root_on_post(repo, runtime_dir):
+def test_marker_created_and_project_dir_mtime_bumped_on_post(repo, runtime_dir):
     first = _run(repo, runtime_dir, ["lifecycle", "starting"])
     assert first.returncode == 0, first.stderr
 
-    repo_name = Path(repo).name
-    topic_dir = _topic_dir(runtime_dir, repo_name)
-    family_dir = topic_dir.parent
-    topics_root = family_dir.parent
-    assert topic_dir.is_dir() and family_dir.is_dir() and topics_root.is_dir()
+    project_dir = _project_dir(runtime_dir, _slug(repo))
+    assert project_dir.is_dir()
+    assert (project_dir / f"{SID}.marker").exists()
 
-    # Force every directory in the chain to a known-stale mtime, then post
-    # again — a real bump must move all three well past it.
+    # Force the project dir to a known-stale mtime, then post again — a real
+    # bump (courier.orchard_deliver's os.utime(dir_path, None)) must move it
+    # well past that.
     stale = time.time() - 10_000
-    for d in (topic_dir, family_dir, topics_root):
-        os.utime(d, (stale, stale))
+    os.utime(project_dir, (stale, stale))
 
     second = _run(repo, runtime_dir, ["lifecycle", "started"])
     assert second.returncode == 0, second.stderr
 
-    for d in (topic_dir, family_dir, topics_root):
-        assert d.stat().st_mtime > stale + 5000, f"{d} mtime was not bumped"
+    assert project_dir.stat().st_mtime > stale + 5000, "project dir mtime was not bumped"
 
 
 # --- repo naming ---------------------------------------------------------
 
-def test_repo_name_from_worktree_resolves_to_main_repo_basename(tmp_path, runtime_dir):
+def test_repo_name_from_worktree_resolves_to_main_repo_slug(tmp_path, runtime_dir):
     main_repo = make_repo(str(tmp_path))
-    main_repo_name = Path(main_repo).name
 
     subprocess.run(
         ["git", "commit", "--allow-empty", "--quiet", "-m", "init"],
@@ -381,11 +413,15 @@ def test_repo_name_from_worktree_resolves_to_main_repo_basename(tmp_path, runtim
         cwd=main_repo, check=True, capture_output=True, text=True,
     )
 
+    main_repo_slug = _slug(main_repo)
+    worktree_slug = _slug(str(worktree_path))
+    assert main_repo_slug == worktree_slug  # --git-common-dir folds both to one project
+
     result = _run(str(worktree_path), runtime_dir, ["lifecycle", "starting"])
     assert result.returncode == 0, result.stderr
 
-    assert _topic_dir(runtime_dir, main_repo_name).exists()
-    assert not _topic_dir(runtime_dir, worktree_path.name).exists()
+    assert _project_dir(runtime_dir, main_repo_slug).exists()
+    assert not _project_dir(runtime_dir, worktree_path.name).exists()
 
 
 if __name__ == "__main__":

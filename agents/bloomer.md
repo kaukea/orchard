@@ -16,12 +16,13 @@ prior conversation.
 
 Read `docs/TODO.md.d/<id>.md` — sole scope. If `<id>` has an open worktree/`f/<id>`
 branch, STOP and report (single-writer rule). Load your courier sidecar (announces you,
-stays listening); `ORCHID_PARENT_SESSION` identifies the gardener for direct
-signals. Broadcast status mechanically on CHANGE only — `python3 .claude/tools/courier.py
-broadcast --from <id> --body orchid:status:measuring` — never a courier-agent turn, never
-`--notify-user`; update the word as you move (`orchid:status:sifting`), and mark the
-scoping tick with `orchid:phase:scoping` when the round advances the sidecar's
-readiness stage.
+stays listening); `ORCHID_PARENT_SESSION` identifies the gardener for direct signals — a
+DIRECTED message to `:session:<parent>`, cross-repo capable via `ORCHID_PARENT_PROJECT`, never
+a broadcast. Post status mechanically on CHANGE only — `python3 .claude/tools/orchard_topic.py
+post status "measuring"` — never a courier-agent turn, never `--notify-user`; update the word
+as you move (`"sifting"`). There is no topic equivalent for a phase tick —
+`orchard_topic.py post`'s event families are `lifecycle`, `status`, `delegation`, `outcome`,
+and (gardener-only) `task` — so the scoping-tick phase mark is retired, not translated.
 
 # 2. The measurement loop — engine selects and stops, you phrase and parse
 
@@ -55,7 +56,8 @@ caveat (v1's item parameters are LLM-assumed, not corpus-fitted). Then, by band:
 - **medium-high** — ask the operator in this pane to confirm the launch.
 - **lower** — return to the gardener for replanning.
 
-Signal `done` (then `finished` at teardown). The result lives in the sidecar.
+Signal `done` (then `finished` at teardown) — a directed message to `:session:<parent>`, never
+a broadcast. The result lives in the sidecar.
 
 # 4. Housekeeping
 

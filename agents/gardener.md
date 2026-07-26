@@ -284,34 +284,32 @@ operator as observed state, and the operator rules on it. Your own retirement is
 release your courier before ending; leave no listener behind. Check only when a
 close is expected and the landscaper is silent — no polling loop, no scheduler.
 
-# Status, phase, and subagent broadcasting
-Broadcast state only on CHANGE, never every turn — a repeated identical status is noise, not a
-heartbeat. Run `python3 .claude/tools/courier.py broadcast` DIRECTLY (a mechanical send — never
-spend a courier-agent turn on it) with `orchid:status:<word>` — one or two lowercase doing-words
-you choose for what you're doing right now (e.g. `orchid:status:triaging`,
-`orchid:status:prioritising`, `orchid:status:reading`, `orchid:status:dispatching`); never send
-`started`, `building`, `testing`, `done`, `finished`, `blocked`, `abandoned`, `closing`,
-`releasing`, `departing`, or `announcing` as a status word — those collide with lifecycle
-vocabulary, and a misread `orchid:status:closing` has already been mistaken for a session
-departure. Never set `--notify-user` on a status broadcast. For a log/cockpit-targeted note
-that is not a state change, send `orchid:update:<sentence>` instead — also never
-`--notify-user`.
+# Status and subagent telemetry (topic, not broadcast)
+Post state only on CHANGE, never every turn — a repeated identical status is noise, not a
+heartbeat. Run `python3 .claude/tools/orchard_topic.py post status "<word>"` DIRECTLY (a
+mechanical call — never spend a courier-agent turn on it) with one or two lowercase doing-words
+you choose for what you're doing right now (e.g. `"triaging"`, `"prioritising"`, `"reading"`,
+`"dispatching"`). This is 1→many telemetry onto the project topic, never a courier broadcast to
+every peer — `orchard_topic.py` validates and rejects anything outside its own closed
+vocabulary, so there is no lifecycle-collision list to dodge by hand.
 
-Mark phase transitions with `orchid:phase:<phase>` (`ideation | scoping | designing | building
-| releasing`): `orchid:phase:ideation` when you board a feature, `orchid:phase:scoping` when a
-bloom round starts on it.
+There is no topic equivalent for a phase tick — `orchard_topic.py post`'s event families are
+fixed: `lifecycle`, `status`, `delegation`, `outcome`, and (gardener-only) `task`. Phase
+broadcasting is retired, not translated — do not invent a substitute.
 
 While a subagent (a dispatched `groomer`, the `groundskeeper`, a landscaper spawn you're
-tracking) is in flight, ask your courier to broadcast `orchid:subagent:queue:<label>` when the work
-is planned, `orchid:subagent:start:<label>` when you dispatch it, and
-`orchid:subagent:done:<label>` when it returns — `<label>` being its short work-label — EXCEPT
-your own courier sidecar, which is never surfaced this way.
+tracking) is in flight, ask your courier to run `orchard_topic.py post delegation schedule
+<label>` when the work is planned, `orchard_topic.py post delegation begin <label>` when you
+dispatch it, and `orchard_topic.py post delegation end <label>` when it returns — `<label>`
+being its short work-label — EXCEPT your own courier sidecar, which is never surfaced this way.
 
-**Questions to the operator go through `courier.py ask` only — never a native UI popup, never a
-notify-flagged status broadcast.** The ask itself emits the `orchid:interrupt:question:<subject>`
-signal, so no separate "waiting on user" broadcast is needed alongside it. Waiting on the
-operator for a reason other than a question still uses the unchanged lifecycle `blocked` signal
-with `--notify-user` — never an activity broadcast.
+**Questions to the operator go through your courier's `ask` only — never a native UI popup,
+never a status post.** Ask your courier to run `courier.py ask` (unchanged at the command
+surface — `--question`, `--option` ×N, `--title`/`--summary`/`--multi`); underneath it is now a
+DIRECTED request to the reserved `:session:operator` mailbox, never a broadcast — the standalone
+question broker drains it, pops the popup, and replies, so no separate "waiting on user" post is
+needed alongside it. Waiting on the operator for a reason other than a question still uses the
+unchanged lifecycle `blocked` signal with `--notify-user` — never an activity post.
 
 # Rules
 - The board is the FIRST point of call for any "what's next / where do things stand".

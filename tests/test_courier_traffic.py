@@ -1,9 +1,16 @@
 """CLI-level tests for `courier.py validate` and the WIRE GRAMMAR v1 traffic
 contract (docs/TODO.md.d/bus-message-specifying.md step 6, feature's agreed
-test method): each role's emulated session, driven through the real CLI into
-a sandboxed courier root, must produce traffic that validates with zero
-violations; a set of hand-written envelopes must be flagged exactly as the
-spec describes.
+test method).
+
+`broadcast` (the fan-out courier.py used to offer role traffic) is retired —
+see tests/test_courier.py's OrchidGrammarCliTests for that. The roles' real
+traffic now goes through `orchard_topic.py post status/lifecycle/...`
+(telemetry, never fanned out) and directed `courier.py send`/`request --to
+:session:<id>`; RoleTrafficCliTests below drives each role's traffic through
+the real CLIs into a sandboxed orchard root and audits it with `courier.py
+validate`, exactly as the retired broadcast-based version did.
+TrafficValidateNegativeTests is unaffected by the retirement — it exercises
+`validate` directly against hand-written envelopes.
 """
 import json
 import os
@@ -20,58 +27,64 @@ _TOOLS_DIR = os.path.join(
 if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
-from support import courier_root_of, envelope, make_repo, write_message  # noqa: E402
+from support import envelope, make_repo, write_message  # noqa: E402
 
 _COURIER_PY = os.path.join(_TOOLS_DIR, "courier.py")
-
-
-def _poll_for_question_id(folder: Path, deadline: float) -> str | None:
-    """Non-destructive read of `folder` for a broadcast question — unlike
-    `courier.py receive`, this never deletes, so the role's earlier traffic
-    stays on disk for the validate pass at the end of the test."""
-    while time.time() < deadline:
-        for f in sorted(folder.glob("*.json")):
-            if f.name.startswith("."):
-                continue
-            try:
-                env = json.loads(f.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            if env.get("question_id"):
-                return env["question_id"]
-        time.sleep(0.05)
-    return None
+_ORCHARD_TOPIC_PY = os.path.join(_TOOLS_DIR, "orchard_topic.py")
 
 
 class RoleTrafficCliTests(unittest.TestCase):
-    """One emulated session per role, driving its contract-specified
-    sequence through the real courier.py CLI, then auditing the resulting
+    """One emulated session per role, driving its status/lifecycle chatter
+    through the real `orchard_topic.py post` CLI (the sanctioned telemetry
+    writer — never a fan-out), plus one shared directed-traffic test for
+    `send`/`request --to :session:<id>`, then auditing the resulting
     sandbox with `courier.py validate`."""
-
-    PEER = "watcher"
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
-        self.repo = make_repo(self._tmp.name)
-        self.sandbox_root = courier_root_of(self.repo)
-        self._courier("init", self.PEER)
+        base = Path(self._tmp.name)
+        self.runtime_dir = base / "run"
+        self.runtime_dir.mkdir()
+        self.cache_home = base / "cache"
+        self.cache_home.mkdir()
+        self.home = base / "home"
+        self.home.mkdir()
+        self.repo = make_repo(str(base))
 
-    def _courier(self, *args, session_id=None, check=True):
-        env = dict(os.environ)
-        if session_id:
-            env["CLAUDE_CODE_SESSION_ID"] = session_id
-        return subprocess.run(
-            [sys.executable, _COURIER_PY, *args],
-            cwd=self.repo, capture_output=True, text=True, env=env, check=check,
+    def _env(self, session_id):
+        return dict(
+            os.environ, CLAUDE_CODE_SESSION_ID=session_id,
+            XDG_RUNTIME_DIR=str(self.runtime_dir), XDG_CACHE_HOME=str(self.cache_home),
+            HOME=str(self.home),
         )
 
-    def _broadcast(self, session_id: str, body: str) -> None:
-        self._courier("broadcast", "--from", session_id, "--body", body, session_id=session_id)
+    def _topic_post(self, session_id: str, *args):
+        return subprocess.run(
+            [sys.executable, _ORCHARD_TOPIC_PY, "post", *args],
+            cwd=self.repo, capture_output=True, text=True, env=self._env(session_id),
+        )
+
+    def _courier(self, session_id, *args):
+        return subprocess.run(
+            [sys.executable, _COURIER_PY, *args],
+            cwd=self.repo, capture_output=True, text=True, env=self._env(session_id),
+        )
+
+    def _slug(self):
+        proc = subprocess.run(
+            [sys.executable, "-c", "import courier; print(courier.project_slug())"],
+            cwd=self.repo, capture_output=True, text=True,
+            env=dict(self._env("slug-probe"), PYTHONPATH=_TOOLS_DIR), check=True,
+        )
+        return proc.stdout.strip()
+
+    def _orchard_root(self) -> Path:
+        return self.runtime_dir / "orchard"
 
     def _validate(self):
         return subprocess.run(
-            [sys.executable, _COURIER_PY, "validate", str(self.sandbox_root)],
+            [sys.executable, _COURIER_PY, "validate", str(self._orchard_root())],
             capture_output=True, text=True,
         )
 
@@ -80,76 +93,81 @@ class RoleTrafficCliTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("0 violation(s)", proc.stdout, proc.stdout)
 
-    def _ask_and_answer(self, session_id: str, question: str, options: list[str],
-                         reply_body: str) -> None:
-        option_args = []
-        for option in options:
-            option_args += ["--option", option]
+    def _role_topic_traffic(self, session: str, *status_words: str) -> None:
+        start = self._topic_post(session, "lifecycle", "starting")
+        self.assertEqual(start.returncode, 0, start.stderr)
+        for words in status_words:
+            proc = self._topic_post(session, "status", words)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+        stop = self._topic_post(session, "lifecycle", "stopped")
+        self.assertEqual(stop.returncode, 0, stop.stderr)
+
+    def test_orchestrator_role_topic_traffic_validates(self):
+        self._role_topic_traffic("orchestrator1", "triaging", "prioritising", "dispatching")
+        self.assertTrafficIsClean()
+
+    def test_architect_role_topic_traffic_validates(self):
+        self._role_topic_traffic("architect1", "discovering", "planning", "writing tests")
+        self.assertTrafficIsClean()
+
+    def test_groomer_role_topic_traffic_validates(self):
+        self._role_topic_traffic("groomer1", "reading", "tending")
+        self.assertTrafficIsClean()
+
+    def test_bloomer_role_topic_traffic_validates(self):
+        self._role_topic_traffic("bloomer1", "measuring", "sifting")
+        self.assertTrafficIsClean()
+
+    def test_directed_send_and_request_reply_traffic_validates(self):
+        requester, responder = "architect2", "watcher"
+
+        send = self._courier(
+            requester, "send", "--to", f":session:{responder}",
+            "--subject", "orchard:agent:message:content", "--body", "drafted the plan",
+        )
+        self.assertEqual(send.returncode, 0, send.stderr)
+
         proc = subprocess.Popen(
-            [sys.executable, _COURIER_PY, "ask", "--question", question, *option_args,
-             "--poll-interval", "0.05"],
+            [sys.executable, _COURIER_PY, "request", "--to", f":session:{responder}",
+             "--subject", "orchard:agent:message:request", "--body", "proceed with the plan?"],
             cwd=self.repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-            env=dict(os.environ, CLAUDE_CODE_SESSION_ID=session_id),
+            env=self._env(requester),
         )
         try:
-            question_id = _poll_for_question_id(self.sandbox_root / self.PEER, time.time() + 5)
-            self.assertIsNotNone(question_id, "ask() never broadcast a question")
-            self._courier(
-                "send", "--from", self.PEER, "--to", session_id,
-                "--in-reply-to", question_id, "--body", reply_body, session_id=self.PEER,
+            project_path = self._orchard_root() / "projects" / self._slug()
+            deadline = time.time() + 5
+            request_id = None
+            while time.time() < deadline and request_id is None:
+                if project_path.is_dir():
+                    for f in sorted(project_path.glob(f"{responder}.*.json")):
+                        if f.name.startswith("."):
+                            continue
+                        try:
+                            env = json.loads(f.read_text(encoding="utf-8"))
+                        except (OSError, json.JSONDecodeError):
+                            continue
+                        if env.get("subject") == "orchard:agent:message:request":
+                            request_id = env["id"]
+                            break
+                if request_id is None:
+                    time.sleep(0.05)
+            self.assertIsNotNone(request_id, "request never reached the responder's mailbox")
+
+            reply = self._courier(
+                responder, "reply", "--to", f":session:{requester}",
+                "--in-reply-to", request_id, "--subject", "orchard:agent:message:response",
+                "--body", "yes",
             )
-            _stdout, stderr = proc.communicate(timeout=5)
+            self.assertEqual(reply.returncode, 0, reply.stderr)
+
+            stdout, stderr = proc.communicate(timeout=10)
         finally:
             if proc.poll() is None:
                 proc.kill()
                 proc.communicate()
         self.assertEqual(proc.returncode, 0, stderr)
+        self.assertEqual(stdout.strip(), "yes")
 
-    def test_orchestrator_role_traffic_validates(self):
-        session = "orchestrator1"
-        self._courier("announce", session_id=session)
-        for body in (
-            "orchid:status:triaging",
-            "orchid:status:prioritising",
-            "orchid:phase:ideation",
-            "orchid:subagent:queue:groomer",
-            "orchid:subagent:start:groomer",
-            "orchid:subagent:done:groomer",
-            "orchid:status:dispatching",
-        ):
-            self._broadcast(session, body)
-        self._courier("depart", session_id=session)
-        self.assertTrafficIsClean()
-
-    def test_architect_role_traffic_validates(self):
-        session = "architect1"
-        for body in (
-            "orchid:status:discovering",
-            "orchid:phase:designing",
-            "orchid:status:planning",
-            *(f"orchid:phase:building:{k}/6" for k in range(1, 7)),
-            "orchid:status:writing",
-            "orchid:update:drafted the failing test first",
-        ):
-            self._broadcast(session, body)
-        self._ask_and_answer(
-            session, "Proceed with the plan?", ["Yes", "No"],
-            '{"index": 0, "option": "Yes"}',
-        )
-        self._courier("signal", "--state", "done", "--notify-user", session_id=session)
-        self._courier("signal", "--state", "finished", session_id=session)
-        self.assertTrafficIsClean()
-
-    def test_groomer_role_traffic_validates(self):
-        session = "groomer1"
-        for body in ("orchid:status:reading", "orchid:phase:scoping", "orchid:status:tending"):
-            self._broadcast(session, body)
-        self.assertTrafficIsClean()
-
-    def test_bloomer_role_traffic_validates(self):
-        session = "bloomer1"
-        for body in ("orchid:status:measuring", "orchid:phase:scoping:1/3", "orchid:status:sifting"):
-            self._broadcast(session, body)
         self.assertTrafficIsClean()
 
 

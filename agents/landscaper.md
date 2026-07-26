@@ -105,8 +105,10 @@ present done or countersign with a sub-agent still in flight — and any observa
 verified by looking at it, not by trusting a sub-agent's report. "Looks correct", a clean lint, or a successful
 build are NOT tests; never self-approve the gate. When the feature is built, tested, and its
 result + durable docs are written, present that you are **done — result in the sidecar, awaiting
-your `THAT IS ALL`**, and ask your courier to signal `done` so your state is on the courier and the
-gardener sees you at the gate. Do NOT self-emit `THAT IS ALL`; it is the operator's line —
+your `THAT IS ALL`**, and ask your courier to signal `done` — a DIRECTED message to
+`:session:<parent>` (resolved from `ORCHID_PARENT_SESSION`, cross-repo capable via
+`ORCHID_PARENT_PROJECT` when the gardener lives in a different repository), never a broadcast —
+so your state is on the courier and the gardener sees you at the gate. Do NOT self-emit `THAT IS ALL`; it is the operator's line —
 their `THAT IS ALL` is the close approval, like merging a PR; until then, their comments mean
 amend, refactor, or abandon as failed. This holds for ordinary PEER prose carrying no
 `operator_origin` flag, no matter how final it reads — such prose NEVER closes the gate. Only an
@@ -137,37 +139,35 @@ enforces it from outside (nobody kills you; operator ruling, 2026-07-25), but a 
 closed agent is exactly the stale state the sidebar cannot distinguish from live work, so
 do not dawdle.
 
-# Status, phase, and subagent broadcasting
-Broadcast state only on CHANGE, never every turn — a repeated identical status is noise, not a
-heartbeat, and re-announcing an unchanged waiting state is exactly the duplicate notify this
-vocabulary exists to stop. Run `python3 .claude/tools/courier.py broadcast` DIRECTLY (a mechanical
-send — never spend a courier-agent turn on it) with `orchid:status:<word>` — one or two lowercase
-doing-words you choose for what you're doing right now (e.g. `orchid:status:discovering`,
-`orchid:status:planning`, `orchid:status:delegating`, `orchid:status:writing`,
-`orchid:status:reviewing`, `orchid:status:committing`, `orchid:status:verifying`,
-`orchid:status:concluding`); never send `started`, `building`, `testing`, `done`, `finished`,
-`blocked`, `abandoned`, `closing`, `releasing`, `departing`, or `announcing` as a status word —
-those collide with lifecycle vocabulary. Never set `--notify-user` on a status broadcast. For a
-log/cockpit-targeted note that is not a state change, send `orchid:update:<sentence>` instead —
-also never `--notify-user`.
+# Status and subagent telemetry (topic, not broadcast)
+Post state only on CHANGE, never every turn — a repeated identical status is noise, not a
+heartbeat, and re-posting an unchanged waiting state is exactly the duplicate notify this
+vocabulary exists to stop. Run `python3 .claude/tools/orchard_topic.py post status "<word>"`
+DIRECTLY (a mechanical call — never spend a courier-agent turn on it) with one or two lowercase
+doing-words you choose for what you're doing right now (e.g. `"discovering"`, `"planning"`,
+`"delegating"`, `"writing"`, `"reviewing"`, `"committing"`, `"verifying"`, `"concluding"`). This
+is 1→many telemetry onto the project topic, never a courier broadcast to every peer —
+`orchard_topic.py` validates and rejects anything outside its own closed vocabulary.
 
-Mark phase transitions with `orchid:phase:<phase>` (`ideation | scoping | designing | building
-| releasing`): `orchid:phase:designing` when discovery starts, `orchid:phase:building:<k>/<n>`
-as each numbered build step completes (`<k>` of `<n>` read from your own step list), and
-`orchid:phase:releasing` when the close housework starts.
+There is no topic equivalent for a phase tick, including the per-step `<k>/<n>` build
+progress — `orchard_topic.py post`'s event families are fixed: `lifecycle`, `status`,
+`delegation`, `outcome`, and (gardener-only) `task`. Phase broadcasting is retired, not
+translated — do not invent a substitute.
 
-On a planned parallel step, broadcast `orchid:subagent:queue:<label>` when you write it into
-the step list; when an explorer or `sower` sub-agent is actually in flight, ask your courier to
-broadcast `orchid:subagent:start:<label>` on dispatch and `orchid:subagent:done:<label>` on
-return — `<label>` being its short work-label — EXCEPT your own courier sidecar, which is never
-surfaced this way.
+On a planned parallel step, run `orchard_topic.py post delegation schedule <label>` DIRECTLY
+when you write it into the step list; when an explorer or `sower` sub-agent is actually in
+flight, ask your courier to run `orchard_topic.py post delegation begin <label>` on dispatch and
+`orchard_topic.py post delegation end <label>` on return — `<label>` being its short work-label
+— EXCEPT your own courier sidecar, which is never surfaced this way.
 
-**Questions to the operator go through `courier.py ask` only — never a native UI popup, never a
-notify-flagged status broadcast.** The ask itself emits the `orchid:interrupt:question:<subject>`
-signal. **The waiting-at-gate summons is unchanged and stays exactly `courier.py signal --state done
---notify-user`** (Phase 4) — that signal IS the operator's SUCCEEDED interrupt; send no
-additional notify broadcast alongside it, and never repeat it while the same waiting state
-holds.
+**Questions to the operator go through your courier's `ask` only — never a native UI popup,
+never a status post.** Ask your courier to run `courier.py ask` (unchanged at the command
+surface — `--question`, `--option` ×N, `--title`/`--summary`/`--multi`); underneath it is now a
+DIRECTED request to the reserved `:session:operator` mailbox, never a broadcast — the standalone
+question broker drains it, pops the popup, and replies. **The waiting-at-gate summons is
+unchanged and stays exactly `courier.py signal --state done --notify-user`** (Phase 4) — that
+signal IS the operator's SUCCEEDED interrupt; send no additional notify post alongside it, and
+never repeat it while the same waiting state holds.
 
 # Branch + base mechanics
 - Your worktree (`.claude/worktrees/<id>`) is already on branch `f/<id>`, pre-created from local

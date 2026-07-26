@@ -1,24 +1,36 @@
 """Unit tests for tools/orchard-question-broker.py's PURE decision logic
 (sidebar-polish item 12) — match_option_key(), is_operator_busy(), and
-pending_questions(). These are exactly the pieces separable from tty/tmux
-I/O (mirroring tools/sidebar.py's render_lines()/curses split), so they run
-with no live tmux session and no real keypress.
+pending_questions() — plus _handle_question()'s courier-reply/file-delete
+side effects (popup mechanism stubbed) and one live end-to-end round trip
+through a real `courier.py ask` subprocess.
 
-What this file deliberately does NOT cover — and cannot, without a live
-tmux session and a real terminal — is documented in the module docstring
-of tools/orchard-question-broker.py and repeated in this step's report:
-an actual `tmux display-popup` rendering, and a genuine keypress being read
-by _popup_read_main(). Those need a human/live check.
+pending_questions()/_handle_question() were rewritten for the operator-
+mailbox broker (bus-finishing): the broker no longer imports sidebar_model
+or scans per-peer courier inboxes. It scans
+`$XDG_RUNTIME_DIR/orchard/projects/*/operator.*.json` — one DIRECTED request
+file per asker per project (tools/courier.py cmd_ask -> orchard_send), never
+a fan-out — and _handle_question() answers by shelling out to
+`courier.py reply` and deleting the handled file.
+
+What this file deliberately does NOT cover — and cannot, without a live tmux
+session and a real terminal — is documented in the module docstring of
+tools/orchard-question-broker.py and repeated in this step's report: an
+actual `tmux display-popup` rendering, and a genuine keypress being read by
+_popup_read_main(). Those need a human/live check. `_render_popup` is
+stubbed in every test below for exactly that reason.
 
 Runs under both `python3 -m unittest discover` and `pytest`.
 """
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _TOOLS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools",
@@ -33,8 +45,13 @@ _SPEC = importlib.util.spec_from_file_location(
 broker = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(broker)
 
-from support import make_repo, envelope, write_message  # noqa: E402
-import sidebar_model  # noqa: E402
+import courier  # noqa: E402 — reused directly for envelope shape fidelity
+                 # (make_orchard_envelope/stamp) and to drive real
+                 # reply/ask subprocesses, exactly as the broker itself does.
+
+from support import make_repo  # noqa: E402
+
+_COURIER_PY = os.path.join(_TOOLS_DIR, "courier.py")
 
 
 class MatchOptionKeyTests(unittest.TestCase):
@@ -101,89 +118,183 @@ class IsOperatorBusyTests(unittest.TestCase):
                                                  last_activity_ts=99.0, idle_seconds=5.0))
 
 
+def _question_body(question_id, question, options, *, title=None, summary=None, multi=False):
+    body = {"question_id": question_id, "question": question, "options": options}
+    if title:
+        body["title"] = title
+    if summary:
+        body["summary"] = summary
+    if multi:
+        body["multi"] = True
+    return body
+
+
+def _write_operator_question(projects_root, slug, asker, question_id, question, options,
+                              *, title=None, summary=None, multi=False, ts=None):
+    """Hand-build `projects/<slug>/operator.<ts>.json` exactly as
+    tools/courier.py's `cmd_ask` -> `orchard_send` writes it: an
+    orchard-transport envelope (courier.make_orchard_envelope — the SAME
+    builder cmd_ask's own orchard_send call uses) whose `body` is a dict
+    carrying question_id/question/options/title/summary/multi, addressed
+    `:session:<asker>` -> `:session:operator`, filed under the reserved
+    per-asker `operator.<ts>.json` name (courier.py's `_stamp_filename`,
+    file_sid="operator" for the :session:operator address).
+    """
+    body = _question_body(question_id, question, options, title=title, summary=summary, multi=multi)
+    env = courier.make_orchard_envelope(
+        f":session:{asker}", ":session:operator", "orchard:agent:message:request",
+        body=body, repo=slug, project=slug,
+    )
+    if ts is not None:
+        env["ts"] = ts
+    project_dir = Path(projects_root) / slug
+    project_dir.mkdir(parents=True, exist_ok=True)
+    path = project_dir / f"operator.{ts or courier.stamp()}.json"
+    path.write_text(json.dumps(env, indent=2), encoding="utf-8")
+    return path, env
+
+
 class PendingQuestionsTests(unittest.TestCase):
-    """pending_questions() scans courier roots non-destructively (never deletes,
-    mirroring tools/sidebar_model.py's own scan) and de-dupes by
-    question_id, since a broadcast lands one copy per peer inbox."""
+    """pending_questions() scans every project's reserved operator mailbox
+    (one directed `operator.<ts>.json` request file per asker per project —
+    never a fan-out/broadcast) and de-dupes by `question_id` (nested in the
+    envelope's `body`, not top-level). Non-destructive: a discovered file is
+    left on disk until `_handle_question` deletes it."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
-        self.repo = make_repo(self._tmp.name)
-        self.courier_root = sidebar_model.iter_courier_roots([self.repo])[0]
-
-    def _put(self, folder, msg_id, sender, question_id, question, options):
-        env = envelope(msg_id, sender, body=f"orchid:activity:{question}", notify_user=True)
-        env["question_id"] = question_id
-        env["question"] = question
-        env["options"] = options
-        write_message(self.courier_root, folder, env)
+        self.projects_root = Path(self._tmp.name) / "orchard" / "projects"
 
     def test_finds_a_new_question(self):
-        self._put("peerA", "m1", "askerX", "q1", "Proceed?", ["Yes", "No"])
+        path, env = _write_operator_question(
+            self.projects_root, "acme.repo", "askerX", "q1", "Proceed?", ["Yes", "No"])
 
-        found = broker.pending_questions([self.courier_root], seen_ids=set())
-
-        self.assertEqual(len(found), 1)
-        self.assertEqual(found[0]["question_id"], "q1")
-        self.assertEqual(found[0]["question"], "Proceed?")
-        self.assertEqual(found[0]["options"], ["Yes", "No"])
-        self.assertEqual(found[0]["asker"], "askerX")
-
-    def test_same_question_id_in_multiple_peer_inboxes_is_reported_once(self):
-        self._put("peerA", "m1", "askerX", "q1", "Proceed?", ["Yes", "No"])
-        self._put("peerB", "m2", "askerX", "q1", "Proceed?", ["Yes", "No"])
-
-        found = broker.pending_questions([self.courier_root], seen_ids=set())
+        found = broker.pending_questions(self.projects_root, seen_ids=set())
 
         self.assertEqual(len(found), 1)
+        q = found[0]
+        self.assertEqual(q["question_id"], "q1")
+        self.assertEqual(q["question"], "Proceed?")
+        self.assertEqual(q["options"], ["Yes", "No"])
+        self.assertEqual(q["asker"], ":session:askerX")
+        self.assertEqual(q["id"], env["id"])
+        self.assertEqual(q["project"], "acme.repo")
+        self.assertEqual(q["path"], path)
 
     def test_already_seen_question_id_is_not_returned_again(self):
-        self._put("peerA", "m1", "askerX", "q1", "Proceed?", ["Yes", "No"])
+        _write_operator_question(
+            self.projects_root, "acme.repo", "askerX", "q1", "Proceed?", ["Yes", "No"])
+        first = broker.pending_questions(self.projects_root, seen_ids=set())
+        seen_ids = {q["question_id"] for q in first}
 
-        found = broker.pending_questions([self.courier_root], seen_ids={"q1"})
+        second = broker.pending_questions(self.projects_root, seen_ids=seen_ids)
 
-        self.assertEqual(found, [])
-
-    def test_messages_without_question_id_are_ignored(self):
-        write_message(self.courier_root, "peerA",
-                      envelope("m1", "someoneX", body="orchid:activity:just working"))
-
-        found = broker.pending_questions([self.courier_root], seen_ids=set())
-
-        self.assertEqual(found, [])
+        self.assertEqual(second, [])
 
     def test_never_deletes_the_files_it_scans(self):
-        self._put("peerA", "m1", "askerX", "q1", "Proceed?", ["Yes", "No"])
+        path, _env = _write_operator_question(
+            self.projects_root, "acme.repo", "askerX", "q1", "Proceed?", ["Yes", "No"])
 
-        broker.pending_questions([self.courier_root], seen_ids=set())
+        broker.pending_questions(self.projects_root, seen_ids=set())
 
-        self.assertTrue((Path(self.courier_root) / "peerA" / "m1.json").exists())
+        self.assertTrue(path.exists())
 
     def test_title_summary_multi_surfaced_when_present(self):
-        env = envelope("m1", "askerX", body="orchid:activity:Proceed?", notify_user=True)
-        env["question_id"] = "q1"
-        env["question"] = "Proceed?"
-        env["options"] = ["Yes", "No"]
-        env["title"] = "Deploy gate"
-        env["summary"] = "Ship the release now or wait."
-        env["multi"] = True
-        write_message(self.courier_root, "peerA", env)
+        _write_operator_question(
+            self.projects_root, "acme.repo", "askerX", "q1", "Proceed?", ["Yes", "No"],
+            title="Deploy gate", summary="Ship the release now or wait.", multi=True)
 
-        found = broker.pending_questions([self.courier_root], seen_ids=set())
+        found = broker.pending_questions(self.projects_root, seen_ids=set())
 
         self.assertEqual(found[0]["title"], "Deploy gate")
         self.assertEqual(found[0]["summary"], "Ship the release now or wait.")
         self.assertTrue(found[0]["multi"])
 
     def test_title_summary_absent_and_multi_false_by_default(self):
-        self._put("peerA", "m1", "askerX", "q1", "Proceed?", ["Yes", "No"])
+        _write_operator_question(
+            self.projects_root, "acme.repo", "askerX", "q1", "Proceed?", ["Yes", "No"])
 
-        found = broker.pending_questions([self.courier_root], seen_ids=set())
+        found = broker.pending_questions(self.projects_root, seen_ids=set())
 
         self.assertIsNone(found[0]["title"])
         self.assertIsNone(found[0]["summary"])
         self.assertFalse(found[0]["multi"])
+
+    def test_messages_with_no_question_id_in_body_are_ignored(self):
+        env = courier.make_orchard_envelope(
+            ":session:someoneX", ":session:operator", "orchard:agent:message:content",
+            body={"foo": "bar"}, repo="acme.repo", project="acme.repo",
+        )
+        project_dir = self.projects_root / "acme.repo"
+        project_dir.mkdir(parents=True)
+        (project_dir / f"operator.{courier.stamp()}.json").write_text(
+            json.dumps(env), encoding="utf-8")
+
+        found = broker.pending_questions(self.projects_root, seen_ids=set())
+
+        self.assertEqual(found, [])
+
+    def test_messages_with_a_non_dict_body_are_ignored(self):
+        env = courier.make_orchard_envelope(
+            ":session:someoneX", ":session:operator", "orchard:agent:status",
+            body="identity", repo="acme.repo", project="acme.repo",
+        )
+        project_dir = self.projects_root / "acme.repo"
+        project_dir.mkdir(parents=True)
+        (project_dir / f"operator.{courier.stamp()}.json").write_text(
+            json.dumps(env), encoding="utf-8")
+
+        found = broker.pending_questions(self.projects_root, seen_ids=set())
+
+        self.assertEqual(found, [])
+
+    def test_a_personal_mailbox_file_alongside_is_not_picked_up(self):
+        """Only `operator.*.json` is a question mailbox — a peer's own
+        `<session>.<ts>.json` file sitting in the same project dir (e.g. a
+        reply already delivered to some other session) is not a question."""
+        _write_operator_question(
+            self.projects_root, "acme.repo", "askerX", "q1", "Proceed?", ["Yes", "No"])
+        other = self.projects_root / "acme.repo" / f"someoneY.{courier.stamp()}.json"
+        other.write_text(json.dumps({"id": "x", "ts": "t", "from": "a", "to": "b"}),
+                          encoding="utf-8")
+
+        found = broker.pending_questions(self.projects_root, seen_ids=set())
+
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["question_id"], "q1")
+
+    def test_multiple_projects_are_all_scanned(self):
+        _write_operator_question(
+            self.projects_root, "acme.repoA", "askerX", "q1", "Proceed?", ["Yes", "No"])
+        _write_operator_question(
+            self.projects_root, "acme.repoB", "askerY", "q2", "Ship?", ["Yes", "No"])
+
+        found = broker.pending_questions(self.projects_root, seen_ids=set())
+
+        self.assertEqual({q["question_id"] for q in found}, {"q1", "q2"})
+        by_qid = {q["question_id"]: q for q in found}
+        self.assertEqual(by_qid["q1"]["project"], "acme.repoA")
+        self.assertEqual(by_qid["q2"]["project"], "acme.repoB")
+
+    def test_sorted_by_ts(self):
+        _write_operator_question(
+            self.projects_root, "acme.repo", "askerX", "later", "B?", ["Yes", "No"],
+            ts="2026-01-02T00-00-00.000000")
+        _write_operator_question(
+            self.projects_root, "acme.repo", "askerY", "earlier", "A?", ["Yes", "No"],
+            ts="2026-01-01T00-00-00.000000")
+
+        found = broker.pending_questions(self.projects_root, seen_ids=set())
+
+        self.assertEqual([q["question_id"] for q in found], ["earlier", "later"])
+
+    def test_missing_projects_root_returns_nothing(self):
+        found = broker.pending_questions(self.projects_root / "does-not-exist", seen_ids=set())
+        self.assertEqual(found, [])
+
+    def test_none_projects_root_returns_nothing(self):
+        self.assertEqual(broker.pending_questions(None, seen_ids=set()), [])
 
 
 class IsContinueKeyTests(unittest.TestCase):
@@ -389,6 +500,173 @@ class ComputePopupSizeTests(unittest.TestCase):
             "Deploy gate", "Ship now or wait.", "Proceed?", ["Yes", "No"],
         )
         self.assertGreater(with_both, without)
+
+
+class _LiveOrchardTestCase(unittest.TestCase):
+    """Shared fixture for the tests below that need `_handle_question()` to
+    actually shell out to a real `courier.py reply` (or `ask`) subprocess:
+    a private XDG_RUNTIME_DIR/HOME/XDG_CACHE_HOME (patched into the real
+    process environment, since `_handle_question` builds its subprocess env
+    from the live `os.environ`, not a caller-supplied dict), a throwaway git
+    repo standing in for the asker's project, and that repo's slug
+    pre-authorized in the cross-project registry — needed because
+    `_handle_question`'s own `courier.py reply` subprocess computes its own
+    `repo` from ITS cwd (this test process's cwd, generally a different repo
+    than the throwaway asker one), which then differs from the explicit
+    `--target-project` it is given, tripping the cross-project allowlist
+    check unless the throwaway slug is registered."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        base = Path(self._tmp.name)
+        self.runtime_dir = base / "run"
+        self.runtime_dir.mkdir()
+        self.cache_home = base / "cache"
+        self.cache_home.mkdir()
+        self.home = base / "home"
+        self.home.mkdir()
+        self.repo = make_repo(str(base))
+
+        self._env_patch = mock.patch.dict(os.environ, {
+            "XDG_RUNTIME_DIR": str(self.runtime_dir),
+            "XDG_CACHE_HOME": str(self.cache_home),
+            "HOME": str(self.home),
+        })
+        self._env_patch.start()
+        self.addCleanup(self._env_patch.stop)
+
+        self.slug = self._probe_slug()
+        self._allow(self.slug)
+        self.projects_root = self.runtime_dir / "orchard" / "projects"
+
+    def _probe_slug(self) -> str:
+        proc = subprocess.run(
+            [sys.executable, "-c", "import courier; print(courier.project_slug())"],
+            cwd=self.repo, capture_output=True, text=True,
+            env=dict(os.environ, PYTHONPATH=_TOOLS_DIR), check=True,
+        )
+        return proc.stdout.strip()
+
+    def _allow(self, *slugs: str) -> None:
+        cfg_dir = self.home / ".config" / "orchids"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / "sidebar-registry.json").write_text(
+            json.dumps(list(slugs)), encoding="utf-8")
+
+    def _receive_as(self, session_id: str) -> list:
+        recv = subprocess.run(
+            [sys.executable, _COURIER_PY, "receive"], cwd=self.repo,
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_CODE_SESSION_ID=session_id, PYTHONPATH=_TOOLS_DIR),
+        )
+        self.assertEqual(recv.returncode, 0, recv.stderr)
+        return json.loads(recv.stdout)
+
+
+class HandleQuestionTests(_LiveOrchardTestCase):
+    """`_handle_question()` pops the popup (stubbed here — its rendering
+    needs a live tmux session, out of scope for this file), then invokes
+    `courier.py reply` with the answer and deletes the handled mailbox
+    file. The popup mechanism is the only thing mocked; the reply itself is
+    a REAL subprocess so both the exact invocation and its real effect
+    (the asker actually receiving the answer) are verified."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.path, self.env = _write_operator_question(
+            self.projects_root, self.slug, "askerX", "q1", "Proceed?", ["Yes", "No"])
+        found = broker.pending_questions(self.projects_root, seen_ids=set())
+        self.assertEqual(len(found), 1)
+        self.q = found[0]
+
+    def test_invokes_courier_reply_with_the_right_arguments_and_deletes_the_file(self):
+        with mock.patch.object(broker, "_render_popup",
+                                return_value={"index": 0, "option": "Yes"}) as popup_mock, \
+             mock.patch.object(broker.subprocess, "run",
+                                wraps=broker.subprocess.run) as run_spy:
+            broker._handle_question(self.q)
+
+        popup_mock.assert_called_once()
+        # `_operator_current_window()` (called before the popup) also shells
+        # out to `broker.subprocess.run` for its own tmux probes when a real
+        # tmux session is present in the test environment — so pick out the
+        # ONE call that actually invokes `courier.py reply`, rather than
+        # assuming it is the only call recorded.
+        reply_calls = [c for c in run_spy.call_args_list if "reply" in c.args[0]]
+        self.assertEqual(len(reply_calls), 1, run_spy.call_args_list)
+        cmd, kwargs = reply_calls[0].args[0], reply_calls[0].kwargs
+        self.assertIn("reply", cmd)
+        self.assertEqual(cmd[cmd.index("--to") + 1], ":session:askerX")
+        self.assertEqual(cmd[cmd.index("--in-reply-to") + 1], self.env["id"])
+        self.assertEqual(cmd[cmd.index("--subject") + 1], "orchard:operator:message:response")
+        self.assertEqual(cmd[cmd.index("--target-project") + 1], self.slug)
+        self.assertEqual(kwargs["env"]["CLAUDE_CODE_SESSION_ID"], "question-broker")
+
+        self.assertFalse(self.path.exists())
+
+    def test_the_asker_actually_receives_the_answer(self):
+        with mock.patch.object(broker, "_render_popup",
+                                return_value={"index": 0, "option": "Yes"}):
+            broker._handle_question(self.q)
+
+        messages = self._receive_as("askerX")
+        self.assertEqual(len(messages), 1)
+        msg = messages[0]
+        self.assertEqual(msg["from"], ":session:question-broker")
+        self.assertEqual(msg["subject"], "orchard:operator:message:response")
+        self.assertEqual(msg["in_reply_to"], self.env["id"])
+        self.assertEqual(msg["body"], {"index": 0, "option": "Yes"})
+
+    def test_a_failed_popup_leaves_the_mailbox_file_standing(self):
+        """`_render_popup` returning None (tmux/popup failed) must not lose
+        the question: no reply is sent and the file is left for a retry."""
+        with mock.patch.object(broker, "_render_popup", return_value=None):
+            broker._handle_question(self.q)
+
+        self.assertTrue(self.path.exists())
+        self.assertEqual(self._receive_as("askerX"), [])
+
+
+class LiveAskEndToEndTest(_LiveOrchardTestCase):
+    """The full round trip: a real `courier.py ask` subprocess (the asker),
+    the broker's real `pending_questions()` scan discovering it, and a real
+    `_handle_question()` (popup stubbed) answering it — asserting the asker
+    actually unblocks with the broker's answer."""
+
+    def test_ask_subprocess_unblocks_with_the_brokers_answer(self):
+        proc = subprocess.Popen(
+            [sys.executable, _COURIER_PY, "ask", "--question", "Proceed?",
+             "--option", "Yes", "--option", "No", "--poll-interval", "0.1"],
+            cwd=self.repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=dict(os.environ, CLAUDE_CODE_SESSION_ID="askerLive", PYTHONPATH=_TOOLS_DIR),
+        )
+        try:
+            q = None
+            deadline = time.time() + 10
+            while time.time() < deadline and q is None:
+                found = broker.pending_questions(self.projects_root, seen_ids=set())
+                if found:
+                    q = found[0]
+                else:
+                    time.sleep(0.05)
+            self.assertIsNotNone(q, "ask's question never appeared in the operator mailbox")
+            self.assertEqual(q["asker"], ":session:askerLive")
+            self.assertEqual(q["question"], "Proceed?")
+
+            with mock.patch.object(broker, "_render_popup",
+                                    return_value={"index": 1, "option": "No"}):
+                broker._handle_question(q)
+
+            stdout, stderr = proc.communicate(timeout=10)
+        finally:
+            if proc.poll() is None:      # pragma: no cover - only on a genuine hang
+                proc.kill()
+                proc.communicate()
+
+        self.assertEqual(proc.returncode, 0, stderr)
+        self.assertEqual(json.loads(stdout.strip()), {"index": 1, "option": "No"})
+        self.assertFalse(q["path"].exists())
 
 
 if __name__ == "__main__":

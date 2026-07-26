@@ -1,23 +1,29 @@
 #!/usr/bin/env bash
-# SessionEnd hook — take this session off the message courier.
+# SessionEnd hook — wake this session's courier for its OWN controlled shutdown.
 #
-# Two signals, deliberately at different layers:
-#   1. a departure broadcast, so live agents learn of it inside the agentic flow;
-#   2. removal of the inbox, which is the structural signal — a later send to this
-#      session then fails immediately instead of writing into a folder nobody is
-#      watching. That failure is the whole reason the folder is torn down.
+# The courier owns its close end-to-end (Decisions 041/046/081): only it stops
+# its Monitor, verifies the watcher is gone, tears down the shared mailbox, and
+# exits. This hook must never do any of that FOR it — departing or tearing the
+# mailbox down here would race a live Monitor and orphan it mid-watch, which is
+# exactly the "killed externally" shape the courier's own charter forbids.
 #
-# Undelivered messages die with the inbox. That is correct, not a leak: the courier
-# offers NO delivery guarantee, and a sender is expected to decide for itself
-# whether to retry, abandon, or error.
+# So this hook performs the SAME self-message wake a normal mid-session release
+# uses: it drops a message into the mailbox the courier's Monitor is already
+# watching. If the courier is still listening, this wakes it and it runs its
+# own release sequence (depart, then teardown, then exit). If it has already
+# released (mailbox gone, or nobody home), the send fails harmlessly — there is
+# nothing left to wake, and this hook leaves it exactly as found rather than
+# forcing cleanup itself.
 set -eu
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
-for candidate in "$root/.claude/tools/courier.py" "$root/tools/courier.py" "$root/.claude/tools/bus.py" "$root/tools/bus.py"; do
+for candidate in "$root/.claude/tools/courier.py" "$root/tools/courier.py"; do
   [ -f "$candidate" ] && courier="$candidate" && break
 done
 [ -n "${courier:-}" ] || exit 0
 
-python3 "$courier" depart   >/dev/null 2>&1 || true
-python3 "$courier" teardown >/dev/null 2>&1 || true
+sid="${CLAUDE_CODE_SESSION_ID:-}"
+[ -n "$sid" ] || exit 0
+
+python3 "$courier" send --from "$sid" --to "$sid" --body "release" >/dev/null 2>&1 || true
 exit 0

@@ -29,19 +29,56 @@ Usage:
   courier.py teardown [id]                         remove it (session end)
   courier.py list                                  registry: one agent id per line
   courier.py send --from A --to B [--body X] [--notify-user] [--in-reply-to ID]
-  courier.py broadcast --from A [--body X] [--notify-user]
+  courier.py broadcast                             RETIRED — errors, pointing at
+                                                orchard_topic.py post (telemetry) or
+                                                send/request (directed). Fan-out is
+                                                the token leak; nothing fans out any
+                                                more (see below: announce/depart/
+                                                signal/ask all lost their fallback).
   courier.py receive [id]                          drain: JSON array, oldest first
+
+  Orchard transport (additive; routed whenever --to carries a :session:/
+  :topic: prefix — see the "orchard transport" section below for the
+  flat+marker layout under $XDG_RUNTIME_DIR/orchard/). `:session:operator` is
+  a RESERVED, dot-free target: always the SENDER's own project
+  (projects/<repo>.<project>/operator.<ts>.json), no allowlist needed:
+  courier.py send --to :session:<id>|:topic:<name>|operator --subject S
+             [--body X] [--target-project SLUG] [--in-reply-to ID]
+  courier.py receive                               also drains this session's
+                                                orchard mailbox (merged into
+                                                the same JSON array)
+  courier.py request --to :session:<id> --subject S [--body X]
+             [--target-project SLUG]               send, then block for the
+                                                matching reply; prints its body
+  courier.py reply --to :session:<id> --in-reply-to ID --subject S
+             [--body X] [--target-project SLUG]
   courier.py identity                              immutable facts about this session
   courier.py status                                mutable state: occupancy and spend
-  courier.py announce                              broadcast identity (session start)
-  courier.py depart                                broadcast departure (session end)
-  courier.py signal --state S [--to ID]            lifecycle push (to parent, else broadcast)
+  courier.py announce                              no-op (identity rides every
+                                                orchard_topic.py event instead);
+                                                still creates this session's
+                                                legacy inbox
+  courier.py depart                                no-op (nothing reads it)
+  courier.py signal --state S [--to ID]            lifecycle push, directed at the
+                                                parent ONLY (--to, else
+                                                ORCHID_PARENT_SESSION; cross-repo via
+                                                ORCHID_PARENT_PROJECT, allowlist-
+                                                gated same as any cross-project
+                                                :session: send) — delivered over the
+                                                orchard transport. No parent known
+                                                means not delivered; never broadcast.
   courier.py ask --question Q --option A --option B [...] [--multi]
              [--title T] [--summary S]
-                                                broadcast a question (sidebar-polish item 12,
-                                                round 2 UX in item 12g); blocks until an answer
-                                                addressed back to this session arrives, then
-                                                prints ONE JSON object to stdout and exits.
+                                                a directed orchard request to the
+                                                reserved :session:operator mailbox
+                                                (never a broadcast); the standalone
+                                                question-broker drains it and
+                                                replies :session:<asker> with
+                                                orchard:operator:message:response,
+                                                matched via in_reply_to exactly like
+                                                request/reply. Blocks until answered,
+                                                then prints ONE JSON object to stdout
+                                                and exits.
 
                                                 This is a THREE-WAY outcome (four-way with
                                                 --multi) — the caller MUST branch on which key
@@ -78,6 +115,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -87,6 +125,12 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from feature_name import feature_name as _feature_name  # noqa: E402
+
+try:
+    from orchard_compact import maybe_compact
+except ImportError:  # orchard_compact ships in a parallel step; degrade to a no-op
+    def maybe_compact(dir_path):  # noqa: ANN001, ANN201
+        return None
 
 # Standard request bodies the sidecar answers itself, without waking its parent:
 # a message whose body is one of these is a pull for that information. Closed set,
@@ -430,17 +474,13 @@ def envelope_of(args, to: str) -> dict:
     )
 
 
-def fan_out(sender: str, envelope_for) -> int:
-    root = courier_root()
-    if not root.is_dir():
-        return 0
-    peers = [d for d in sorted(root.iterdir()) if d.is_dir() and d.name != sender]
-    for peer in peers:
-        deliver(peer, envelope_for(peer.name))
-    return len(peers)
-
-
 def cmd_send(args) -> None:
+    if is_orchard_address(args.to):
+        env = orchard_send(args)
+        print(env["id"])
+        return
+    if not args.sender:
+        sys.exit("courier: send requires --from")
     enforce_orchid_grammar(args)
     target = inbox(args.to)
     if not target.is_dir():
@@ -449,12 +489,18 @@ def cmd_send(args) -> None:
 
 
 def cmd_broadcast(args) -> None:
-    enforce_orchid_grammar(args)
-    if not courier_root().is_dir():
-        sys.exit("courier: no courier root — nothing to broadcast to")
-    # every copy is addressed to `*`, though each lands in a specific peer's folder
-    reached = fan_out(args.sender, lambda name: envelope_of(args, "*"))
-    print(f"broadcast to {reached} agent(s)")
+    """Retired: this used to fan a copy into every OTHER agent's inbox — the
+    token leak the courier is being redesigned to kill. status/phase/subagent
+    are 1->many TELEMETRY, which belongs on a topic (orchard_topic.py post),
+    never on the courier. There is no fan-out replacement command: a
+    directed `send`/`request` is the only way left to reach a specific peer.
+    """
+    sys.exit(
+        "courier: broadcast is retired — it fanned a copy into every inbox. "
+        "For status/phase/subagent telemetry, use `orchard_topic.py post` "
+        "instead. For a directed message, use `send --to <id>` or "
+        "`send --to :session:<id>`."
+    )
 
 
 def cmd_receive(args) -> None:
@@ -470,6 +516,8 @@ def cmd_receive(args) -> None:
                 out.append({"type": "malformed", "file": f.name, "error": str(exc)})
                 continue
             f.unlink(missing_ok=True)               # ephemeral: consumed is gone
+    if args.agent_id == whoami():
+        out.extend(orchard_receive_own())
     print(json.dumps(out, indent=2))
 
 
@@ -496,60 +544,73 @@ def cmd_list(args) -> None:
                 print(d.name)
 
 
-def announcement(body: dict, sender: str):
-    # a push, not a request: broadcast (to `*`) carrying the data itself, so a
-    # receiving sidecar records it. No id-tag — the body IS the payload.
-    def build(to: str) -> dict:
-        return make_envelope(sender, "*", body=body)
-    return build
-
-
 def cmd_announce(args) -> None:
+    """No longer fans identity into every peer's inbox: the same identity
+    snapshot now rides every orchard_topic.py event (its `identity` field,
+    see tools/orchard_topic.py._attach_snapshot), so a separate broadcast is
+    dead weight — the fan-out this replaced was the token leak. Kept as a
+    no-op that still creates this session's legacy inbox (the courier-root
+    registry membership cmd_list/send/receive depend on), so an existing
+    caller's `announce` at session start does not regress inbox creation.
+    """
     me = whoami()
     inbox(me).mkdir(parents=True, exist_ok=True)
-    reached = fan_out(me, announcement(identity_of(), me))
-    print(f"announced to {reached} agent(s)")
+    print(f"announce: identity no longer fanned out — it rides every "
+          f"orchard_topic.py event for {me} instead")
 
 
 def cmd_depart(args) -> None:
-    me = whoami()
-    reached = fan_out(me, announcement({"session_id": me}, me))
-    print(f"departure sent to {reached} agent(s)")
+    """Dead: nothing reads a depart broadcast. Kept as a documented no-op
+    (rather than removed outright) so an existing caller's `depart` at
+    session end does not start erroring."""
+    print("depart: no-op — no consumer reads this signal")
 
 
 def cmd_signal(args) -> None:
-    """A lifecycle signal is a push, like announce/depart: it carries the data
-    itself, not a request for it. Directed at the parent when its inbox is
-    known and live, so only the conductor acts on it; broadcast otherwise, so
-    the signal is not silently lost. You signal for yourself, always — the
+    """A lifecycle signal is a push: it carries the data itself, not a
+    request for it. Directed at the parent alone, over the orchard transport
+    — so a parent living in a different repo (ORCHID_PARENT_PROJECT) can
+    receive it too, cross-project allowlist gating applying exactly as it
+    does for any other cross-project :session: send. There is no broadcast
+    fallback any more: a signal with no known parent (no --to, no
+    ORCHID_PARENT_SESSION) is simply not delivered — the fan-out this
+    replaced was the token leak. You signal for yourself, always — the
     envelope `from` is the caller's own session, never someone else's.
     """
     if args.notify_user and args.state not in SIGNAL_NOTIFY_STATES:
         args.parser.error(
             f"courier: --notify-user is only legal with --state {'|'.join(SIGNAL_NOTIFY_STATES)}"
         )
-    sender = whoami()
     feature = args.feature or identity_of()["feature_id"]
     body = {"kind": "lifecycle", "state": args.state, "feature_id": feature}
     if args.state == "blocked" and args.blocked_on:
         body["blocked_on"] = args.blocked_on
+
     to = args.to or os.environ.get("ORCHID_PARENT_SESSION") or None
-    if to and inbox(to).is_dir():
-        deliver(inbox(to), make_envelope(sender, to, body=body, notify_user=args.notify_user))
-        print(f"signal {args.state} -> {to}")
+    if not to:
+        print(f"signal {args.state} — no parent known, not delivered")
         return
-    reached = fan_out(sender, lambda name: make_envelope(sender, "*", body=body,
-                                                          notify_user=args.notify_user))
-    print(f"signal {args.state} broadcast to {reached} agent(s)")
+
+    parent_project = os.environ.get("ORCHID_PARENT_PROJECT") or project_slug()
+    ns = argparse.Namespace(
+        to=f":session:{to}", subject="orchard:agent:message:content",
+        body=json.dumps(body), target_project=parent_project,
+        in_reply_to=None, notify_user=args.notify_user,
+    )
+    env = orchard_send(ns)
+    print(f"signal {args.state} -> :session:{to} ({env['id']})")
 
 
 def _question_envelope(sender: str, to: str, question_id: str, question: str,
                         options: list[str], *, title: str | None = None,
                         summary: str | None = None, multi: bool = False) -> dict:
-    """The envelope a `courier.py ask` broadcast puts in every peer's inbox
-    (sidebar-polish item 12c; title/summary/multi added round 2, item 12g;
-    body switched to WIRE GRAMMAR v1's orchid:interrupt:question in the
-    bus-message-specifying feature).
+    """The legacy fan-out envelope `courier.py ask` used to put in every
+    peer's inbox (sidebar-polish item 12c; title/summary/multi added round
+    2, item 12g; body switched to WIRE GRAMMAR v1's orchid:interrupt:question
+    in the bus-message-specifying feature). `cmd_ask` no longer calls this —
+    it now sends one directed orchard request to `:session:operator` instead
+    of fanning out — but the shape stays, still covered by unit tests and
+    available for reuse.
 
     `body` is `orchid:interrupt:question:<subject>` with `notify_user=True`
     — the one interrupt class `ask` alone may emit (send/broadcast reject a
@@ -585,7 +646,9 @@ def _question_envelope(sender: str, to: str, question_id: str, question: str,
 
 
 def _match_answer(box: Path, question_id: str) -> str | None:
-    """Non-destructively scan `box` for a reply to `question_id`.
+    """Non-destructively scan `box` for a reply to `question_id`. Legacy
+    (paired with _question_envelope, no longer called by cmd_ask — see
+    there); kept for reuse and its own unit-test coverage.
 
     Only the ONE matching file is consumed (deleted) — every other message
     sitting in this inbox belongs to this session for some other reason and
@@ -621,22 +684,42 @@ def _await_answer(box: Path, question_id: str, poll_interval: float) -> str:
 
 
 def cmd_ask(args) -> None:
-    me = whoami()
-    inbox(me).mkdir(parents=True, exist_ok=True)  # so a reply has somewhere to land
+    """Directed to the reserved per-repo operator mailbox (`:session:operator`,
+    same-project always — no allowlist needed) rather than broadcast to every
+    peer: the old fan-out was the token leak. The standalone question-broker
+    drains `orchard:agent:message:request` envelopes there and replies
+    `:session:<asker>` with `orchard:operator:message:response`, matched via
+    the same in_reply_to mechanism `request`/`reply` already use — the
+    envelope's own `id` is the identifier the reply answers, no separate
+    protocol. `question_id` also rides the body for the broker/popup's own
+    bookkeeping, but is not itself what matching keys on.
+    """
     if len(args.option) < 2:
         sys.exit("courier: ask requires at least two --option values")
+    me = whoami()
     question_id = uuid.uuid4().hex[:12]
-    reached = fan_out(
-        me, lambda to: _question_envelope(me, to, question_id, args.question, args.option,
-                                           title=args.title, summary=args.summary,
-                                           multi=args.multi),
+    body = {"question_id": question_id, "question": args.question, "options": args.option}
+    if args.title:
+        body["title"] = args.title
+    if args.summary:
+        body["summary"] = args.summary
+    if args.multi:
+        body["multi"] = True
+
+    ns = argparse.Namespace(
+        to=":session:operator", subject="orchard:agent:message:request",
+        body=json.dumps(body), target_project=None, in_reply_to=None,
+        notify_user=False,
     )
-    if reached == 0:
-        sys.exit("courier: ask — no peers on the courier to broadcast the question to")
-    print(f"courier: asked {reached} peer(s); question {question_id}; waiting for an answer",
+    sent = orchard_send(ns)
+    print(f"courier: asked the operator; question {question_id}; waiting for an answer",
           file=sys.stderr)
-    answer = _await_answer(inbox(me), question_id, args.poll_interval)
-    print(answer)
+
+    dir_path = project_dir(project_slug())
+    reply = _await_orchard_reply_forever(dir_path, me, sent["id"], args.poll_interval)
+    reply_body = reply.get("body")
+    print(json.dumps(reply_body) if isinstance(reply_body, (dict, list))
+          else ("" if reply_body is None else reply_body))
 
 
 def _orchid_interrupt_violation(body: str, env: dict) -> str | None:
@@ -768,6 +851,380 @@ def cmd_validate(args) -> None:
     sys.exit(1 if violations else 0)
 
 
+# ---------------------------------------------------------------------------
+# orchard transport: flat files + marker heartbeats under
+# $XDG_RUNTIME_DIR/orchard/{projects/<repo>.<project>,topics/<name>}/, addressed
+# by ":session:<id>" / ":topic:<name>" rather than a bare agent id. Additive
+# alongside the courier_root() layout above — cmd_send/cmd_receive route into
+# this section only when the address carries one of those two prefixes.
+# ---------------------------------------------------------------------------
+
+ORCHARD_ADDRESS_RE = re.compile(r"^:(session|topic):(.+)$")
+ORCHARD_REGISTRY_PATH = Path.home() / ".config" / "orchids" / "sidebar-registry.json"
+ORCHARD_REQUEST_TIMEOUT_S = 30.0
+ORCHARD_POLL_INTERVAL_S = 0.5
+
+# The orchard subject list is CLOSED and NOT extensible (operator ruling):
+# validation is EXACT MEMBERSHIP against this frozenset — no regex, no
+# startswith, no prefix/split matching, no derivation of any kind. A subject
+# is known or it is not; if not, reject. Variable data (a subagent id, a
+# topic name, ...) never rides the subject — it goes in the body.
+ORCHARD_VALID_SUBJECTS = frozenset({
+    "orchard:agent:status",
+    "orchard:agent:outcome:success",
+    "orchard:agent:outcome:fail",
+    "orchard:agent:lifecycle:starting",
+    "orchard:agent:lifecycle:started",
+    "orchard:agent:lifecycle:stopping",
+    "orchard:agent:lifecycle:stopped",
+    "orchard:agent:delegation:schedule",
+    "orchard:agent:delegation:begin",
+    "orchard:agent:delegation:end",
+    "orchard:bus:subscribe",
+    "orchard:bus:unsubscribe",
+    "orchard:operator:message:todo",
+    "orchard:operator:message:instructions",
+    "orchard:operator:message:request",
+    "orchard:operator:message:response",
+    "orchard:operator:message:content",
+    "orchard:agent:message:request",
+    "orchard:agent:message:response",
+    "orchard:agent:message:content",
+    "orchard:task:outcome:completed",
+    "orchard:task:outcome:failed",
+})
+
+# orchard:task:outcome:* is gardener-only: a task is fully complete only when
+# the GARDENER says so. Enforced here too (not just in orchard_topic.py's
+# do_post) now that these two subjects are members of the valid set and so
+# pass courier.py's own subject check on a hand-sent send/request/reply.
+ORCHARD_GARDENER_ONLY_SUBJECTS = frozenset({
+    "orchard:task:outcome:completed",
+    "orchard:task:outcome:failed",
+})
+
+
+def is_orchard_address(addr: str | None) -> bool:
+    return bool(addr) and (addr.startswith(":session:") or addr.startswith(":topic:"))
+
+
+def parse_orchard_address(addr: str) -> tuple[str, str]:
+    match = ORCHARD_ADDRESS_RE.match(addr or "")
+    if not match or not match.group(2):
+        sys.exit(f"courier: malformed orchard address {addr!r} — expected "
+                  ":session:<id> or :topic:<name>")
+    return match.group(1), match.group(2)
+
+
+def _check_path_component(value: str, label: str, *, dot_free: bool = False) -> None:
+    if not value or "/" in value or value in (".", ".."):
+        sys.exit(f"courier: invalid {label} {value!r}")
+    if dot_free and "." in value:
+        sys.exit(f"courier: invalid {label} {value!r} — must be dot-free")
+
+
+def orchard_root() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if not runtime:
+        sys.exit("courier: XDG_RUNTIME_DIR is unset — no orchard root")
+    return Path(runtime) / "orchard"
+
+
+def project_dir(slug: str) -> Path:
+    return orchard_root() / "projects" / slug
+
+
+def topic_dir(name: str) -> Path:
+    return orchard_root() / "topics" / name
+
+
+_REMOTE_OWNER_REPO_RE = re.compile(r"[:/](?P<owner>[^/:]+)/(?P<repo>[^/]+?)(?:\.git)?/?$")
+
+
+def _owner_repo_slug(remote_url: str) -> str | None:
+    match = _REMOTE_OWNER_REPO_RE.search(remote_url)
+    return f"{match.group('owner')}.{match.group('repo')}" if match else None
+
+
+def project_slug() -> str:
+    """`<repo>.<project>`, identical for every worktree of the same repo:
+    --git-common-dir folds worktrees to one path. Prefers the origin remote's
+    owner/repo (stable across clones/forks); falls back to the repo-root
+    directory basename when there is no remote."""
+    common = git("rev-parse", "--git-common-dir")
+    if not common:
+        sys.exit("courier: not inside a git repository — no project slug")
+    repo_root = Path(common).resolve().parent
+    remote = git("remote", "get-url", "origin")
+    slug = _owner_repo_slug(remote) if remote else None
+    return slug or repo_root.name
+
+
+def _stamp_filename(sid: str) -> str:
+    return f"{sid}.{stamp()}.json"
+
+
+def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
+    """Atomically write the message, touch/create the marker heartbeat, bump
+    the parent dir's mtime (nested writes don't bubble automatically), then
+    give the compaction pass a chance to run."""
+    dir_path.mkdir(parents=True, exist_ok=True)
+    final = dir_path / _stamp_filename(sid)
+    tmp = dir_path / f".{final.name}.partial"
+    tmp.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
+    os.replace(tmp, final)
+    (dir_path / f"{sid}.marker").touch(exist_ok=True)
+    os.utime(dir_path, None)
+    maybe_compact(dir_path)
+    return final
+
+
+def make_orchard_envelope(sender: str, to: str, subject: str, *, body=None,
+                           in_reply_to=None, repo=None, project=None,
+                           notify_user=False) -> dict:
+    env = {
+        "id": uuid.uuid4().hex[:12],
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "from": sender,
+        "to": to,
+        "subject": subject,
+    }
+    if in_reply_to is not None:
+        env["in_reply_to"] = in_reply_to
+    if repo is not None:
+        env["repo"] = repo
+    if project is not None:
+        env["project"] = project
+    if notify_user:
+        env["notify_user"] = True
+    if body is not None:
+        env["body"] = body
+    return env
+
+
+def _orchard_subject_error(subject: str) -> str | None:
+    """EXACT membership only — the orchard subject list is closed and not
+    extensible. No startswith, no regex, no split-based derivation: a
+    subject is a member of ORCHARD_VALID_SUBJECTS or it is rejected."""
+    if subject in ORCHARD_VALID_SUBJECTS:
+        return None
+    return (f"unknown orchard subject {subject!r} — not in the closed set of "
+            f"{len(ORCHARD_VALID_SUBJECTS)} valid subjects")
+
+
+def _orchard_gardener_only_error(subject: str) -> str | None:
+    """orchard:task:outcome:* may only be sent by the gardener — a task is
+    fully complete only when the gardener says so."""
+    if subject not in ORCHARD_GARDENER_ONLY_SUBJECTS:
+        return None
+    if identity_of().get("agent_type") == "gardener":
+        return None
+    return f"{subject!r} may only be sent by the gardener"
+
+
+def _load_envelope_schema() -> dict:
+    path = Path(__file__).resolve().parent / "message.schema.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _schema_violation(env: dict, schema: dict) -> str | None:
+    missing = set(schema.get("required", [])) - env.keys()
+    if missing:
+        return f"envelope missing required field(s): {sorted(missing)}"
+    if schema.get("additionalProperties") is False:
+        extra = env.keys() - set(schema.get("properties", {}).keys())
+        if extra:
+            return f"envelope has unknown field(s): {sorted(extra)}"
+    return None
+
+
+def _registry_slugs(path: Path) -> set[str]:
+    """Tolerate several reasonable shapes: a bare JSON array of slugs, a dict
+    with a `slugs`/`allowed`/`projects` list, or a dict used as a set (truthy
+    values keyed by slug). A missing or unparseable file yields no slugs."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    if isinstance(data, list):
+        return {str(s) for s in data}
+    if isinstance(data, dict):
+        for key in ("slugs", "allowed", "projects"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return {str(s) for s in value}
+        return {k for k, v in data.items() if v}
+    return set()
+
+
+def _authorize_cross_project(target_project: str) -> None:
+    if target_project not in _registry_slugs(ORCHARD_REGISTRY_PATH):
+        sys.exit(
+            f"courier: cross-project send to {target_project!r} denied — not in "
+            f"the registry allowlist ({ORCHARD_REGISTRY_PATH})"
+        )
+
+
+def _parse_orchard_body(raw: str | None):
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+def orchard_send(args) -> dict:
+    """Shared by the `send`, `request`, and `reply` commands: build, validate,
+    and deliver one orchard envelope; return it so `request` can capture its
+    id to wait on."""
+    sender = whoami()
+    _check_path_component(sender, "sender session id", dot_free=True)
+    subject = getattr(args, "subject", None)
+    if not subject:
+        sys.exit("courier: orchard send requires --subject")
+    reason = _orchard_subject_error(subject)
+    if reason:
+        sys.exit(f"courier: {reason} — allowed subjects: "
+                 f"{', '.join(sorted(ORCHARD_VALID_SUBJECTS))}")
+    reason = _orchard_gardener_only_error(subject)
+    if reason:
+        sys.exit(f"courier: {reason}")
+
+    kind, value = parse_orchard_address(args.to)
+    repo = project_slug()
+    body = _parse_orchard_body(getattr(args, "body", None))
+    from_addr = f":session:{sender}"
+
+    if kind == "session":
+        _check_path_component(value, "target session id", dot_free=True)
+        target_project = getattr(args, "target_project", None) or repo
+        _check_path_component(target_project, "target project slug")
+        if target_project != repo:
+            _authorize_cross_project(target_project)
+        dir_path = project_dir(target_project)
+        file_sid = value
+        project_field = target_project
+    else:
+        _check_path_component(value, "topic name")
+        dir_path = topic_dir(value)
+        file_sid = sender
+        project_field = None
+
+    env = make_orchard_envelope(
+        from_addr, args.to, subject, body=body,
+        in_reply_to=getattr(args, "in_reply_to", None),
+        repo=repo, project=project_field,
+        notify_user=bool(getattr(args, "notify_user", False)),
+    )
+    violation = _schema_violation(env, _load_envelope_schema())
+    if violation:
+        sys.exit(f"courier: {violation}")
+    orchard_deliver(dir_path, file_sid, env)
+    return env
+
+
+def orchard_receive_own() -> list[dict]:
+    """This session's personal-mailbox messages, delete-on-read. Skipped
+    (returns []) when XDG_RUNTIME_DIR is unset, so a plain `receive` in an
+    environment with no orchard root keeps working exactly as before."""
+    if not os.environ.get("XDG_RUNTIME_DIR"):
+        return []
+    sid = whoami()
+    dir_path = project_dir(project_slug())
+    out = []
+    if not dir_path.is_dir():
+        return out
+    for f in sorted(dir_path.glob(f"{sid}.*.json")):
+        if f.name.startswith("."):
+            continue
+        try:
+            out.append(json.loads(f.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError) as exc:
+            out.append({"type": "malformed", "file": f.name, "error": str(exc)})
+            continue
+        f.unlink(missing_ok=True)
+    return out
+
+
+def _find_orchard_reply(dir_path: Path, sid: str, request_id: str) -> dict | None:
+    if not dir_path.is_dir():
+        return None
+    for f in sorted(dir_path.glob(f"{sid}.*.json")):
+        if f.name.startswith("."):
+            continue
+        try:
+            env = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if env.get("in_reply_to") == request_id:
+            f.unlink(missing_ok=True)
+            return env
+    return None
+
+
+def _wait_for_orchard_activity(dir_path: Path, budget: float) -> None:
+    if shutil.which("inotifywait"):
+        try:
+            subprocess.run(
+                ["inotifywait", "-q", "-t", str(max(1, int(round(budget)))),
+                 "-e", "create", "-e", "moved_to", str(dir_path)],
+                capture_output=True, text=True, timeout=budget + 5,
+            )
+            return
+        except (subprocess.TimeoutExpired, OSError):
+            return
+    time.sleep(min(ORCHARD_POLL_INTERVAL_S, budget))
+
+
+def _await_orchard_reply(dir_path: Path, sid: str, request_id: str, timeout: float) -> dict | None:
+    """Bounded wait for exactly the one reply this request is owed — one
+    waiter per request, never a broadcast fan-out like the old `ask`."""
+    dir_path.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout
+    while True:
+        reply = _find_orchard_reply(dir_path, sid, request_id)
+        if reply is not None:
+            return reply
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        _wait_for_orchard_activity(dir_path, remaining)
+
+
+def _await_orchard_reply_forever(dir_path: Path, sid: str, request_id: str,
+                                  poll_interval: float) -> dict:
+    """Unbounded twin of _await_orchard_reply: `ask` blocks until answered,
+    by design (the operator may be away; there is no timeout to give up on)."""
+    dir_path.mkdir(parents=True, exist_ok=True)
+    while True:
+        reply = _find_orchard_reply(dir_path, sid, request_id)
+        if reply is not None:
+            return reply
+        _wait_for_orchard_activity(dir_path, poll_interval)
+
+
+def cmd_request(args) -> None:
+    kind, _value = parse_orchard_address(args.to)
+    if kind != "session":
+        sys.exit("courier: request --to must be :session:<id>")
+    sent = orchard_send(args)
+    dir_path = project_dir(project_slug())
+    reply = _await_orchard_reply(dir_path, whoami(), sent["id"], ORCHARD_REQUEST_TIMEOUT_S)
+    if reply is None:
+        sys.exit(f"courier: request timed out after {ORCHARD_REQUEST_TIMEOUT_S:.0f}s "
+                 f"waiting for a reply to {sent['id']}")
+    body = reply.get("body")
+    print(json.dumps(body) if isinstance(body, (dict, list)) else ("" if body is None else body))
+
+
+def cmd_reply(args) -> None:
+    kind, _value = parse_orchard_address(args.to)
+    if kind != "session":
+        sys.exit("courier: reply --to must be :session:<id>")
+    orchard_send(args)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="repo-scoped agent message courier")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -789,7 +1246,10 @@ def main() -> None:
         func=lambda a: print(json.dumps(status_of(), indent=2)))
 
     def msg_args(s):
-        s.add_argument("--from", dest="sender", required=True)
+        # not required: an orchard (:session:/:topic:) send auto-detects the
+        # sender via whoami() and never passes --from; the legacy path still
+        # requires it, enforced in cmd_send/cmd_broadcast themselves.
+        s.add_argument("--from", dest="sender", required=False, default=None)
         s.add_argument("--body")
         s.add_argument("--notify-user", dest="notify_user", action="store_true",
                        help="the sending agent intends this for the user to see")
@@ -800,10 +1260,31 @@ def main() -> None:
     s = msg_args(sub.add_parser("send"))
     s.add_argument("--to", required=True)
     s.add_argument("--in-reply-to", dest="in_reply_to")
+    s.add_argument("--subject",
+                    help="orchard wire-grammar subject; required when --to is "
+                         ":session:<id> or :topic:<name>")
+    s.add_argument("--target-project", dest="target_project",
+                    help="cross-project slug for a :session: send outside the "
+                         "sender's own project")
     s.set_defaults(func=cmd_send, parser=s)
 
     s = msg_args(sub.add_parser("broadcast"))
     s.set_defaults(func=cmd_broadcast, to=None, in_reply_to=None, parser=s)
+
+    s = sub.add_parser("request")
+    s.add_argument("--to", required=True, help=":session:<id>")
+    s.add_argument("--subject", required=True)
+    s.add_argument("--body")
+    s.add_argument("--target-project", dest="target_project")
+    s.set_defaults(func=cmd_request, parser=s, in_reply_to=None)
+
+    s = sub.add_parser("reply")
+    s.add_argument("--to", required=True, help=":session:<id>")
+    s.add_argument("--in-reply-to", dest="in_reply_to", required=True)
+    s.add_argument("--subject", required=True)
+    s.add_argument("--body")
+    s.add_argument("--target-project", dest="target_project")
+    s.set_defaults(func=cmd_reply, parser=s)
 
     s = sub.add_parser("signal")
     s.add_argument("--state", required=True, choices=LIFECYCLE_STATES)

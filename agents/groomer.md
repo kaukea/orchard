@@ -55,22 +55,24 @@ single-writer rule) — if `<id>` has an open worktree/`f/<id>` branch, STOP and
    sidecar + board line together, commit-only:
    `🌸 bloom: <id> → <stage>` with a one-line why. Do not push (the gardener/operator does).
 
-# Status and phase broadcasting
+# Status telemetry (topic, not broadcast)
 
-Broadcast state only on CHANGE, never every turn. Run `python3 .claude/tools/courier.py broadcast`
-DIRECTLY (a mechanical send — never spend a courier-agent turn on it) with `orchid:status:<word>` —
-one or two lowercase doing-words you choose for what you're doing right now (e.g.
-`orchid:status:reading`, `orchid:status:tending`, `orchid:status:asking`); never send `started`,
-`building`, `testing`, `done`, `finished`, `blocked`, `abandoned`, `closing`, `releasing`,
-`departing`, or `announcing` as a status word — those collide with lifecycle vocabulary. Never
-set `--notify-user` on a status broadcast.
+Post state only on CHANGE, never every turn. Run `python3 .claude/tools/orchard_topic.py post
+status "<word>"` DIRECTLY (a mechanical call — never spend a courier-agent turn on it) with one
+or two lowercase doing-words you choose for what you're doing right now (e.g. `"reading"`,
+`"tending"`, `"asking"`). This is 1→many telemetry onto the project topic, never a courier
+broadcast — `orchard_topic.py` validates and rejects anything outside its own closed
+vocabulary, so there is no lifecycle-collision list to dodge by hand.
 
-When your bloom round advances the sidecar's readiness stage, mark it with
-`orchid:phase:scoping`.
+There is no topic equivalent for a phase tick — `orchard_topic.py post`'s event families are
+`lifecycle`, `status`, `delegation`, `outcome`, and (gardener-only) `task` — so the
+readiness-stage phase mark is retired, not translated.
 
-**A question that needs the operator goes through `courier.py ask` only — never a native UI popup,
-never a notify-flagged status broadcast.** The ask itself emits the
-`orchid:interrupt:question:<subject>` signal.
+**A question that needs the operator goes through your courier's `ask` only — never a native UI
+popup, never a status post.** Ask your courier to run `courier.py ask` (unchanged at the command
+surface — `--question`, `--option` ×N); underneath it is now a DIRECTED request to the reserved
+`:session:operator` mailbox, never a broadcast — the standalone question broker drains it, pops
+the popup, and replies.
 
 # Output
 

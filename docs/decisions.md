@@ -1537,3 +1537,66 @@ tree (creator-owns-and-cleans, a child never outlives its parent's scope):
   ([[tmux-topology]] is its home).
 
 (Operator, 2026-07-25.)
+
+## [2026-07-25 CEST] Decision-091: The orchard transport — flat files + markers on a user-wide runtime tree
+#bus #courier #transport #orchard #messaging
+
+The message transport moves off the repo-scoped `the-works/courier/<sid>/` inboxes onto a
+user-wide runtime tree: `$XDG_RUNTIME_DIR/orchard/` with `projects/<repo>.<project>/`
+(session mailboxes) and `topics/<name>/` (subject pub/sub), messages named
+`<sessionid>.<ts>.json` plus a per-session `<sessionid>.marker` whose mtime is the
+liveness heartbeat (each write touches the marker and its parent project dir). Storage is
+per-repo; addressing crosses repos — a `:session:<id>` delivery to another project is
+gated by the manually-maintained `~/.config/orchids/sidebar-registry.json` allowlist.
+Directed messages are delete-on-read; `request`/`reply` give a blocking round trip;
+messages older than 120 minutes archive to a persistent zip under
+`$XDG_CACHE_HOME/orchard/archives/`.
+
+## [2026-07-25 CEST] Decision-092: Message subjects are a closed corpus, validated by exact membership
+#bus #courier #vocabulary #subjects
+
+The orchard subject vocabulary is a CLOSED set of 22 exact strings, not extensible; the
+script validates a subject by exact membership only — no regex, no `startswith`, no
+derivation: it is known or it is rejected. Variable data (a delegation subagent id, a
+subscribe topic) lives in the message body, never the subject. The set:
+`orchard:agent:{status, outcome:success|fail, lifecycle:starting|started|stopping|stopped,
+delegation:schedule|begin|end, message:request|response|content}`,
+`orchard:bus:{subscribe,unsubscribe}`,
+`orchard:operator:message:{todo,instructions,request,response,content}`,
+`orchard:task:outcome:{completed,failed}` (gardener-only). `delegation:schedule` marks a
+session-id-less subagent queued to be called; `begin`/`end` bracket its work.
+
+## [2026-07-25 CEST] Decision-093: The fan-out is killed; telemetry is topic-posted, signals and questions are directed
+#bus #courier #fanout #topics #sidebar
+
+The courier no longer broadcasts to every inbox (the token leak). Agent telemetry —
+status, lifecycle, outcome, delegation, each carrying an identity snapshot — is posted to
+the project topic that feeds the sidebar; a lifecycle signal to a parent is a directed
+`:session:<parent>` message (cross-repo via `ORCHID_PARENT_PROJECT`); an operator question
+is a directed request to the reserved `:session:operator` mailbox. The retired `orchid:`
+broadcast wire-grammar and the inbox-reading `sidebar_model` are removed. The
+question-broker (the tmux popup) is a consumer of the transport, not one of its subjects —
+its proper session-id-less sub-agent form belongs to a separate tmux/operator-interaction
+component.
+
+## [2026-07-25 CEST] Decision-094: Sidebar staleness is a colour, not a removal
+#sidebar #retention #liveness
+
+The fleet sidebar never drops a row because it went quiet. State is a colour: a working
+session is normal; a terminal outcome is a persistent one-liner — success green, fail red;
+a session with no event past the ~1h liveness window and no terminal outcome renders gray
+("not heard from in a while"). Rows persist until a restart clears the tmpfs tree. The
+intent is predictability — rows never appear or vanish for no understandable reason; the
+colour carries the staleness, and no data is lost since a resumed session re-posts and the
+display follows.
+
+## [2026-07-25 CEST] Decision-095: The courier is a per-agent singleton with no session id; it closes by self-message wake
+#bus #courier #singleton #close #lifecycle
+
+The courier sidecar is a simple subtask that shares its parent's session id — it has none
+of its own. Exactly one courier runs per agent (one serves all correspondents, never
+one-per-peer). Its close is a self-message wake: the SessionEnd hook drops a `release` into
+the mailbox the courier's own monitor watches, and the courier then stops its monitor,
+departs (posting the parent's `lifecycle:stopped`), and tears down its own mailbox — never
+killed externally (Decisions 041/046/081). `tools/bus.py` (the transitional rename shim) is
+retired; `courier.py` is the single bus script.

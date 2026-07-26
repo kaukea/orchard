@@ -15,7 +15,7 @@ if ! command -v tmux >/dev/null 2>&1 || [ -z "${TMUX:-}" ]; then
 fi
 
 # Resolve through the .claude/tools symlink to the real tools dir, so the
-# co-located sidebar.py / sidebar_model.py / sidebar_nav.py are found.
+# co-located sidebar.py / sidebar_nav.py are found.
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 window="${1:-$(tmux display-message -p '#{window_id}')}"
 
