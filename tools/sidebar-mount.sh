@@ -23,7 +23,16 @@ if tmux list-panes -t "$window" -F '#{pane_start_command}' 2>/dev/null | grep -q
   exit 0
 fi
 
-if ! pane=$(tmux split-window -h -b -l '17%' -d -t "$window" -P -F '#{pane_id}' "python3 '$DIR/sidebar.py' || tmux display-message 'orchid-sidebar: failed to start'"); then
+# Prefer the caller's own checkout's renderer over the vendored copy, so a
+# feature branch's sidebar changes are visible in its own window. Falls back
+# to the vendored $DIR/sidebar.py when the invoking repo has none of its own.
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+SIDEBAR="$DIR/sidebar.py"
+if [ -n "$REPO_ROOT" ] && [ -f "$REPO_ROOT/tools/sidebar.py" ]; then
+  SIDEBAR="$REPO_ROOT/tools/sidebar.py"
+fi
+
+if ! pane=$(tmux split-window -h -b -l '17%' -d -t "$window" -P -F '#{pane_id}' "python3 '$SIDEBAR' || tmux display-message 'orchid-sidebar: failed to start'"); then
   echo "sidebar-mount: split failed, skipping sidebar mount" >&2
   exit 0
 fi
