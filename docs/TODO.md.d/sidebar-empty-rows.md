@@ -181,6 +181,67 @@ from identical data. A supervising loop is mandatory: the watcher is
 restarted, or the polling fallback takes over, and the display never stops
 following the tree while the process lives.
 
+## Changelog entry
+
+Staged verbatim for the gardener to place at ingest (Decision-034).
+Rolling — folded from each sower's `ingest_increment` as it returned.
+
+### 🐛 Bug fixes
+
+- 🐛 The fleet sidebar no longer freezes silently when its filesystem
+  watcher dies. The watch loop is now self-supervising: it reaps the dying
+  child, restarts it with a short backoff against crash loops, and falls
+  back to polling while the projects tree is absent — so a compaction pass
+  rewriting that tree can no longer leave a pane showing a stale, empty
+  frame indefinitely.
+
+- 🐛 Every working session now earns a sidebar row, not only those
+  identifying as landscapers. An architect or any other role working
+  alongside the gardener previously rendered nothing at all, leaving a
+  project header above an empty pane; the gardener still supplies the
+  header, while mailboxes that never carry an identity stay absent.
+
+- 🐛 A session's row no longer disappears on a timer. The model takes its
+  structure from the durable per-feature markers and layers live events on
+  top, so a row survives the archiver removing its two-hour-old events and
+  persists until the runtime tree itself clears.
+
+- 🐛 The per-repository header colour renders as its real hue again. The
+  256-colour approximation was letting the grayscale ramp win for any dark,
+  desaturated colour, turning the intended purple into gray, and the header
+  was additionally forced into reverse video merely because the selection
+  defaulted to the first row on startup. A colour with genuine hue now
+  always resolves into the colour cube, a terminal advertising truecolor is
+  driven through a direct-colour terminfo so exact values pass through
+  untouched, and the reverse-video highlight appears only once the operator
+  has actually navigated.
+
+### ✨ New features
+
+- ✨ The orchard transport writes a durable per-feature marker alongside the
+  existing per-session heartbeat. Where the old marker only proved a session
+  was alive, the new one accumulates the feature's structure across its
+  whole life — one entry per session and one per delegated task, merged in
+  place and never truncated — so a late message arriving after its parent's
+  events have been archived still lands in the right place.
+
+## Readme delta
+
+(pending — determined at close)
+
+## Migration determination
+
+NOT required, and the reason is evidenced rather than assumed. The marker
+format change is strictly ADDITIVE: nothing in the repository reads the
+existing `<sid>.marker`'s content — `sidebar.py::_fold_sessions` skips it,
+`orchard_compact.py` globs `*.json` only, and no hook or the question broker
+references it. The old marker keeps its transport role untouched, feature
+markers appear as sessions post, and the runtime tree is `$XDG_RUNTIME_DIR`
+tmpfs that clears at logout. A `migrations/` entry would therefore contain
+no state-guarded step. Per AGENTS.files.md §Migrations every action must be
+guarded by observable state and actually convert something; there is nothing
+to convert.
+
 ## Operator requests
 
 Ledger of everything the operator asked for in-session, as received.
