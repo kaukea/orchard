@@ -716,6 +716,55 @@ agents write directly again, and the regex ceiling documented in
 
 ### Follow-ups returned to the gardener — NOT written to the board here
 
+-6. THE SESSION-NAMING HOOK HAS NOT TAKEN EFFECT on the operator's running
+   session. He states the deal: "repo shold be the name of the session and
+   going there on the board shoul bring me to the ex-orchestrator window,
+   that was the original deal". The resolver was corrected on this branch to
+   honour it — a bare repo target resolves to the SESSION of that name and
+   selects its orchestrator window, being the window whose name carries no
+   repo-and-feature separator. But `tmux list-sessions` shows exactly one
+   session, named `main`, holding all three windows. So repo-level navigation
+   will resolve NOTHING on his machine until sessions are actually named
+   after their repository. Deliberately NOT worked around: no special-casing
+   of `main`, no guessing a session by anything other than its name. The code
+   is right and the environment has to catch up, which belongs with the
+   naming follow-up above.
+   TO BE CLEAR ABOUT WHOSE FAULT THE NAME IS — he did not choose it: "i did
+   not nmeit i asked it to benamed and maybe the hook fixed in the last few
+   hours is still not ok". `main` is tmux's DEFAULT name for a session
+   created without one, which is consistent with the rename never landing
+   rather than with a deliberate choice. He suspects the recently-fixed hook
+   is still wrong. A read-only diagnosis was run to establish what is
+   supposed to perform the rename, whether it is runnable, and whether it
+   could ever have applied to the already-running session; findings below the
+   DIAGNOSIS RESULT — THERE IS NO HOOK, AND THERE NEVER WAS. The agreed
+   contract (docs/TODO.md.d/session-naming.md, operator scope ruling
+   2026-07-21) is explicitly "no hook build-out, no wrapper — `claude --name`
+   at launch carries the session name; enforcement is forward-only at launch
+   sites". `agents/gardener.md:9` still launches the top-level session as
+   `claude --agent gardener` with NO `--name`, so it falls back to tmux's
+   default of `main`. Every other launch site received the contract; the
+   top-level one was missed when it was implemented. Confirmed: no
+   `rename-session`, `new-session -s` or equivalent exists anywhere in
+   hooks/, .claude/hooks/ or settings.json.
+   TWO CONSEQUENCES. No hook could have fixed this, so the recent hook work
+   was never going to help. And nothing can rename a session already running:
+   the mechanism is launch-time only, so it takes effect at the next gardener
+   launch and not before.
+   THE FIX IS ONE LINE — `claude --agent gardener --name "orchids"` — the
+   bare repository name, per session-naming.md's "one orchestrator per
+   repository, so its session name IS the repository".
+   SECOND DEFECT IN THE SAME FILE: `agents/gardener.md:184-185` still creates
+   landscaper windows with the `▸` separator, though the navigator moved to
+   `/` on 2026-07-24 (commits 202efea, aa4700d). This one is DEFUSED rather
+   than outstanding — the resolver on this branch now accepts either — but
+   the creator and the contract still disagree.
+   OWNER: an existing task already covers this, `docs/TODO.md.d/
+   tmux-naming.md`, created 2026-07-26, which names the separator mismatch as
+   inherited work. Returned there rather than fixed here: it is the gardener's
+   own charter, the naming scheme is being reworked, and the operator has
+   ruled remaining work minor.
+
 -5. NAVIGATION, EVERYTHING BEYOND THE MINIMAL SEPARATOR FIX. Resolution by
    pane working directory rather than by window name, a visible message when
    navigation fails instead of a silent no-op, real-tmux integration tests,
@@ -745,9 +794,28 @@ agents write directly again, and the regex ceiling documented in
    the task row both inherit it and read alike. Much of the feature/task
    confusion this round fought with colour is really bad data — once the
    names are a short feature and a short task, the rows differ for free.
+   THE TEXT BAR ALWAYS SHOWS THE AGENT NAME (operator ruling, separate from
+   the window-title scheme above and not to be merged with it): "the text bar
+   should always be theagent name i never know who im talking to, i hae all
+   the other areas to tell me the rest." The bar answers exactly one
+   question — WHO AM I TALKING TO — and every other surface already carries
+   the feature, the task and the state. Today it carries the feature's whole
+   board title and answers nothing.
    NOT BUILT HERE: window titling is set at spawn by the gardener, the names
    come from the board, and both are the gardener's, never a landscaper's.
    Also under the minor-work-only ruling.
+
+   ACCOUNTABILITY NOTE, recorded because it is the pattern this feature keeps
+   hitting rather than a grievance: the operator observes "we're very far off
+   one of your agent's |cockpit view, done| from two days ago". A previous
+   agent declared the cockpit view DONE while the reality was nowhere near
+   it. The same shape recurred twice more inside this feature — a suite of
+   332 tests green against a sidebar rendering an empty pane, and a `done`
+   staged against a live eyeball that had been run on code which was never
+   the build. Every instance shares one cause: something was declared
+   finished on evidence that never touched the running thing. It is the
+   reason the testing gate on this feature is the operator's live look and
+   cannot be self-awarded.
 
 -3. THE STATISTICS ARE GONE. Operator, in passing: "especially as we lost all
    statistics in this one". Recorded as a real loss to investigate rather than
