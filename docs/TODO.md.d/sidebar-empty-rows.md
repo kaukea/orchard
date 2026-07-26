@@ -716,6 +716,80 @@ agents write directly again, and the regex ceiling documented in
 
 ### Follow-ups returned to the gardener — NOT written to the board here
 
+-5. NAVIGATION, EVERYTHING BEYOND THE MINIMAL SEPARATOR FIX. Resolution by
+   pane working directory rather than by window name, a visible message when
+   navigation fails instead of a silent no-op, real-tmux integration tests,
+   and cross-session switch verification. All were specified and then CUT by
+   the operator's minor-work-only ruling. The reason they matter is recorded
+   above at ledger item 32: matching a window by the FORMAT of its name is
+   what let this rot unnoticed, and mocked tests asserting invented names is
+   what kept it hidden. The repo-level row is part of this: the gardener's
+   window is named "claude", so a repo target cannot match by name at all,
+   and that was deliberately left unfixed rather than special-cased.
+
+-4. WINDOW AND SESSION NAMING IS WRONG — a STANDING complaint, restated:
+   "i have compained that none of the windows or sessions are named
+   corectly". The operator then gave the intended scheme: "session name
+   should be repo (there a hook it seems to work ok), the titltes for tasks
+   have gone mad (look at the length of this one), it was supposed to show
+   featue -> task (the other plugin i have reads the focused pane name and it
+   gets overwritten back and forth i think)".
+   So: SESSION = repo, which already works via a hook. WINDOW TITLE =
+   `feature -> task`, which does NOT: the live window is named `orchids ▸
+   Sidebar empty rows: header renders, zero session rows off the live orchard
+   tree — check (a) failing` — the feature's entire board title, not a
+   feature-and-task pair. He also suspects a TUG-OF-WAR: another plugin reads
+   the focused pane's name and something overwrites it back and forth.
+   WHY IT MATTERS TO THE DISPLAY, and the connection is worth keeping: the
+   feature's NAME on the board is that whole sentence, so the feature row and
+   the task row both inherit it and read alike. Much of the feature/task
+   confusion this round fought with colour is really bad data — once the
+   names are a short feature and a short task, the rows differ for free.
+   NOT BUILT HERE: window titling is set at spawn by the gardener, the names
+   come from the board, and both are the gardener's, never a landscaper's.
+   Also under the minor-work-only ruling.
+
+-3. THE STATISTICS ARE GONE. Operator, in passing: "especially as we lost all
+   statistics in this one". Recorded as a real loss to investigate rather than
+   as an aside — what was being shown, when it stopped, and whether this
+   feature's rebuild or an earlier change is responsible. ARCHITECTURE.md
+   describes age, worked, tokens and dollars fields that "currently always
+   render at their empty default", which may be the same gap seen from the
+   code side. NOT investigated here, on the minor-work-only ruling.
+
+-2. THE DEVELOPMENT MODEL, stated by the operator 2026-07-27 and previously
+   unrecorded anywhere: "one session = 1 repo, 1 repo = 1 window, 1 feature =
+   1 window, grouped by repo. Hence the navigaton from the sidebar to switch
+   quickly where attention is required across many sessions and windows."
+   So: a tmux SESSION per repository, a WINDOW per feature, windows grouped
+   by repo. THE SIDEBAR IS A NAVIGATION SURFACE, not merely a status display —
+   its purpose is jumping to wherever attention is needed across many sessions
+   and windows, which is why row selection resolves to a tmux destination.
+   This constrains the display: a row must be able to identify WHERE its work
+   is happening, not only WHAT is happening, and the six-level rebuild added
+   four row kinds (task, step, agent, subagent) that did not exist when the
+   navigation was written. Whether each of them resolves to a usable
+   destination is being checked before close rather than assumed.
+
+-1. ONE RENDERER PROCESS PER WINDOW, ALL INDEPENDENT AND ALL REDUNDANT
+   (operator observation, 2026-07-27: "each sesion in tmux will have to
+   relaunch the same orchard in each session it has, and each session pane
+   will always be idependent, is thatcorrect?"). Correct, with the refinement
+   that it is per WINDOW rather than per session, since `sidebar-mount.sh`
+   mounts into a window. Every mounted window therefore runs its own renderer
+   with its own `inotifywait` watcher, building an identical model of the same
+   runtime tree — two live at the time of writing. `link-window` is the
+   exception: a linked window carries its pane into several sessions without
+   relaunching, being the same window; panes cannot be shared across different
+   windows.
+   The waste is bounded but real, and grows with the number of open windows.
+   The alternative shape — one renderer with thin viewers — is a different
+   design and was deliberately NOT built here. NOTE the constraint any such
+   change must keep: independent panes must agree on what colour a task is,
+   which is why the task colour is derived deterministically from the task's
+   identity rather than sampled at render time. Sampling would make the
+   lineage encoding meaningless across windows.
+
 0. FEATURE BASE COLOURS ARE ASSIGNED AT CREATION, STORED IN THE REPO AND
    SYNCHRONISED WITH GITHUB (operator, 2026-07-27): "Feature base colours can
    be decided in advance as features get created, kept in repo and
@@ -1090,6 +1164,72 @@ Round 2 (2026-07-26), after the failed live eyeball:
    spawner. Otherwise it should probably be an agent" — RECORDED as a
    decision, including the corollary that the reporting shape is what decides
    whether a unit of work is a subagent or an agent.
+30. LIVE-PANE FEEDBACK, 2026-07-27, on the rebuilt renderer: "two notes: the
+   brighter side block is correct *if* it is the background of the preceing
+   ine asit denotes delegation. and Buuilding should have the same bckroun as
+   the other section titles, and the entries witin a section should be lighter
+   not go back to the normal background, and thespinner on the task doesn't
+   spin, i'll get the color coding (inside the step shuld be lighter or the
+   color implicitness of inheritnce breaks) for antoher time, and I think the
+   checkmarx or red markx next to the step shoujld be right aligned or the
+   first character on the line, but that's justaesthetics".
+   IMPORTANT REVERSAL: contents inside an open step must be LIGHTER than their
+   section title, not darker. This SUPERSEDES his earlier "background colour is
+   dimmer in a stage when its open" — the open region is still one contiguous
+   findable block, but it is distinguished by being lighter. His stated
+   principle governs any future change here: a child must read as DERIVED from
+   its parent, and reverting to the base background asserts the opposite,
+   breaking the implicitness of colour inheritance.
+   Also: every step title shares ONE background whether active or not — being
+   active is said by the mark, the sweep and what appears beneath, never by
+   recolouring the title; the brighter side block takes the PRECEDING line's
+   background because that is what marks the line as a delegation from it; the
+   task spinner is FROZEN, which is a real defect and not styling; and the
+   step's tick or cross should be right-aligned or first on the line, which he
+   marked as aesthetics. The wider colour-coding conversation he DEFERRED
+   explicitly to another time.
+
+32. NAVIGATION IS COMPLETELY BROKEN — and it is the ORIGINAL requirement.
+   Operator: "well yes the FIRST thing i asked is a list i can navigate with
+   the keyboard to land on the right window whatever the session or window".
+   Measured against the live tmux server, BOTH targets resolve to nothing:
+     'orchids'                       -> None
+     'orchids/Sidebar empty rows: …' -> None
+   Two independent faults. The producer builds `repo` + "/" + `feature` while
+   windows are actually named `repo` + " ▸ " + `feature` (space, U+25B8,
+   space). And the gardener's window is named "claude", not after its repo,
+   so a repo-level target can never match by name at all.
+   NOT CAUSED BY THIS ROUND'S REBUILD: `tools/sidebar_nav.py` was untouched
+   throughout, and the four new row kinds correctly inherit the feature's
+   target, which is right because the tmux topology is repo-window and
+   feature-window. The rebuild merely gave me a reason to look.
+   WHY IT ROTTED SILENTLY, which is the more important finding: the
+   navigation tests mock the tmux layer entirely and assert against invented
+   window names — some of which use "▸" while the producer uses "/". They
+   passed continuously while the feature had never once worked. This is the
+   static-fixture rule (Decision, this feature) asserting itself a third
+   time: a test that never touches the real thing measures agreement, not
+   correctness.
+   FIX IN FLIGHT, and deliberately not a separator patch: resolution moves to
+   matching a window by its pane's WORKING DIRECTORY — real state that
+   survives renames and formatting conventions — with tolerant name matching
+   kept only as a fallback, and a visible message on failure so a silent
+   no-op can never hide it again.
+
+31. VOCABULARY CORRECTION, and it invalidates a reading applied throughout
+   this feature: "dimmer fr me meant lighter / more ubdued /less of the
+   colour or a color that mathes on the color wheel the container". Every
+   use of "dimmer" in this feature's specification meant SUBDUED — lighter,
+   less saturated, or a harmonising neighbour on the colour wheel — and never
+   darker. The darker reading was mine; English carries both senses.
+   This reaches further than the open step: the FEATURE ROW was specified as
+   a "full length dimmer background colour" and must be subdued rather than
+   darkened too. The general rule, which settles future cases without asking:
+   a contained thing is a SUBDUED version of its container so that it reads
+   as belonging to it — darkening breaks the inheritance because it reads as
+   a different band rather than a quieter one, while lightening,
+   desaturating, or shifting to an adjacent hue all preserve it.
+
 27. THE ACCORDION CORRECTION, and it was my error not his: "in an accordion,
    collapse keeps the line, it doesn't go to the previous one". I had told
    the sower to put all five steps on ONE line and abbreviate them until they
