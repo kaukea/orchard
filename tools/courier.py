@@ -965,16 +965,14 @@ def _stamp_filename(sid: str) -> str:
 
 
 # The durable feature-node marker (`<feature-id>.marker`, distinct from the
-# per-session heartbeat marker above): structure + memory for the sidebar
-# tree, merged in place so a late message from an already-archived subagent
-# still lands on the right node. FROZEN SCHEMA v1 — do not vary the shape.
-_FEATURE_SESSION_STATE_BY_SUBJECT = {
+# per-session heartbeat marker above): persists the TASK the feature maps
+# to, never agent/session identity — that is ephemeral. `tasks` stays a
+# list (keyed within by feature id) so sibling tasks under one feature node
+# have room to persist even though, today, a feature maps to exactly one.
+# Merged in place so a late event still lands on the right node.
+_FEATURE_TASK_STATE_BY_SUBJECT = {
     "orchard:agent:outcome:success": "done",
     "orchard:agent:outcome:fail": "failed",
-}
-_FEATURE_TASK_STATE_BY_SUBJECT = {
-    "orchard:agent:delegation:begin": "working",
-    "orchard:agent:delegation:end": "done",
 }
 
 
@@ -989,64 +987,63 @@ def _load_feature_marker(path: Path) -> dict:
         return {}
 
 
-def _feature_session_state(subject: str) -> str | None:
-    if subject in _FEATURE_SESSION_STATE_BY_SUBJECT:
-        return _FEATURE_SESSION_STATE_BY_SUBJECT[subject]
+def _feature_task_state(subject: str) -> str | None:
+    if subject in _FEATURE_TASK_STATE_BY_SUBJECT:
+        return _FEATURE_TASK_STATE_BY_SUBJECT[subject]
     if subject.startswith("orchard:agent:lifecycle:"):
         return "working"
     return None
 
 
-def _merge_feature_task(tasks: list[dict], label: str, state: str, now: str) -> None:
+def _merge_feature_task(tasks: list[dict], feature: str, identity: dict,
+                         subject: str, now: str) -> None:
+    state = _feature_task_state(subject)
     for task in tasks:
-        if task.get("label") == label:
-            task["state"] = state
+        if task.get("feature") == feature:
+            task["name"] = identity.get("name") or task["name"]
+            task["area"] = identity.get("area") or task["area"]
+            task["state"] = state or task["state"]
             task["updated"] = now
             return
-    tasks.append({"label": label, "state": state, "updated": now})
+    tasks.append({
+        "feature": feature,
+        "name": identity.get("name"),
+        "area": identity.get("area"),
+        "state": state or "working",
+        "updated": now,
+    })
 
 
-def _merge_feature_session(sessions: dict, sid: str, identity: dict, subject: str,
-                            now: str) -> None:
-    session = sessions.setdefault(
-        sid, {"agent": None, "name": None, "parent": None, "state": "working"})
-    session["agent"] = identity.get("agent") or session["agent"]
-    session["name"] = identity.get("name") or session["name"]
-    session["parent"] = identity.get("parent") or session["parent"]
-    state = _feature_session_state(subject)
-    if state:
-        session["state"] = state
-    session["last_seen"] = now
-
-
-def merge_feature_marker(path: Path, project: str, feature: str, sid: str,
+def merge_feature_marker(path: Path, project: str, feature: str,
                           envelope: dict, now: str) -> dict:
+    """Merge-never-truncate for the CURRENT shape only: a rejected earlier
+    shape (the `sessions` identity cache; a `tasks[]` entry with no
+    `feature`, e.g. a delegation label) is discarded on sight rather than
+    carried forward — that is not truncating live data, it is dropping a
+    shape the design has rejected. A `tasks[]` entry that IS current still
+    survives forever, terminal state included."""
     marker = _load_feature_marker(path)
+    marker.pop("sessions", None)
     marker["schema"] = 1
     marker["project"] = project
     marker["feature"] = feature
+    tasks = [t for t in marker.get("tasks", []) if t.get("feature")]
     identity = envelope.get("identity") or {}
-    marker["name"] = identity.get("name") or marker.get("name")
-    marker["area"] = identity.get("area") or marker.get("area")
-    _merge_feature_session(marker.setdefault("sessions", {}), sid, identity,
-                            envelope.get("subject", ""), now)
-    tasks = marker.setdefault("tasks", [])
-    task_state = _FEATURE_TASK_STATE_BY_SUBJECT.get(envelope.get("subject", ""))
-    label = (envelope.get("body") or {}).get("subagent") if task_state else None
-    if label:
-        _merge_feature_task(tasks, label, task_state, now)
+    _merge_feature_task(tasks, feature, identity,
+                         envelope.get("subject", ""), now)
+    marker["tasks"] = tasks
     marker["updated"] = now
     return marker
 
 
-def write_feature_marker(dir_path: Path, project: str, sid: str, envelope: dict) -> None:
+def write_feature_marker(dir_path: Path, project: str, envelope: dict) -> None:
     identity = envelope.get("identity") or {}
     feature = identity.get("feature")
     if not feature or "/" in feature or feature in (".", ".."):
         return
     path = _feature_marker_path(dir_path, feature)
     now = datetime.now(timezone.utc).isoformat()
-    marker = merge_feature_marker(path, project, feature, sid, envelope, now)
+    marker = merge_feature_marker(path, project, feature, envelope, now)
     tmp = path.with_name(f".{path.name}.partial")
     tmp.write_text(json.dumps(marker, indent=2), encoding="utf-8")
     os.replace(tmp, path)
@@ -1064,7 +1061,7 @@ def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
     os.replace(tmp, final)
     (dir_path / f"{sid}.marker").touch(exist_ok=True)
     if dir_path.parent.name == "projects":
-        write_feature_marker(dir_path, dir_path.name, sid, envelope)
+        write_feature_marker(dir_path, dir_path.name, envelope)
     os.utime(dir_path, None)
     maybe_compact(dir_path)
     return final

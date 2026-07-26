@@ -252,9 +252,15 @@ class LivenessMarkerTests(_OrchardTestCase):
 class FeatureMarkerTests(_OrchardTestCase):
     """`orchard_deliver()` merges a durable `<feature-id>.marker` node
     alongside the per-session heartbeat marker whenever the envelope's
-    `identity` carries a `feature` — FROZEN SCHEMA v1 (docs/decisions.md).
+    `identity` carries a `feature`. The marker persists the TASK the
+    feature maps to (identity, human name, area, state, updated) — never
+    agent/session identity (role, name-of-agent, parent, per-session
+    state), which is ephemeral and disappears with the agent. `tasks` is a
+    list so sibling tasks under one feature node can still be cached even
+    though, in this repo, a feature currently maps to a single board task.
     The per-session `<sid>.marker` heartbeat keeps working unchanged
-    (covered by LivenessMarkerTests); this class covers only the new node."""
+    (covered by LivenessMarkerTests); this class covers only the new node.
+    """
 
     def setUp(self) -> None:
         super().setUp()
@@ -280,37 +286,64 @@ class FeatureMarkerTests(_OrchardTestCase):
         self.assertEqual(list(self.project_dir.glob("*.marker")),
                           [self.project_dir / "sessA.marker"])
 
-    def test_feature_marker_created_with_frozen_shape(self):
+    def test_feature_marker_created_with_task_shape(self):
         courier.orchard_deliver(self.project_dir, "sessA",
                                  self._envelope("orchard:agent:lifecycle:starting"))
         marker = self._marker()
         self.assertEqual(marker["schema"], 1)
         self.assertEqual(marker["project"], "own.repo")
         self.assertEqual(marker["feature"], "feat-x")
-        self.assertEqual(marker["name"], "Feat X")
-        self.assertIsNone(marker["area"])
-        self.assertEqual(marker["tasks"], [])
-        session = marker["sessions"]["sessA"]
-        self.assertEqual(session["agent"], "landscaper")
-        self.assertEqual(session["parent"], None)
-        self.assertEqual(session["state"], "working")
-        self.assertIn("last_seen", session)
+        self.assertNotIn("sessions", marker)
+        self.assertEqual(len(marker["tasks"]), 1)
+        task = marker["tasks"][0]
+        self.assertEqual(task["feature"], "feat-x")
+        self.assertEqual(task["name"], "Feat X")
+        self.assertIsNone(task["area"])
+        self.assertEqual(task["state"], "working")
+        self.assertIn("updated", task)
         self.assertIn("updated", marker)
 
-    def test_outcome_sets_terminal_session_state(self):
+    def test_no_agent_identity_is_retained_for_display(self):
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
+        raw = (self.project_dir / "feat-x.marker").read_text()
+        self.assertNotIn("landscaper", raw)
+        self.assertNotIn("sessA", raw)
+
+    def test_outcome_sets_terminal_task_state(self):
         courier.orchard_deliver(self.project_dir, "sessA",
                                  self._envelope("orchard:agent:lifecycle:starting"))
         courier.orchard_deliver(self.project_dir, "sessA",
                                  self._envelope("orchard:agent:outcome:fail"))
-        self.assertEqual(self._marker()["sessions"]["sessA"]["state"], "failed")
+        marker = self._marker()
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["state"], "failed")
 
-    def test_delegation_end_updates_task_in_place_and_session_persists(self):
+    def test_completed_task_persists_in_the_marker(self):
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:outcome:success"))
+        marker = self._marker()
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["state"], "done")
+
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:status"))
+        marker = self._marker()
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["state"], "done")
+
+    def test_delegation_traffic_does_not_change_task_state(self):
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
         courier.orchard_deliver(
             self.project_dir, "sessA",
             self._envelope("orchard:agent:delegation:begin", body={"subagent": "sub-1"}))
         marker = self._marker()
-        self.assertEqual(marker["tasks"], [{"label": "sub-1", "state": "working",
-                                             "updated": marker["tasks"][0]["updated"]}])
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["state"], "working")
+        self.assertNotIn("label", marker["tasks"][0])
 
         courier.orchard_deliver(
             self.project_dir, "sessB",
@@ -318,10 +351,8 @@ class FeatureMarkerTests(_OrchardTestCase):
                             body={"subagent": "sub-1"}))
         marker = self._marker()
         self.assertEqual(len(marker["tasks"]), 1)
-        self.assertEqual(marker["tasks"][0]["label"], "sub-1")
-        self.assertEqual(marker["tasks"][0]["state"], "done")
-        self.assertIn("sessA", marker["sessions"])
-        self.assertIn("sessB", marker["sessions"])
+        self.assertEqual(marker["tasks"][0]["state"], "working")
+        self.assertNotIn("sessions", marker)
 
     def test_second_delivery_merges_rather_than_truncates(self):
         courier.orchard_deliver(self.project_dir, "sessA",
@@ -332,8 +363,8 @@ class FeatureMarkerTests(_OrchardTestCase):
                                  self._envelope("orchard:agent:status"))
         marker = self._marker()
         self.assertGreaterEqual(marker["updated"], first_updated)
-        self.assertIn("sessA", marker["sessions"])
-        self.assertEqual(marker["name"], "Feat X")
+        self.assertEqual(len(marker["tasks"]), 1)
+        self.assertEqual(marker["tasks"][0]["name"], "Feat X")
 
     def test_topic_delivery_never_writes_a_feature_marker(self):
         topic_dir = self.runtime_dir / "orchard" / "topics" / "repository/own.repo"
@@ -341,6 +372,34 @@ class FeatureMarkerTests(_OrchardTestCase):
                                  self._envelope("orchard:agent:lifecycle:starting"))
         self.assertEqual(list(topic_dir.glob("*.marker")),
                           [topic_dir / "sessA.marker"])
+
+    def test_merge_strips_legacy_sessions_and_labelled_tasks_but_keeps_completed_ones(self):
+        # A marker written by earlier, now-rejected code: a `sessions`
+        # identity cache, a delegation-label `tasks[]` entry (no `feature`),
+        # and a genuine completed task for a DIFFERENT feature — the shape
+        # merge-never-truncate must still carry forward forever.
+        (self.project_dir / "feat-x.marker").write_text(json.dumps({
+            "schema": 1, "project": "own.repo", "feature": "feat-x",
+            "sessions": {"s1": {"agent": "architect", "state": "done"}},
+            "tasks": [
+                {"label": "verify-task-persist", "state": "done", "updated": "t0"},
+                {"feature": "other-feat", "name": "Other Feature", "area": None,
+                 "state": "done", "updated": "t0"},
+            ],
+            "updated": "t0",
+        }), encoding="utf-8")
+
+        courier.orchard_deliver(self.project_dir, "sessA",
+                                 self._envelope("orchard:agent:lifecycle:starting"))
+
+        marker = self._marker()
+        self.assertNotIn("sessions", marker)
+        self.assertEqual(
+            {t.get("feature") for t in marker["tasks"]}, {"feat-x", "other-feat"},
+        )
+        other = next(t for t in marker["tasks"] if t["feature"] == "other-feat")
+        self.assertEqual(other["state"], "done")
+        self.assertEqual(other["name"], "Other Feature")
 
 
 class RequestReplyTests(_OrchardTestCase):

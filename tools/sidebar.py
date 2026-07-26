@@ -188,11 +188,18 @@ STATUS_EMOJI = {
     "failed": "❌",
 }
 
-# Subagent presence glyph (sidebar-titling item 4). A subagent row once had no
-# state beyond "it currently exists in the model", because it vanished the
-# moment it finished; a completed task now persists from its feature marker,
-# so the row carries its own working/done/failed state.
+# Subagent presence glyph (sidebar-titling item 4). A subagent row has no
+# state beyond "it currently exists in the model" — it appears the moment
+# its delegation begins and vanishes the moment it ends or its own events
+# age out (operator ruling, 2026-07-26: a subagent is live-only, never
+# persisted). `_row_text` below still honours a terminal glyph here
+# defensively, for a Row built directly rather than through the model (see
+# TaskGlyphTests).
 SUBAGENT_GLYPH = "●"
+
+# A task's terminal states (Decision-058: done and failed never share a
+# glyph or a colour-pair with each other, nor with a still-working task).
+TERMINAL_TASK_STATUSES = {"done", "failed"}
 
 NO_ACTIVITY_TEXT = "⋮ no activity ⋮"
 ELLIPSIS = "…"
@@ -450,10 +457,11 @@ def _is_bare_uuid(text: str | None) -> bool:
 @dataclass
 class Subagent:
     label: str
-    # working/done/failed — same vocabulary _status_for() derives for a
-    # Feature, sourced either from live delegation traffic (always
-    # "working", the only state `_merge_subagents` derives from it) or from
-    # the feature marker's persisted `tasks` entry once live events age out.
+    # Always "working" — a subagent row exists only while its own
+    # delegation is open (`orchard:agent:delegation:begin` posted, no
+    # matching `end` yet — see `_live_subagents`). Live-only: nothing
+    # subagent-shaped is ever restored from a feature marker (operator
+    # ruling, 2026-07-26: a subagent is an agent's own ephemeral child).
     status: str = "working"
 
 
@@ -532,6 +540,8 @@ def _latest(rec: dict, key: str, ts: float) -> bool:
 
 
 _MARKER_ARCHIVE_DIR = "_archived"
+# A task entry's own persisted terminal state maps onto the same outcome
+# vocabulary `_status_for` already understands.
 _MARKER_STATE_OUTCOME = {"done": "success", "failed": "fail"}
 
 
@@ -547,17 +557,17 @@ def _parse_iso_ts(text: str | None) -> float:
         return 0.0
 
 
-def _iter_marker_sessions(project_dir: Path):
-    """Yield (feature_id, marker, sid, session) for every identity-bearing
-    session an on-disk feature-node marker (frozen schema v1,
-    `<feature-id>.marker`) still remembers — the structural source a
-    Feature row survives on even once the archiver has removed its event
-    files (retention ruling, 2026-07-25: a finished node persists until
-    restart). `_archived/` is never scanned; a legacy zero-byte
+def _iter_feature_markers(project_dir: Path):
+    """Yield (feature_id, marker) for every on-disk feature-node marker
+    (`<feature-id>.marker`) a project directory holds — the structural
+    source a TASK row survives on even once the archiver has removed its
+    event files (retention ruling, 2026-07-26: a finished task persists
+    until restart). `_archived/` is never scanned; a legacy zero-byte
     `<session-id>.marker` heartbeat (courier.py's mailbox touch) has no
-    JSON to parse and is skipped; a session entry with no `agent` (a
-    mailbox that never carried an identity, e.g. operator's) is skipped
-    too."""
+    JSON to parse and is skipped. A marker's actual per-task data lives in
+    its `tasks` list (see `_marker_task_rows`) — this function only
+    discovers and parses the file; any legacy `sessions` key a marker still
+    happens to carry is never read."""
     for f in project_dir.iterdir():
         if f.name == _MARKER_ARCHIVE_DIR or not f.is_file():
             continue
@@ -567,46 +577,63 @@ def _iter_marker_sessions(project_dir: Path):
             marker = json.loads(f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        feature_id = f.name.removesuffix(".marker")
-        for sid, session in (marker.get("sessions") or {}).items():
-            if session.get("agent"):
-                yield feature_id, marker, sid, session
+        yield f.name.removesuffix(".marker"), marker
 
 
-def _apply_marker_session(rec: dict, feature_id: str, marker: dict, session: dict) -> None:
-    """Seed a session record's structural baseline off its marker entry —
-    identity plus a status a plain `_status_for` read already understands,
-    so a session with no surviving events still renders correctly. The
-    marker's `tasks` list (label/state/updated, merged in place by
-    courier.py and never truncated) rides along on the record too, so a
-    task stays available for `_merge_subagents` even once the delegation
-    events that first reported it are archived away."""
-    rec["identity"] = {
-        "agent": session.get("agent"),
-        "name": session.get("name") or marker.get("name"),
-        "feature": marker.get("feature") or feature_id,
-    }
-    rec["marker_tasks"] = marker.get("tasks") or []
-    rec["_seen_ts"] = max(rec.get("_seen_ts", 0.0), _parse_iso_ts(session.get("last_seen")))
-    state = session.get("state")
-    outcome = _MARKER_STATE_OUTCOME.get(state)
+def _marker_task_rec(task: dict) -> dict:
+    """A synthetic `_status_for` input for one of a marker's `tasks[]`
+    entries, standing in for a task with no live agent at all: only a
+    terminal outcome (from the task's own persisted `state`, when it names
+    one) or staleness (from the task's `updated` timestamp) can ever come
+    out of this — lifecycle `state` is never set, so `_status_for` can
+    never resolve it to "working". That is deliberate: "working" is what
+    makes the curses draw path paint the agent subscript and subagent
+    rows, and a marker alone never has either to show."""
+    rec = {"subs": {}, "_seen_ts": _parse_iso_ts(task.get("updated"))}
+    outcome = _MARKER_STATE_OUTCOME.get(task.get("state"))
     if outcome:
         rec["outcome"] = outcome
-    elif state == "working":
-        rec["state"] = "starting"
+    return rec
+
+
+def _marker_task_rows(
+    marker: dict, live_feature_ids: set[str], now: float,
+) -> list[Feature]:
+    """One Feature/task row per entry in the marker's `tasks` list whose
+    own feature isn't already covered by a live agent row — today always
+    a single entry scoped to the marker's own feature (courier.py maps one
+    feature to one task), but read as a list since the marker schema leaves
+    room for siblings under one feature node. Each entry carries only its
+    own name/state/updated — nothing agent- or subagent-shaped, since those
+    are live-only (operator ruling, 2026-07-26).
+
+    A `tasks[]` entry with no `feature` field is not this shape — it is a
+    rejected earlier shape (e.g. a delegation label) that `merge_feature_
+    marker` failed to strip before this marker was last written. It is
+    skipped outright, never rendered and never named from the marker's own
+    feature id (operator ruling, 2026-07-26: an unrecognised entry is
+    ignored, not guessed at)."""
+    rows = []
+    for task in marker.get("tasks") or []:
+        task_feature = task.get("feature")
+        if not task_feature or task_feature in live_feature_ids:
+            continue
+        rows.append(Feature(
+            name=task.get("name") or task_feature, activity="",
+            status=_status_for(_marker_task_rec(task), now),
+            waiting_on_operator=False,
+        ))
+    return rows
 
 
 def _fold_sessions(project_dir: Path) -> dict[str, dict]:
-    """Fold one project's feature-node markers and event files into one
-    record per session. Markers (`_iter_marker_sessions()`) seed the
-    structural baseline first; event files then layer live state on top,
-    latest of each kind winning — folded from the retired sidebar_v3.py's
-    sessions(), unchanged: per-session event files are
-    `<sessionid>.<ts>.json`."""
+    """Fold one project's event files into one record per session — purely
+    live traffic; a feature marker never seeds one of these any more (see
+    `_iter_feature_markers`/`_marker_task_rows`, and `_assemble_repo`,
+    which reads markers separately to supply the task rows no live session
+    covers) — folded from the retired sidebar_v3.py's sessions(),
+    unchanged: per-session event files are `<sessionid>.<ts>.json`."""
     found: dict[str, dict] = {}
-    for feature_id, marker, sid, session in _iter_marker_sessions(project_dir):
-        rec = found.setdefault(sid, {"sid": sid, "subs": {}})
-        _apply_marker_session(rec, feature_id, marker, session)
     for f in project_dir.iterdir():
         if f.name.startswith(".") or not f.name.endswith(".json") or not f.is_file():
             continue
@@ -702,34 +729,20 @@ def _apply_common(row: Feature | Repo, rec: dict, now: float) -> None:
     row.subagents_queued = sum(1 for s in subs.values() if s == "scheduled")
 
 
-_SUBAGENT_TASK_SORT_RANK = {"working": 0, "done": 1, "failed": 1}
-
-
-def _merge_subagents(subs: dict[str, str], marker_tasks: list[dict]) -> list[Subagent]:
-    """One Subagent row per label, unioning this session's live delegation
-    traffic (`subs`, from `orchard:agent:delegation:begin|end`) with the
-    owning feature marker's persisted `tasks` — the structural source a
-    completed task survives on once the archiver removes the events that
-    reported it (retention ruling, 2026-07-26). A label present in both
-    renders once; live wins, since only a still-open delegation can produce
-    "active" here at all. Working tasks sort ahead of done/failed ones so a
-    growing pile of finished work never crowds the still-running rows out
-    of view."""
-    merged = {
-        task["label"]: task["state"]
-        for task in marker_tasks
-        if task.get("label") and task.get("state")
-    }
-    for sub_label, state in subs.items():
-        if state == "active":
-            merged[sub_label] = "working"
+def _live_subagents(subs: dict[str, str]) -> list[Subagent]:
+    """One Subagent row per still-open delegation — sourced purely from
+    this session's own live traffic (`subs`, from `orchard:agent:
+    delegation:begin|end`), sorted by label. Nothing is ever unioned in
+    from a feature marker (operator ruling, 2026-07-26): a subagent is
+    live-only, so it vanishes the moment its own `end` lands or its events
+    age out, whatever the owning task's marker remembers."""
     return sorted(
-        (Subagent(label=label, status=status) for label, status in merged.items()),
-        key=lambda sub: (_SUBAGENT_TASK_SORT_RANK.get(sub.status, 1), sub.label),
+        (Subagent(label=label) for label, state in subs.items() if state == "active"),
+        key=lambda sub: sub.label,
     )
 
 
-def _assemble_repo(dir_name: str, sess: dict[str, dict], now: float) -> Repo:
+def _assemble_repo(dir_name: str, project_dir: Path, sess: dict[str, dict], now: float) -> Repo:
     repo = Repo(name=_repo_display_name(dir_name), activity="", status="idle",
                 waiting_on_operator=False)
 
@@ -741,9 +754,11 @@ def _assemble_repo(dir_name: str, sess: dict[str, dict], now: float) -> Repo:
     if gardener is not None:
         _apply_common(repo, gardener, now)
 
+    live_feature_ids: set[str] = set()
     for sid in sorted(sess):
         rec = sess[sid]
-        agent = (rec.get("identity") or {}).get("agent")
+        identity = rec.get("identity") or {}
+        agent = identity.get("agent")
         # Any identity earns a row, whatever its role — the gardener alone
         # is excluded (it already supplied the repo header above); a
         # session never seen with an identity at all contributes nothing
@@ -756,13 +771,18 @@ def _assemble_repo(dir_name: str, sess: dict[str, dict], now: float) -> Repo:
         feature = Feature(name=label, activity="", status="idle",
                            waiting_on_operator=False)
         _apply_common(feature, rec, now)
-        # subagents: this session's own live delegation traffic
-        # (orchard:agent:delegation:begin/end) merged with its owning
-        # feature marker's persisted tasks (see module docstring: a child
-        # session that announces itself without a delegation:begin from
-        # its parent is still not shown — only a labelled task is).
-        feature.subagents = _merge_subagents(rec.get("subs", {}), rec.get("marker_tasks", []))
+        feature.subagents = _live_subagents(rec.get("subs", {}))
         repo.features.append(feature)
+        if identity.get("feature"):
+            live_feature_ids.add(identity["feature"])
+
+    # A task with no live agent at all still renders — as a single row
+    # carrying whatever its marker persisted, nothing beneath it (operator
+    # ruling, 2026-07-26: the task is the one thing that doesn't
+    # disappear). Skipped when a live session already supplied this exact
+    # task's row above, so an in-progress task never doubles up.
+    for _feature_id, marker in _iter_feature_markers(project_dir):
+        repo.features.extend(_marker_task_rows(marker, live_feature_ids, now))
 
     repo.has_session = gardener is not None or bool(repo.features)
     return repo
@@ -785,7 +805,7 @@ def build_model(root: Path | None = None) -> Fleet:
     for d in sorted(root.iterdir()):
         if not d.is_dir():
             continue
-        fleet.repos.append(_assemble_repo(d.name, _fold_sessions(d), now))
+        fleet.repos.append(_assemble_repo(d.name, d, _fold_sessions(d), now))
     return fleet
 
 
@@ -879,11 +899,9 @@ def flatten(fleet: Fleet) -> list[Row]:
 
     Within a repo's features, `done` features sort FIRST (stable sort,
     done-first), ahead of everything still live — sidebar-titling item 7.
-    A feature's own subagent rows keep `_merge_subagents`' order instead
-    (working-first, so a persisted done/failed task never crowds the
-    still-running ones out of view — the opposite priority from the
-    feature sort above, deliberately: a feature list is scanned for what
-    finished, a task list for what's still moving)."""
+    A feature's own subagent rows keep `_live_subagents`' order instead —
+    alphabetical by label, since every subagent row is "working" by
+    construction now (live-only, see `_live_subagents`)."""
     rows: list[Row] = []
     for repo in fleet.repos:
         if not repo.has_session:
@@ -917,8 +935,11 @@ def _row_text(row: Row) -> str:
     indent = "  " * row.depth
     if row.kind == "subagent":
         # presence in the model IS the only verifiable subagent state — no
-        # "idle" counterpart glyph exists (sidebar-titling item 4).
-        return f"{indent}{SUBAGENT_GLYPH} {row.label}"
+        # "idle" counterpart glyph exists (sidebar-titling item 4). A task
+        # that has reached a terminal state carries its own status glyph
+        # instead, so a completed row visibly reads as completed.
+        glyph = STATUS_EMOJI[row.status] if row.status in TERMINAL_TASK_STATUSES else SUBAGENT_GLYPH
+        return f"{indent}{glyph} {row.label}"
     # repo headers carry no leading status glyph in EITHER path — curses
     # already draws none (via _draw_header); the pure path matches
     # (sidebar-titling item 4). Feature rows never reach this function — see
@@ -1614,9 +1635,18 @@ def _draw(
             continue
 
         text = _truncate(_row_text(row), max_x)
-        attr = colour_pairs.get(row.status, 0)
-        if agent_colours:
-            attr |= agent_colours[_agent_colour_index(_agent_colour_key(row))]
+        # Exactly one source may contribute colour-pair bits per row: a
+        # terminal task's status (green done / red failed) always wins over
+        # its agent-identity tint, since curses.color_pair() ids don't OR
+        # together into a third, arbitrary pair (the pre-existing clobber
+        # this guards against). A still-working task keeps its
+        # agent-identity colour, which is what tells concurrent tasks apart.
+        if row.status in TERMINAL_TASK_STATUSES:
+            attr = colour_pairs.get(row.status, 0)
+        elif agent_colours:
+            attr = agent_colours[_agent_colour_index(_agent_colour_key(row))]
+        else:
+            attr = colour_pairs.get(row.status, 0)
         if row.status == "waiting" and row.waiting_on_operator:
             attr |= curses.A_BLINK
         if i == selected:

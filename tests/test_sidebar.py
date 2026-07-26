@@ -20,6 +20,7 @@ open-question badges, phase ticks, tokens/dollars, age/worked.
 
 Runs under both `python3 -m unittest discover` and `pytest`; stdlib only.
 """
+import curses
 import itertools
 import json
 import os
@@ -96,30 +97,29 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _marker_session(agent, *, name=None, parent=None, state="working", last_seen=None):
-    """One entry of a marker's `sessions` map (frozen schema v1)."""
-    return {"agent": agent, "name": name, "parent": parent, "state": state,
-            "last_seen": last_seen or _now_iso()}
-
-
-def _task(label, state, updated=None):
-    """One entry of a marker's `tasks` list (frozen schema v1)."""
-    return {"label": label, "state": state, "updated": updated or _now_iso()}
-
-
 def _write_marker(projects_root, slug, feature_id, *, name=None, area=None,
-                   sessions=None, tasks=None, archived=False):
+                   state=None, updated=None, archived=False, extra=None):
     """One `<feature-id>.marker` file under `projects_root`/`slug`/ (or its
-    `_archived/` subdirectory when `archived`), matching the frozen schema
-    v1 the marker-writer produces."""
+    `_archived/` subdirectory when `archived`) — the schema courier.py's
+    transport actually writes (operator ruling, 2026-07-26): a `tasks`
+    list, each entry carrying its own `feature`/`name`/`area`/`state`/
+    `updated`, nothing agent-shaped, no `sessions` map. `name`/`area`/
+    `state`/`updated` here populate that single task entry (courier.py
+    scopes exactly one task per feature today). `extra` merges in
+    additional top-level keys a test wants present on the JSON — e.g. a
+    legacy `sessions` block, to prove the reader ignores it rather than
+    assuming it's absent."""
     project_dir = Path(projects_root) / slug / ("_archived" if archived else "")
     project_dir.mkdir(parents=True, exist_ok=True)
+    task_updated = updated or _now_iso()
     marker = {
         "schema": 1, "project": slug, "feature": feature_id,
-        "name": name, "area": area,
-        "sessions": sessions or {}, "tasks": tasks or [],
-        "updated": _now_iso(),
+        "tasks": [{"feature": feature_id, "name": name, "area": area,
+                    "state": state, "updated": task_updated}],
+        "updated": task_updated,
     }
+    if extra:
+        marker.update(extra)
     path = project_dir / f"{feature_id}.marker"
     path.write_text(json.dumps(marker), encoding="utf-8")
     return path
@@ -527,11 +527,13 @@ class StalenessTests(_FixtureTestCase):
 
 
 # --------------------------------------------------------------------------
-# Feature-node markers (frozen schema v1, `<feature-id>.marker`) — the
-# structural tree source: any identity earns a row (not just landscaper),
-# and a marker-known session still renders after its event files are gone
-# (the archiver's 120-minute sweep). See sidebar.py's `_iter_marker_sessions`,
-# `_apply_marker_session`, `_assemble_repo`.
+# Feature-node markers (frozen schema, `<feature-id>.marker`) — the
+# structural tree source for a TASK row: any identity earns a live row (not
+# just landscaper), and a task with no live agent at all still renders as
+# a single row carrying its marker's persisted name/state, nothing beneath
+# it (operator ruling, 2026-07-26: "the task is the one that doesn't
+# disappear"). See sidebar.py's `_iter_feature_markers`, `_marker_only_rec`,
+# `_assemble_repo`.
 # --------------------------------------------------------------------------
 
 class MarkerModelTests(_FixtureTestCase):
@@ -543,32 +545,50 @@ class MarkerModelTests(_FixtureTestCase):
         self.assertEqual(feature.role, "architect")
         self.assertEqual(feature.status, "working")
 
-    def test_marker_only_session_with_no_surviving_events_renders(self):
-        sessions = {"s1": _marker_session("architect", state="done")}
-        _write_marker(self.projects_root, "own.repo", "feat-a", sessions=sessions)
+    def test_marker_only_task_renders_one_row_with_terminal_state_and_nothing_else(self):
+        # a task with a marker but zero live events: exactly one row, its
+        # terminal state, no agent subscript, no subagent rows.
+        _write_marker(self.projects_root, "own.repo", "feat-a", name="Feature A", state="done")
+        features = self._repo().features
+        self.assertEqual(len(features), 1)
+        feature = features[0]
+        self.assertEqual(feature.name, "Feature A")
+        self.assertEqual(feature.status, "done")
+        self.assertIsNone(feature.role)
+        self.assertIsNone(feature.model)
+        self.assertEqual(feature.subagents, [])
+
+    def test_marker_only_task_falls_back_to_the_feature_id_without_a_name(self):
+        _write_marker(self.projects_root, "own.repo", "feat-a", state="failed")
         feature = self._repo().features[0]
         self.assertEqual(feature.name, "feat-a")
-        self.assertEqual(feature.role, "architect")
-        self.assertEqual(feature.status, "done")
+        self.assertEqual(feature.status, "failed")
 
-    def test_marker_working_session_stays_working_within_the_active_window(self):
-        sessions = {"s1": _marker_session("landscaper", state="working")}
-        _write_marker(self.projects_root, "own.repo", "feat-a", sessions=sessions)
+    def test_marker_only_task_with_recent_updated_and_no_terminal_state_reads_idle(self):
+        _write_marker(self.projects_root, "own.repo", "feat-a")
         feature = self._repo().features[0]
-        self.assertEqual(feature.status, "working")
+        self.assertEqual(feature.status, "idle")
 
-    def test_marker_working_session_reads_stale_past_the_active_window(self):
-        stale_ts = _iso(StalenessTests._stale_ts())
-        sessions = {"s1": _marker_session("landscaper", state="working", last_seen=stale_ts)}
-        _write_marker(self.projects_root, "own.repo", "feat-a", sessions=sessions)
+    def test_marker_only_task_with_stale_updated_and_no_terminal_state_reads_stale(self):
+        stale_iso = _iso(StalenessTests._stale_ts())
+        _write_marker(self.projects_root, "own.repo", "feat-a", updated=stale_iso)
         feature = self._repo().features[0]
         self.assertEqual(feature.status, "stale")
 
-    def test_marker_row_survives_after_its_events_are_archived(self):
+    def test_marker_only_task_never_restores_agent_identity_even_from_a_legacy_sessions_block(self):
+        # corrected contract: role/model are live-only. A marker carrying a
+        # stale legacy `sessions` block (tolerated, per the transport's own
+        # migration) must never be read for identity.
+        _write_marker(self.projects_root, "own.repo", "feat-a", state="done",
+                       extra={"sessions": {"s1": {"agent": "architect", "state": "done"}}})
+        feature = self._repo().features[0]
+        self.assertIsNone(feature.role)
+        self.assertIsNone(feature.model)
+
+    def test_task_row_survives_after_its_events_are_archived(self):
         self._event("own.repo", "s1", "orchard:agent:outcome:success",
                      identity={"agent": "landscaper", "feature": "feat-a"})
-        sessions = {"s1": _marker_session("landscaper", state="done")}
-        _write_marker(self.projects_root, "own.repo", "feat-a", sessions=sessions)
+        _write_marker(self.projects_root, "own.repo", "feat-a", state="done")
         # Simulate the archiver removing the 120-minute-old event JSONs —
         # the marker alone must keep the row alive.
         for f in (self.projects_root / "own.repo").glob("*.json"):
@@ -576,65 +596,100 @@ class MarkerModelTests(_FixtureTestCase):
         feature = self._repo().features[0]
         self.assertEqual(feature.status, "done")
 
-    def test_archived_marker_subdirectory_is_ignored(self):
-        sessions = {"s1": _marker_session("architect", state="done")}
-        _write_marker(self.projects_root, "own.repo", "feat-old",
-                       sessions=sessions, archived=True)
-        fleet = self._model()
-        self.assertEqual(fleet.repos[0].features, [])
-
-    def test_mailbox_marker_without_an_identity_never_becomes_a_row(self):
-        sessions = {"operator": _marker_session(None, state="working")}
-        _write_marker(self.projects_root, "own.repo", "operator", sessions=sessions)
-        fleet = self._model()
-        self.assertEqual(fleet.repos[0].features, [])
-
-
-# --------------------------------------------------------------------------
-# Marker-cached tasks (`_merge_subagents`): a task recorded as completed in
-# a feature marker's `tasks` list stays visible once the archiver removes
-# the delegation events that first reported it, and a task the model can
-# see both live and in the marker still renders once, live-wins.
-# --------------------------------------------------------------------------
-
-class MarkerTaskPersistenceTests(_FixtureTestCase):
-    def test_completed_marker_task_survives_after_its_events_are_archived(self):
-        self._landscaper("own.repo", "s1", "feat-a", mtime=1)
+    def test_live_agent_subscript_and_subagents_vanish_once_its_events_are_gone(self):
+        # mtimes deliberately keep the identity-carrying event as the
+        # latest snapshot -- delegation:begin carries no `status` block of
+        # its own, so if it were processed as the latest snapshot instead
+        # it would blank out the already-known model (a pre-existing,
+        # unrelated quirk of the file-order-independent "latest wins"
+        # fold, sidestepped here rather than fixed, out of this step's
+        # scope).
         self._event("own.repo", "s1", "orchard:agent:delegation:begin",
                      identity={"agent": "landscaper", "feature": "feat-a"},
-                     body={"subagent": "sub-a"}, mtime=2)
-        self._event("own.repo", "s1", "orchard:agent:delegation:end",
+                     body={"subagent": "sub-a"}, mtime=1)
+        self._event("own.repo", "s1", "orchard:agent:lifecycle:starting",
                      identity={"agent": "landscaper", "feature": "feat-a"},
-                     body={"subagent": "sub-a"}, mtime=3)
-        _write_marker(self.projects_root, "own.repo", "feat-a",
-                      sessions={"s1": _marker_session("landscaper", state="working")},
-                      tasks=[_task("sub-a", "done")])
-        # Simulate the archiver's 120-minute sweep removing the event JSONs
-        # — the marker's tasks list alone must keep the completed row.
+                     status={"model": "claude-sonnet-5"}, mtime=2)
+        _write_marker(self.projects_root, "own.repo", "feat-a", name="Feature A", state="done")
+
+        feature = self._repo().features[0]
+        self.assertEqual(feature.role, "landscaper")
+        self.assertEqual(feature.model, "claude-sonnet-5")
+        self.assertEqual([s.label for s in feature.subagents], ["sub-a"])
+
         for f in (self.projects_root / "own.repo").glob("*.json"):
             f.unlink()
         feature = self._repo().features[0]
-        self.assertEqual([(s.label, s.status) for s in feature.subagents],
-                          [("sub-a", "done")])
+        self.assertIsNone(feature.role)
+        self.assertIsNone(feature.model)
+        self.assertEqual(feature.subagents, [])
+        self.assertEqual(feature.status, "done")
 
-    def test_task_present_in_both_live_and_marker_renders_once_live_wins(self):
+    def test_archived_marker_subdirectory_is_ignored(self):
+        _write_marker(self.projects_root, "own.repo", "feat-old", state="done", archived=True)
+        fleet = self._model()
+        self.assertEqual(fleet.repos[0].features, [])
+
+    def test_legacy_label_task_and_sessions_block_never_resurrect_a_subagent_row(self):
+        # captured live regression: a marker still carrying a rejected
+        # earlier shape (a `sessions` identity cache, and a `{"label": ...}`
+        # tasks[] entry with no `feature` — a subagent delegation label)
+        # alongside one genuine current task. Only the genuine task may
+        # ever render; the label entry must not be name-substituted from
+        # the marker's own feature id and drawn as a second, done row.
+        _write_marker(
+            self.projects_root, "own.repo", "sidebar-empty-rows",
+            extra={
+                "sessions": {"s1": {"agent": "architect", "state": "done"}},
+                "tasks": [
+                    {"label": "verify-task-persist", "state": "done",
+                     "updated": _now_iso()},
+                    {"feature": "sidebar-empty-rows",
+                     "name": "Sidebar empty rows: head", "area": None,
+                     "state": "working", "updated": _now_iso()},
+                ],
+            },
+        )
+        features = self._repo().features
+        self.assertEqual(len(features), 1)
+        self.assertEqual(features[0].name, "Sidebar empty rows: head")
+        # a marker-only row never reads "working" (see `_marker_task_rec`) —
+        # a fresh `updated` with no terminal state reads idle, matching the
+        # "○" glyph the captured regression actually showed.
+        self.assertEqual(features[0].status, "idle")
+
+    def test_live_session_for_the_same_feature_wins_over_its_marker(self):
+        self._landscaper("own.repo", "s1", "feat-a")
+        _write_marker(self.projects_root, "own.repo", "feat-a", name="stale name", state="done")
+        features = self._repo().features
+        self.assertEqual(len(features), 1)
+        self.assertEqual(features[0].status, "working")
+        self.assertEqual(features[0].role, "landscaper")
+
+
+# --------------------------------------------------------------------------
+# Subagent rows are live-only (operator ruling, 2026-07-26): a delegation's
+# row disappears the instant its own events are gone, whatever the owning
+# task's marker says — the marker holds nothing subagent-shaped any more.
+# --------------------------------------------------------------------------
+
+class MarkerTaskPersistenceTests(_FixtureTestCase):
+    def test_subagent_row_disappears_once_its_events_are_archived(self):
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
         self._event("own.repo", "s1", "orchard:agent:delegation:begin",
                      identity={"agent": "landscaper", "feature": "feat-a"},
                      body={"subagent": "sub-a"}, mtime=2)
-        _write_marker(self.projects_root, "own.repo", "feat-a",
-                      sessions={"s1": _marker_session("landscaper", state="working")},
-                      tasks=[_task("sub-a", "done")])
+        _write_marker(self.projects_root, "own.repo", "feat-a", state="working")
+        for f in (self.projects_root / "own.repo").glob("*.json"):
+            f.unlink()
         feature = self._repo().features[0]
-        self.assertEqual([(s.label, s.status) for s in feature.subagents],
-                          [("sub-a", "working")])
+        self.assertEqual(feature.subagents, [])
 
-    def test_working_tasks_sort_ahead_of_done_tasks(self):
-        _write_marker(self.projects_root, "own.repo", "feat-a",
-                      sessions={"s1": _marker_session("landscaper", state="working")},
-                      tasks=[_task("sub-done", "done"), _task("sub-working", "working")])
+    def test_marker_is_never_consulted_for_subagent_rows_even_while_the_agent_is_live(self):
+        self._landscaper("own.repo", "s1", "feat-a", mtime=1)
+        _write_marker(self.projects_root, "own.repo", "feat-a", name="Feature A", state="working")
         feature = self._repo().features[0]
-        self.assertEqual([s.label for s in feature.subagents], ["sub-working", "sub-done"])
+        self.assertEqual(feature.subagents, [])
 
 
 # --------------------------------------------------------------------------
@@ -1554,6 +1609,115 @@ class PrivateHelperTests(unittest.TestCase):
         self.assertFalse(sidebar._is_bare_uuid("not-a-uuid-session"))
         self.assertFalse(sidebar._is_bare_uuid(None))
         self.assertFalse(sidebar._is_bare_uuid(""))
+
+
+class _StubStdscr:
+    """Records `addstr` calls instead of touching a real terminal --
+    `_draw` only needs `erase`/`getmaxyx`/`refresh`/`addstr` off its
+    `stdscr` argument, none of which require curses to be initialised."""
+
+    def __init__(self, height=10, width=40):
+        self._height = height
+        self._width = width
+        self.calls = []
+
+    def erase(self):
+        pass
+
+    def getmaxyx(self):
+        return self._height, self._width
+
+    def refresh(self):
+        pass
+
+    def addstr(self, y, x, text, attr):
+        self.calls.append((y, x, text, attr))
+
+
+def _subagent_row(status, label="sub-a"):
+    return sidebar.Row(
+        depth=2, kind="subagent", target="feat", label=label,
+        status=status, waiting_on_operator=False, is_subagent=True,
+    )
+
+
+class TaskGlyphTests(unittest.TestCase):
+    """sidebar-empty-rows step 7 (Decision-058): a completed task must
+    visibly read as completed -- its own glyph, distinct from a
+    still-working task's presence dot, and done/failed never share one."""
+
+    def test_working_subagent_keeps_presence_glyph(self):
+        text = sidebar._row_text(_subagent_row("working"))
+        self.assertIn(sidebar.SUBAGENT_GLYPH, text)
+
+    def test_done_subagent_carries_its_own_status_glyph(self):
+        text = sidebar._row_text(_subagent_row("done"))
+        self.assertIn(sidebar.STATUS_EMOJI["done"], text)
+        self.assertNotIn(sidebar.SUBAGENT_GLYPH, text)
+
+    def test_failed_subagent_carries_its_own_status_glyph(self):
+        text = sidebar._row_text(_subagent_row("failed"))
+        self.assertIn(sidebar.STATUS_EMOJI["failed"], text)
+        self.assertNotIn(sidebar.SUBAGENT_GLYPH, text)
+
+    def test_done_and_failed_never_share_a_glyph(self):
+        self.assertNotEqual(sidebar.STATUS_EMOJI["done"], sidebar.STATUS_EMOJI["failed"])
+
+
+class TaskColourExclusivityTests(unittest.TestCase):
+    """sidebar-empty-rows step 7: `curses.color_pair(n)` bits from two
+    different sources OR together into a third, arbitrary pair -- exactly
+    one source may contribute colour-pair bits to a row. A terminal task's
+    status colour must win over its agent-identity tint; a working task
+    keeps the agent tint so concurrent tasks stay distinguishable."""
+
+    DONE_PAIR = 1 << 8
+    FAILED_PAIR = 2 << 8
+    WORKING_PAIR = 3 << 8
+    AGENT_PAIR_A = 4 << 8
+    AGENT_PAIR_B = 5 << 8
+
+    def _draw_one(self, row, agent_colours):
+        colour_pairs = {
+            "working": self.WORKING_PAIR,
+            "done": self.DONE_PAIR | curses.A_BOLD,
+            "failed": self.FAILED_PAIR | curses.A_BOLD,
+        }
+        stdscr = _StubStdscr()
+        sidebar._draw(stdscr, [row], selected=-1, offset=0,
+                       colour_pairs=colour_pairs, agent_colours=agent_colours,
+                       colours=None, tick=0, has_moved=False)
+        self.assertEqual(len(stdscr.calls), 1)
+        return stdscr.calls[0][3]
+
+    def test_working_task_uses_its_agent_colour_pair(self):
+        row = _subagent_row("working", label="sub-a")
+        agent_colours = [self.AGENT_PAIR_A, self.AGENT_PAIR_B]
+        with mock.patch.object(sidebar, "_agent_colour_index", return_value=0):
+            attr = self._draw_one(row, agent_colours)
+        self.assertEqual(attr & 0xFF00, self.AGENT_PAIR_A)
+
+    def test_done_task_uses_the_done_pair_not_a_combined_one(self):
+        row = _subagent_row("done", label="sub-a")
+        agent_colours = [self.AGENT_PAIR_A, self.AGENT_PAIR_B]
+        with mock.patch.object(sidebar, "_agent_colour_index", return_value=0):
+            attr = self._draw_one(row, agent_colours)
+        self.assertEqual(attr & 0xFF00, self.DONE_PAIR)
+        self.assertNotEqual(attr & 0xFF00, self.DONE_PAIR | self.AGENT_PAIR_A)
+
+    def test_done_and_working_rows_resolve_to_different_pair_bits(self):
+        agent_colours = [self.AGENT_PAIR_A]
+        with mock.patch.object(sidebar, "_agent_colour_index", return_value=0):
+            done_attr = self._draw_one(_subagent_row("done"), agent_colours)
+            working_attr = self._draw_one(_subagent_row("working"), agent_colours)
+        self.assertNotEqual(done_attr & 0xFF00, working_attr & 0xFF00)
+
+    def test_failed_task_uses_the_failed_pair_not_the_agent_pair(self):
+        row = _subagent_row("failed", label="sub-a")
+        agent_colours = [self.AGENT_PAIR_A]
+        with mock.patch.object(sidebar, "_agent_colour_index", return_value=0):
+            attr = self._draw_one(row, agent_colours)
+        self.assertEqual(attr & 0xFF00, self.FAILED_PAIR)
 
 
 if __name__ == "__main__":
