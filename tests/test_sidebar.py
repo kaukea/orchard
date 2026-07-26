@@ -181,16 +181,20 @@ class StatusDerivationTests(_FixtureTestCase):
         feature = self._repo().features[0]
         self.assertEqual(feature.status, "idle")
 
-    def test_no_signal_is_idle(self):
+    def test_fresh_status_with_no_lifecycle_event_is_working(self):
+        # bug fix, 2026-07-26: a live session's own "started" lifecycle
+        # event can age out of the archiver's retention while the session
+        # itself keeps posting -- recent traffic (a status post here) is
+        # itself proof of life, so this must read "working", not "idle".
+        # _landscaper already posts a "starting" lifecycle, so post a fresh
+        # identity-only status announce with no lifecycle subject at all.
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
-        # identity-only, no lifecycle/outcome distinguishes idle from
-        # working -- but _landscaper already posts a "starting" lifecycle,
-        # so post a fresh identity-only announce with no lifecycle subject.
         self._event("own.repo", "s2", "orchard:agent:status",
                      identity={"agent": "landscaper", "feature": "feat-b"},
-                     body="idle")
+                     body="verifying")
         features = {f.name: f for f in self._repo().features}
-        self.assertEqual(features["feat-b"].status, "idle")
+        self.assertEqual(features["feat-b"].status, "working")
+        self.assertEqual(features["feat-b"].activity, "verifying")
 
     def test_outcome_success_is_done(self):
         self._event("own.repo", "s1", "orchard:agent:outcome:success",
@@ -491,6 +495,17 @@ class StalenessTests(_FixtureTestCase):
         self._landscaper("own.repo", "s1", "feat-a")
         feature = self._repo().features[0]
         self.assertEqual(feature.status, "working")
+
+    def test_status_with_no_lifecycle_event_and_no_recent_event_reads_stale(self):
+        # the inferred-working branch (no surviving lifecycle event, but a
+        # "sid"-carrying live record) must still lose to the staleness
+        # check, which runs first -- an old status post with no lifecycle
+        # event is stale, not working.
+        self._event("own.repo", "s1", "orchard:agent:status",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body="verifying", mtime=self._stale_ts())
+        feature = self._repo().features[0]
+        self.assertEqual(feature.status, "stale")
 
     def test_success_outcome_overrides_staleness_and_stays_done(self):
         self._event("own.repo", "s1", "orchard:agent:outcome:success",

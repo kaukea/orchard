@@ -714,14 +714,29 @@ def _status_for(rec: dict, now: float) -> str:
     outcome, a session with no event inside ACTIVE_WINDOW_SECONDS reads
     stale (gray) rather than working/idle — checked before the
     working/idle split, since staleness overrides even a stuck "starting"
-    lifecycle state that never followed up."""
+    lifecycle state that never followed up.
+
+    A live session (one folded from real traffic by `_fold_sessions`,
+    always carrying its own "sid") with no surviving lifecycle event still
+    reads "working" once it is not stale — recent traffic of any kind is
+    itself proof of life, so a "started" lifecycle event aging out of the
+    archiver's retention must not silently demote a still-posting session
+    to idle (bug fix, 2026-07-26: the live-session counterpart of the
+    marker-only "working" fix above; see `_marker_task_rec`). An explicit
+    "stopped" lifecycle event is a real signal rather than an absence and
+    still reads idle. A synthetic marker-only record (no "sid") never had
+    live traffic to infer from, so it is unaffected and keeps falling
+    through to idle absent an explicit state."""
     if rec.get("outcome") == "fail" or rec.get("task_outcome") == "failed":
         return "failed"
     if rec.get("outcome") == "success" or rec.get("task_outcome") == "completed":
         return "done"
     if now - rec.get("_seen_ts", 0.0) >= ACTIVE_WINDOW_SECONDS:
         return "stale"
-    if rec.get("state") in ("starting", "started", "stopping"):
+    state = rec.get("state")
+    if state in ("starting", "started", "stopping"):
+        return "working"
+    if state is None and "sid" in rec:
         return "working"
     return "idle"
 

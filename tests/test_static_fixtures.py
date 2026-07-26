@@ -186,6 +186,44 @@ class EventEnvelopeFixtureTests(unittest.TestCase):
         self.assertNotIn("ts", rec)
 
 
+class LiveSessionLivenessFixtureTests(unittest.TestCase):
+    """`event_topic_post_status.json` (see EventEnvelopeFixtureTests above
+    for its provenance) is a real captured `orchard:agent:status` post with
+    no accompanying lifecycle event -- the literal shape a live session
+    takes once its own "started" lifecycle event has aged out of the
+    archiver's retention while the session keeps posting (live-session
+    liveness bug fix, 2026-07-26). Installed as the sole event for its
+    session, it must read "working" (carrying its activity) inside
+    ACTIVE_WINDOW_SECONDS of its own file mtime, and "stale" past it."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.projects_root = Path(self._tmp.name) / "projects"
+        project_dir = self.projects_root / "kaukea.orchids"
+        project_dir.mkdir(parents=True)
+        self.event_path = project_dir / "event_topic_post_status.json"
+        self.event_path.write_text(
+            _load_fixture("event_topic_post_status.json"), encoding="utf-8",
+        )
+        self.event_mtime = 1_700_000_000.0
+        os.utime(self.event_path, (self.event_mtime, self.event_mtime))
+
+    def test_status_post_with_no_lifecycle_event_reads_working_inside_the_window(self) -> None:
+        fleet = sidebar.build_model(root=self.projects_root, now=self.event_mtime + 100)
+        repo = fleet.repos[0]
+        self.assertEqual(repo.status, "working")
+        self.assertEqual(repo.activity, "folding")
+
+    def test_status_post_with_no_lifecycle_event_reads_stale_outside_the_window(self) -> None:
+        fleet = sidebar.build_model(
+            root=self.projects_root,
+            now=self.event_mtime + sidebar.ACTIVE_WINDOW_SECONDS + 100,
+        )
+        repo = fleet.repos[0]
+        self.assertEqual(repo.status, "stale")
+
+
 class CourierOnlyTransportHookFixtureTests(unittest.TestCase):
     """hooks/courier-only-transport.sh against the literal `agent_type`
     values captured live from the PreToolUse harness during this feature:

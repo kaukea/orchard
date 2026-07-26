@@ -194,15 +194,27 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
                          identity=identity, status=status, body={"subagent": sub})
 
     def _seed_signmc(self) -> None:
-        # deliberately idle (no lifecycle/outcome signal posted) -- this
-        # repo exists purely to prove multiple repos render correctly and
-        # that only the genuinely-"working" row (orchids/sidebar-titling)
-        # carries the band sweep; a second concurrently-animating row would
-        # defeat test_working_band_animates_while_other_lines_stay_static's
+        # deliberately STOPPED -- this repo exists purely to prove multiple
+        # repos render correctly and that only the genuinely-"working" row
+        # (orchids/sidebar-titling) carries the band sweep; a second
+        # concurrently-animating row would defeat
+        # test_working_band_animates_while_other_lines_stay_static's
         # "everything else is static" assertion.
+        #
+        # An explicit `lifecycle:stopped` is what makes this row idle. It
+        # previously relied on posting no lifecycle event at all, which was
+        # never a signal of idleness -- it was the absence of one, and a
+        # live session that had simply outlived the 120-minute archival of
+        # its own start event looked identical. That ambiguity was a defect
+        # in the renderer, since a session posting fresh status is plainly
+        # alive; this seed now states what it means rather than relying on
+        # an absence that used to be misread.
+        identity = {"agent": "landscaper", "feature": "focus-returning",
+                    "name": "focus returning"}
         self._event("signmc", "sign-arch", "orchard:agent:status",
-                     identity={"agent": "landscaper", "feature": "focus-returning",
-                               "name": "focus returning"}, body="idle")
+                     identity=identity, body="idle")
+        self._event("signmc", "sign-arch", "orchard:agent:lifecycle:stopped",
+                     identity=identity)
 
     def _pane_size_settled(self) -> bool:
         expected = f"{self.PANE_WIDTH}x{self.PANE_HEIGHT}"
