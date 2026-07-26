@@ -46,7 +46,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `feature · todo · · blocked-on-answers · process · gh#39` [Gardener emits the orchard summary file, parseable from outside](TODO.md.d/orchard-summary.md)
   - `feature · todo · · queued · process · gh#40` [Orchard view: consolidate the fleet, show priorities and cross-repo edges](TODO.md.d/orchard-view.md) ⊘orchard-summary
   - `feature · todo · · queued · process · gh#41` [Orchard launch: session per repo, gardener told the pick and double-checks](TODO.md.d/orchard-launch.md) ⊘orchard-view
-  - `feature · todo · critical · plan-ready · process · gh#42` [Tmux topology: window per landscaper, stacked pane per coder — written spec this time](TODO.md.d/tmux-topology.md) ⊘bus-finishing ~hook-choreography ~fleet-sidebar ~close-family-fakes
+  - `feature · todo · critical · plan-ready · process · gh#42` [Tmux topology: window per landscaper, stacked pane per coder — written spec this time](TODO.md.d/tmux-topology.md) ~bus-finishing ~hook-choreography ~fleet-sidebar ~close-family-fakes
   - `feature · done · · complete/interactive · · gh#23` [Fleet sidebar: always-visible navigable job states with phase emojis](TODO.md.d/fleet-sidebar.md) ~bus-liveness ~agent-metadata
     - `feature · todo · · blocked-on-answers · process · gh#189` [Cloud event feed: GitHub Actions events land as sidebar files](TODO.md.d/cloud-event-feed.md) ~cloud-architect
     - `bug · done · · complete/interactive · process ·` [Fleet sidebar fixes: correct the defects the first build shipped](TODO.md.d/sidebar-fixes.md)
@@ -79,7 +79,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `bug · todo · · queued · process · gh#204` [Bloom subset posterior: multi-select dimensions converge instead of exhausting](TODO.md.d/bloom-subset-posterior.md) ~psychometric-discovery ~bloom-administering
 - `bug · done · · complete/interactive · process ·` [Agents leave sub-agents and sessions unclosed: the flow cannot finish](TODO.md.d/agent-closing.md) ~message-bus ~hook-choreography ~zombie-revival
 - `bug · done · critical · complete/interactive · process · gh#258` [Close dispatching: the gate-word groundskeeper dispatch can die with the landscaper](TODO.md.d/close-dispatching.md) ~agent-closing ~window-closing-owning ~hook-choreography
-- `feature · todo · critical · plan-ready · · gh#263` [Close-family fakes: the supervising controller — the close moves to the gardener; fakes re-examined](TODO.md.d/close-family-fakes.md) ⊘bus-finishing ~close-dispatching ~agent-closing ~tmux-topology
+- `feature · todo · critical · plan-ready · · gh#263` [Close-family fakes: the supervising controller — the close moves to the gardener; fakes re-examined](TODO.md.d/close-family-fakes.md) ~bus-finishing ~close-dispatching ~agent-closing ~tmux-topology
   - `bug · todo · critical · working · process · gh#215` [Window closing owning: agents close themselves — kill listener removed by Decision-081](TODO.md.d/window-closing-owning.md) ~sidebar-polish ~bus-singleton ~agent-closing
   - `feature · todo · · blocked-on-answers · process · gh#30` [Zombie delivery: scripts revive dead sessions before handing them messages](TODO.md.d/zombie-revival.md) ~bus-liveness ~message-bus
   - `bug · todo · · queued · process · gh#193` [Sidebar witnessing: ghost rows persist, silent live agents invisible — the ephemeral-courier observer gap](TODO.md.d/sidebar-witnessing.md) ~sidebar-polish ~bus-singleton ~message-bus
@@ -108,7 +108,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `bug · cancelled · · complete · process ·` [~~Landscaper skips its delegation contract: builds without dispatching sowers~~](TODO.md.d/architect-delegation.md) ~handover-contract
 - `feature · done · · complete/interactive · process ·` [Message courier: repo-scoped agent-to-agent messaging via a courier sidecar](TODO.md.d/message-bus.md) ~hook-choreography ~cross-repo-inbox
 - `refactor · functional · · complete/interactive · process ·` [Bus message specifying: tighten the vocabulary, fix what each agent sends](TODO.md.d/bus-message-specifying.md) ~message-bus ~fleet-documenting ~sidebar-witnessing ~sidebar-titling ~orchard-renaming ~bus-transport-v2
-- `feature · functional · · plan-ready · process ·` [Bus transport v2: the dictated topic design, fed one iteration at a time](TODO.md.d/bus-transport-v2.md) ~bus-message-specifying ~bus-close-cleanup ~message-bus
+- `feature · done · · complete/interactive · process ·` [Bus transport v2: the dictated topic design, fed one iteration at a time](TODO.md.d/bus-transport-v2.md) ~bus-message-specifying ~bus-close-cleanup ~message-bus
 - `feature · done · critical · complete/interactive · · gh#264` [Bus finishing: request/response across repos, fan-out killed, singleton and close cleanup — the good-enough gate](TODO.md.d/bus-finishing.md) ~bus-transport-v2 ~message-bus
   - `feature · done · · complete/interactive · process · gh#209` [Bus relay: request/response unicast, delete-on-read, across repositories](TODO.md.d/bus-relay.md) ~bus-transport-v2 ~cross-repo-bus ~message-bus
   - `refactor · done · · complete/interactive · process · gh#210` [Fan-out cut-over: topic posts replace v1 inbox broadcasts — just kill it](TODO.md.d/fanout-cutover.md) ~bus-transport-v2 ~message-bus ~bus-close-cleanup
@@ -119,7 +119,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `housekeeping · todo · idea · queued · process · gh#214` [Fleet documenting: agent wiki pages; channels with JSON Schemas](TODO.md.d/fleet-documenting.md) ~message-bus ~operator-interacting ~digest-identity
 - `bug · todo · · queued · process · gh#216` [Focus returning: a finish always selects the gardener window, the view follows only in-session](TODO.md.d/focus-returning.md) ~tmux-topology ~window-closing-owning
 - `bug · todo · · queued · process · gh#217` [Orchestrator identity: one per repo, single instance, session named after the project](TODO.md.d/orchestrator-identity.md) ~session-naming ~sidebar-titling
-- `feature · todo · · blocked-on-answers · process · gh#259` [Summon restart: summon and window naming automated once the courier lands — manual by choice until then](TODO.md.d/summon-restarting.md) ⊘bus-relay ~orchestrator-identity ~session-naming ~sidebar-titling ~fanout-cutover
+- `feature · todo · · blocked-on-answers · process · gh#259` [Summon restart: summon and window naming automated once the courier lands — manual by choice until then](TODO.md.d/summon-restarting.md) ~bus-relay ~orchestrator-identity ~session-naming ~sidebar-titling ~fanout-cutover
 - `feature · todo · critical · plan-ready · process · gh#218` [Intake enforcing: typed requests in, board writes denied](TODO.md.d/intake-enforcing.md) ~message-bus ~bus-singleton ~fleet-documenting
 - `feature · todo · · blocked-on-answers · process · gh#219` [Operator interacting: questions, gates and summaries as one typed exchange](TODO.md.d/operator-interacting.md) ~message-bus ~sidebar-polish ~hook-choreography
 - `feature · todo · critical · working · process · gh#220` [Capture now: transcripts and logs preserved before the ledger exists](TODO.md.d/capture-now.md)
