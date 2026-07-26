@@ -365,6 +365,45 @@ def usage_entries(path: Path):
             yield usage, message.get("model")
 
 
+def _feature_identity(top: str | None) -> tuple[str | None, str | None, str | None]:
+    """(worktree, feature_id, feature_name) — resolved together since they
+    hinge on the same git lookups. Best-effort: a transient failure here
+    (e.g. a git subprocess error `git()` doesn't already swallow, or
+    feature_name.py hitting an unreadable sidecar) must never cost the
+    caller `identity.agent` too — observed live: a gardener session posted
+    orchard:agent:status/delegation:begin with NO identity block at all,
+    because one failed lookup here discarded the whole identity dict
+    upstream. Any exception collapses to (None, None, None) instead of
+    propagating.
+    """
+    try:
+        worktree = Path(top).name if top else None
+        linked = "/worktrees/" in git("rev-parse", "--git-dir")
+        feature_id = worktree if linked else None
+        # Ledger-derived human name (tools/feature_name.py, sidebar-polish item 11):
+        # board short-title, else sidecar H1, else mechanical hyphen->space, so
+        # every consumer reads one already-authored field instead of re-deriving
+        # (Decision-032).
+        feature_name = _feature_name(feature_id, root=top) if feature_id else None
+        return worktree, feature_id, feature_name
+    except Exception:
+        return None, None, None
+
+
+def _task_identity(feature_id: str | None, feature_name: str | None) -> tuple[str | None, str | None]:
+    """(task_id, task_name) — only the agent itself knows which task within
+    its feature it is on, so ORCHID_TASK_ID/ORCHID_TASK_NAME are set by
+    whatever dispatched it (a landscaper handing a step to a sower, say).
+    A feature spans many tasks in general, but today one feature still maps
+    to exactly one task, so with neither env var set, task defaults to the
+    feature id and task_name to the feature's display name — an explicit,
+    commented default rather than an accidental fallthrough.
+    """
+    task_id = os.environ.get("ORCHID_TASK_ID") or feature_id
+    task_name = os.environ.get("ORCHID_TASK_NAME") or feature_name
+    return task_id, task_name
+
+
 def identity_of() -> dict:
     """Immutable facts, fixed for this session's whole life.
 
@@ -372,19 +411,16 @@ def identity_of() -> dict:
     are not identity, and pinning them here would bake in a value that goes stale.
     """
     top = git("rev-parse", "--show-toplevel")
-    worktree = Path(top).name if top else None
-    linked = "/worktrees/" in git("rev-parse", "--git-dir")
-    feature_id = worktree if linked else None
+    worktree, feature_id, feature_name = _feature_identity(top)
+    task_id, task_name = _task_identity(feature_id, feature_name)
     return {
         "session_id": whoami(),
         "agent_type": os.environ.get("CLAUDE_CODE_AGENT") or None,
         "worktree": worktree,
         "feature_id": feature_id,
-        # Ledger-derived human name (tools/feature_name.py, sidebar-polish item 11):
-        # board short-title, else sidecar H1, else mechanical hyphen->space, so
-        # every consumer reads one already-authored field instead of re-deriving
-        # (Decision-032).
-        "name": _feature_name(feature_id, root=top) if feature_id else None,
+        "name": feature_name,
+        "task_id": task_id,
+        "task_name": task_name,
         "parent_session": os.environ.get("ORCHID_PARENT_SESSION") or None,
     }
 
@@ -1023,11 +1059,13 @@ def write_orchard_file(dir_path: Path, name: str, payload: dict | None = None) -
 
 
 # The durable feature-node marker (`<feature-id>.marker`, distinct from the
-# per-session heartbeat marker above): persists the TASK the feature maps
-# to, never agent/session identity — that is ephemeral. `tasks` stays a
-# list (keyed within by feature id) so sibling tasks under one feature node
-# have room to persist even though, today, a feature maps to exactly one.
-# Merged in place so a late event still lands on the right node.
+# per-session heartbeat marker above): persists the TASKS the feature maps
+# to, never agent/session identity — that is ephemeral. `tasks` is a list
+# keyed WITHIN by task id (never feature id — a feature spans many tasks,
+# so keying a task entry on its feature would conflate the two levels) so
+# sibling tasks under one feature node have room to persist even though,
+# today, a feature maps to exactly one task. Merged in place so a late
+# event still lands on the right node.
 _FEATURE_TASK_STATE_BY_SUBJECT = {
     "orchard:agent:outcome:success": "done",
     "orchard:agent:outcome:fail": "failed",
@@ -1053,20 +1091,18 @@ def _feature_task_state(subject: str) -> str | None:
     return None
 
 
-def _merge_feature_task(tasks: list[dict], feature: str, identity: dict,
+def _merge_feature_task(tasks: list[dict], task_id: str, task_name: str | None,
                          subject: str, now: str) -> None:
     state = _feature_task_state(subject)
     for task in tasks:
-        if task.get("feature") == feature:
-            task["name"] = identity.get("name") or task["name"]
-            task["area"] = identity.get("area") or task["area"]
+        if task.get("task") == task_id:
+            task["name"] = task_name or task["name"]
             task["state"] = state or task["state"]
             task["updated"] = now
             return
     tasks.append({
-        "feature": feature,
-        "name": identity.get("name"),
-        "area": identity.get("area"),
+        "task": task_id,
+        "name": task_name,
         "state": state or "working",
         "updated": now,
     })
@@ -1075,19 +1111,33 @@ def _merge_feature_task(tasks: list[dict], feature: str, identity: dict,
 def merge_feature_marker(path: Path, project: str, feature: str,
                           envelope: dict, now: str) -> dict:
     """Merge-never-truncate for the CURRENT shape only: a rejected earlier
-    shape (the `sessions` identity cache; a `tasks[]` entry with no
-    `feature`, e.g. a delegation label) is discarded on sight rather than
-    carried forward — that is not truncating live data, it is dropping a
-    shape the design has rejected. A `tasks[]` entry that IS current still
-    survives forever, terminal state included."""
+    shape — the `sessions` identity cache, or a `tasks[]` entry keyed by the
+    now-retired `feature` field (schema 1, which conflated task and
+    feature) or by nothing at all (e.g. a delegation label) — is discarded
+    on sight rather than carried forward. That is not truncating live data,
+    it is dropping a shape the design has rejected; an old-shape marker
+    already on disk is simply read as if its `tasks[]` were empty, never a
+    crash. A `tasks[]` entry that IS current (keyed by `task`) still
+    survives forever, terminal state included.
+
+    The marker stays keyed on the FEATURE at file level (`feature`, `name`
+    — the feature's own display name, `area`, `updated`); each task entry
+    inside `tasks[]` carries its own `task`/`name`/`state`/`updated`. The
+    marker holds nothing agent-shaped (no role, agent name, model, or
+    activity) — that is live-only and never persisted here.
+    """
     marker = _load_feature_marker(path)
     marker.pop("sessions", None)
-    marker["schema"] = 1
+    identity = envelope.get("identity") or {}
+    marker["schema"] = 2
     marker["project"] = project
     marker["feature"] = feature
-    tasks = [t for t in marker.get("tasks", []) if t.get("feature")]
-    identity = envelope.get("identity") or {}
-    _merge_feature_task(tasks, feature, identity,
+    marker["name"] = identity.get("feature_name") or marker.get("name")
+    marker["area"] = identity.get("area") or marker.get("area")
+    tasks = [t for t in marker.get("tasks", []) if t.get("task")]
+    task_id = identity.get("task") or feature
+    task_name = identity.get("task_name") or identity.get("feature_name")
+    _merge_feature_task(tasks, task_id, task_name,
                          envelope.get("subject", ""), now)
     marker["tasks"] = tasks
     marker["updated"] = now

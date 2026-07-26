@@ -120,16 +120,29 @@ def build_envelope(sid: str, repo: str, subject: str, body: object = None) -> di
 
 
 def _identity() -> dict:
-    """Immutable facts (the courier's identity operation) — never change for a session:
-    agent role, feature, human name, parent. Session id already rides `from`."""
+    """Immutable facts (the courier's identity operation) — never change for a
+    session: agent role, feature id/display name, task id/display name,
+    parent. Session id already rides `from`.
+
+    `task`/`task_name` default to the feature's own id/name inside
+    courier.identity_of() itself (today one feature maps to exactly one
+    task) — this function only relabels those already-defaulted facts into
+    the envelope's field names. `name` is kept as a plain alias of
+    `feature_name` so a reader written against the pre-task shape keeps
+    working unchanged.
+    """
     try:
         ident = courier.identity_of()
     except Exception:
         return {}
+    feature_name = ident.get("name")
     keep = {
         "agent": ident.get("agent_type"),
         "feature": ident.get("feature_id"),
-        "name": ident.get("name"),
+        "feature_name": feature_name,
+        "name": feature_name,
+        "task": ident.get("task_id"),
+        "task_name": ident.get("task_name"),
         "parent": ident.get("parent_session"),
     }
     return {k: v for k, v in keep.items() if v}

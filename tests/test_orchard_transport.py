@@ -252,14 +252,19 @@ class LivenessMarkerTests(_OrchardTestCase):
 class FeatureMarkerTests(_OrchardTestCase):
     """`orchard_deliver()` merges a durable `<feature-id>.marker` node
     alongside the per-session heartbeat marker whenever the envelope's
-    `identity` carries a `feature`. The marker persists the TASK the
-    feature maps to (identity, human name, area, state, updated) — never
-    agent/session identity (role, name-of-agent, parent, per-session
-    state), which is ephemeral and disappears with the agent. `tasks` is a
-    list so sibling tasks under one feature node can still be cached even
-    though, in this repo, a feature currently maps to a single board task.
-    The per-session `<sid>.marker` heartbeat keeps working unchanged
-    (covered by LivenessMarkerTests); this class covers only the new node.
+    `identity` carries a `feature`. The marker stays keyed on the FEATURE
+    at file level (`feature`, `name` — the feature's own display name,
+    `area`, `updated`); it persists the TASKS that feature maps to as a
+    `tasks[]` list, each entry keyed by `task` (never `feature` — a
+    feature spans many tasks in general, so keying a task entry on its
+    feature would conflate the two levels) and carrying its own
+    `name`/`state`/`updated` — never agent/session identity (role,
+    name-of-agent, parent, per-session state), which is ephemeral and
+    disappears with the agent. `tasks` stays a list so sibling tasks under
+    one feature node can persist even though, in this repo, a feature
+    currently maps to a single task. The per-session `<sid>.marker`
+    heartbeat keeps working unchanged (covered by LivenessMarkerTests);
+    this class covers only the new node.
     """
 
     def setUp(self) -> None:
@@ -268,10 +273,12 @@ class FeatureMarkerTests(_OrchardTestCase):
         self.project_dir.mkdir(parents=True)
 
     def _envelope(self, subject: str, *, feature="feat-x", agent="landscaper",
-                  name="Feat X", parent=None, body=None) -> dict:
+                  feature_name="Feat X", task=None, task_name=None,
+                  parent=None, body=None) -> dict:
         env = {"from": ":session:sessA", "subject": subject,
-               "identity": {"feature": feature, "agent": agent, "name": name,
-                             "parent": parent}}
+               "identity": {"feature": feature, "agent": agent,
+                             "feature_name": feature_name, "task": task,
+                             "task_name": task_name, "parent": parent}}
         if body is not None:
             env["body"] = body
         return env
@@ -290,15 +297,20 @@ class FeatureMarkerTests(_OrchardTestCase):
         courier.orchard_deliver(self.project_dir, "sessA",
                                  self._envelope("orchard:agent:lifecycle:starting"))
         marker = self._marker()
-        self.assertEqual(marker["schema"], 1)
+        self.assertEqual(marker["schema"], 2)
         self.assertEqual(marker["project"], "own.repo")
         self.assertEqual(marker["feature"], "feat-x")
+        self.assertEqual(marker["name"], "Feat X")
+        self.assertIsNone(marker["area"])
         self.assertNotIn("sessions", marker)
         self.assertEqual(len(marker["tasks"]), 1)
         task = marker["tasks"][0]
-        self.assertEqual(task["feature"], "feat-x")
+        # today one feature maps to exactly one task, so with no distinct
+        # ORCHID_TASK_ID the task id defaults to the feature id itself
+        self.assertEqual(task["task"], "feat-x")
         self.assertEqual(task["name"], "Feat X")
-        self.assertIsNone(task["area"])
+        self.assertNotIn("feature", task)
+        self.assertNotIn("area", task)
         self.assertEqual(task["state"], "working")
         self.assertIn("updated", task)
         self.assertIn("updated", marker)
@@ -373,18 +385,24 @@ class FeatureMarkerTests(_OrchardTestCase):
         self.assertEqual(list(topic_dir.glob("*.marker")),
                           [topic_dir / "sessA.marker"])
 
-    def test_merge_strips_legacy_sessions_and_labelled_tasks_but_keeps_completed_ones(self):
+    def test_merge_strips_legacy_shapes_but_keeps_current_task_entries(self):
         # A marker written by earlier, now-rejected code: a `sessions`
-        # identity cache, a delegation-label `tasks[]` entry (no `feature`),
-        # and a genuine completed task for a DIFFERENT feature — the shape
-        # merge-never-truncate must still carry forward forever.
+        # identity cache, a `tasks[]` entry with no `task` key at all (a
+        # delegation label), and a schema-1 entry keyed by the now-retired
+        # `feature` field — none of these are the CURRENT (`task`-keyed)
+        # shape, so merge-never-truncate discards all three rather than
+        # crash on them. A genuinely current entry, for a DIFFERENT task
+        # under this same feature, is carried forward untouched — proving
+        # merge-never-truncate still holds for the shape that matters.
         (self.project_dir / "feat-x.marker").write_text(json.dumps({
             "schema": 1, "project": "own.repo", "feature": "feat-x",
             "sessions": {"s1": {"agent": "architect", "state": "done"}},
             "tasks": [
                 {"label": "verify-task-persist", "state": "done", "updated": "t0"},
-                {"feature": "other-feat", "name": "Other Feature", "area": None,
+                {"feature": "feat-x", "name": "Feat X (schema 1)", "area": None,
                  "state": "done", "updated": "t0"},
+                {"task": "feat-x-step-0", "name": "Step 0", "state": "done",
+                 "updated": "t0"},
             ],
             "updated": "t0",
         }), encoding="utf-8")
@@ -395,11 +413,11 @@ class FeatureMarkerTests(_OrchardTestCase):
         marker = self._marker()
         self.assertNotIn("sessions", marker)
         self.assertEqual(
-            {t.get("feature") for t in marker["tasks"]}, {"feat-x", "other-feat"},
+            {t["task"] for t in marker["tasks"]}, {"feat-x", "feat-x-step-0"},
         )
-        other = next(t for t in marker["tasks"] if t["feature"] == "other-feat")
-        self.assertEqual(other["state"], "done")
-        self.assertEqual(other["name"], "Other Feature")
+        survivor = next(t for t in marker["tasks"] if t["task"] == "feat-x-step-0")
+        self.assertEqual(survivor["state"], "done")
+        self.assertEqual(survivor["name"], "Step 0")
 
 
 class SignalPrefixTests(_OrchardTestCase):
