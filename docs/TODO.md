@@ -83,7 +83,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `bug · todo · critical · working · process · gh#215` [Window closing owning: agents close themselves — kill listener removed by Decision-081](TODO.md.d/window-closing-owning.md) ~sidebar-polish ~bus-singleton ~agent-closing
   - `feature · todo · · blocked-on-answers · process · gh#30` [Zombie delivery: scripts revive dead sessions before handing them messages](TODO.md.d/zombie-revival.md) ~bus-liveness ~message-bus
   - `bug · todo · · queued · process · gh#193` [Sidebar witnessing: ghost rows persist, silent live agents invisible — the ephemeral-courier observer gap](TODO.md.d/sidebar-witnessing.md) ~sidebar-polish ~bus-singleton ~message-bus
-- `feature · todo · · working · process ·` [Valve 💧: the side agent — real-time decision enforcement, yes/no phase gates, forced rework](TODO.md.d/valve.md) ~close-family-fakes ~deviance-detection ~injection-integrity
+- `feature · todo · · working · process · gh#273` [Valve 💧: the side agent — real-time decision enforcement, yes/no phase gates, forced rework](TODO.md.d/valve.md) ~close-family-fakes ~deviance-detection ~injection-integrity
 - `bug · todo · nice-to-have · plan-ready · process · gh#205` [Skills cite decision numbers that mean something else in decisions.md](TODO.md.d/decision-collision-skills.md)
 - `housekeeping · todo · nice-to-have · blocked-on-answers · process · gh#26` [Rename the TODO vocabulary to task list](TODO.md.d/todo-to-task-list.md)
 - `housekeeping · done · · complete/interactive · process · gh#27` [Retire the ripen word family: rename the skill, the agent, and the verb](TODO.md.d/retire-groom-vocabulary.md) ~todo-to-task-list
@@ -120,7 +120,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `housekeeping · todo · idea · queued · process · gh#214` [Fleet documenting: agent wiki pages; channels with JSON Schemas](TODO.md.d/fleet-documenting.md) ~message-bus ~operator-interacting ~digest-identity
 - `bug · todo · · queued · process · gh#216` [Focus returning: a finish always selects the gardener window, the view follows only in-session](TODO.md.d/focus-returning.md) ~tmux-topology ~window-closing-owning
 - `bug · todo · · queued · process · gh#217` [Orchestrator identity: one per repo, single instance, session named after the project](TODO.md.d/orchestrator-identity.md) ~session-naming ~sidebar-titling
-- `feature · todo · · working · process ·` [Tmux naming: standalone integration/extraction completing the existing tmux work](TODO.md.d/tmux-naming.md) ~tmux-topology ~sidebar-titling ~session-naming ~orchestrator-identity
+- `feature · todo · · working · process · gh#274` [Tmux naming: standalone integration/extraction completing the existing tmux work](TODO.md.d/tmux-naming.md) ~tmux-topology ~sidebar-titling ~session-naming ~orchestrator-identity
 - `feature · todo · · blocked-on-answers · process · gh#259` [Summon restart: summon and window naming automated once the courier lands — manual by choice until then](TODO.md.d/summon-restarting.md) ~bus-relay ~orchestrator-identity ~session-naming ~sidebar-titling ~fanout-cutover
 - `feature · todo · critical · plan-ready · process · gh#218` [Intake enforcing: typed requests in, board writes denied](TODO.md.d/intake-enforcing.md) ~message-bus ~bus-singleton ~fleet-documenting
 - `feature · todo · · blocked-on-answers · process · gh#219` [Operator interacting: questions, gates and summaries as one typed exchange](TODO.md.d/operator-interacting.md) ~message-bus ~sidebar-polish ~hook-choreography

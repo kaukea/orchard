@@ -22,9 +22,24 @@
 
 ## Proposal
 
-Design round with the operator scheduled IMMEDIATELY AFTER the supervisor
-design (operator, 2026-07-26). Scope, the phase vocabulary it gates on, the
-enforcement corpus, and its board relations are defined there.
+DICTATED CHARTER (operator, 2026-07-26 design round):
+
+- Valve's role: ensure and enforce rules such as — tasks following their
+  ORIGINAL INTENT; features NOT being created that were not specified; the
+  GOAL of the work being respected by the coding agent.
+- Valve comes with ITS OWN CONTEXT — it knows what to look for,
+  independently of the worker it watches.
+- The yes/no fires AT THE END of an agent's piece of work (refines the
+  earlier "at each relevant phase" phrasing: the gate is the work-unit
+  boundary, not a mid-work interrupt). A no forces the agent into a RETRY —
+  one second attempt.
+- RULED: on the second attempt, if Valve is still not confident with the
+  code, the TASK FAILS — the pipeline stops and the failure surfaces to the
+  operator with Valve's reasons; no third try without the operator's say.
+
+Still open (this design round, in progress): who assembles Valve's context;
+verdict mechanics on the bus; confidence criteria; whether Valve absorbs
+[[deviance-detection]] (gh#32).
 
 ## Testing
 
