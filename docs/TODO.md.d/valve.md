@@ -37,9 +37,29 @@ DICTATED CHARTER (operator, 2026-07-26 design round):
   code, the TASK FAILS — the pipeline stops and the failure surfaces to the
   operator with Valve's reasons; no third try without the operator's say.
 
-Still open (this design round, in progress): who assembles Valve's context;
-verdict mechanics on the bus; confidence criteria; whether Valve absorbs
-[[deviance-detection]] (gh#32).
+RULINGS (operator, 2026-07-26, continued):
+
+- CONTEXT: Valve reads durable state ITSELF (sidecar WHAT, decisions,
+  original intent) — nobody curates for it, so nobody can curate away from
+  it. The supervisor hands no digest.
+- ADVICE: Valve CAN also advise — alternative approaches drawn from the
+  project's ethos, offered at the relevant moment alongside the verdict.
+- WHEN IT RUNS — the two-tier ladder, ephemeral both tiers, NEVER resident
+  (operator constraint: no paying for a continuously-running side agent):
+  - Per COMMIT, the light pass: diff vs the sidecar's intent — does the
+    change belong to the spec, any unasked-for feature. Small context,
+    cheap; catches drift at the moment it happens.
+  - Per PIECE-OF-WORK END, the full gate: the ruled yes/no over the whole
+    work product vs intent/goal/decisions, with the retry semantics
+    (no → one retry → second no → task fails to the operator with reasons).
+- STATELESS: the sidecar WHAT + the diff ARE the ledger; the only
+  cross-invocation memory the flow needs (attempt count) is routing data
+  and lives with the supervisor. Research anchor: the Microsoft
+  ledger-orchestration discussions (task ledger / progress ledger — the
+  held "ledger v0" item); Valve is that idea made ephemeral.
+
+Still open (this design round): confidence criteria for the full gate;
+whether Valve absorbs [[deviance-detection]] (gh#32).
 
 ## Testing
 
