@@ -49,6 +49,13 @@
 
 ## Findings
 
+- OPERATOR RULING (2026-07-26, scope round): operator interaction is
+  designed SEPARATELY — this task specifies WHAT it does, and the transport
+  can be tmux OR plain OR any other interaction transport. The
+  [[tmux-topology]] spec stays silent on popups; tmux is at most one
+  transport this design may choose. (Refines the 2026-07-22 "broker is a
+  script drawing a native tmux popup" direction: that becomes one candidate
+  transport, not the definition.)
 - Operator direction (2026-07-22): the enforced question path generalises —
   "this could unify the MAKE IT SO for example, that each agent decides to
   ask differently, or the multiple choice questions, or for that matter

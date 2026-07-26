@@ -72,7 +72,7 @@ SUPERVISING CONTROLLER, started immediately when [[bus-finishing]] lands:
   ASKING the supervisor. It sleeps waiting for status changes and wakes on a
   3-MINUTE fallback when no event arrives, self-checking that the pipeline
   still works — an operator-ruled bounded exception to the no-timer ban.
-  (Reading of the dictated ruling confirmed pending — see Questions.)
+  (Reading confirmed by the operator, 2026-07-26.)
 - The side agent — real-time decision enforcement: monitors a working
   agent's ACTIVITY, enforces recorded decisions, yes/no at each relevant
   phase, a no forces rework at the moment of deviation — is NAMED Valve 💧
@@ -99,9 +99,10 @@ written down").
 
 ## Voluntary deferrals (explicit, not blockers)
 
-- Death-detection HOW (tmux pane-death hook vs process-wait vs operator-
-  driven): settled by the [[tmux-topology]] written spec or at this build's
-  plan gate — the no-timer ban stands until the operator says otherwise.
+- ~~Death-detection HOW~~ RULED (operator, 2026-07-26): the supervisor
+  checks — it owns the pipeline, sleeps on status events, wakes on a
+  3-minute fallback to self-check pipeline health; anyone verifying another
+  agent's liveness asks the supervisor.
 - Question-broker sub-agent form, `:session:operator` allowlist bypass,
   focus-reclaim-on-closed: the new tmux/operator-interaction component
   (bus-finishing follow-up 2), not this build.

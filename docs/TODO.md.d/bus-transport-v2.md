@@ -57,6 +57,12 @@ in the workstream log.
 
 ## Changelog entry
 
+ADMITTED MERGED (operator ruling, 2026-07-26): this held entry was folded
+into bus-finishing's single "orchard transport" entry in `CHANGELOG.md`
+Work in progress — do not admit it again. Original staged text kept below
+for the record; its `sidebar_v3.py` mention was superseded by the
+consolidated `sidebar.py` before admission.
+
 Added a sanctioned agent-activity transport for the fleet sidebar. Agents post
 lifecycle, status, delegation and outcome events (and the gardener a
 task-outcome) through one script, `orchard_topic.py`, into user-wide topic

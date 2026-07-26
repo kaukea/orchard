@@ -6,6 +6,25 @@ _base: `f65ad36`_
 
 ### ✨ New features
 
+- 🚀 **Bus finishing — the orchard transport.** Finished the message-bus arc.
+  The courier's broadcast fan-out — a courier telling every peer's inbox
+  about every event, the measured token leak — is gone. Messaging now runs
+  on a flat, user-wide runtime tree
+  (`$XDG_RUNTIME_DIR/orchard/{projects/<repo>.<project>,topics/<name>}/`):
+  directed `:session:<id>` messages (delete-on-read, request/reply,
+  cross-repo via a manually-maintained allowlist) and topic posts carrying
+  the sidebar's telemetry — agents post lifecycle, status, delegation and
+  outcome events (and the gardener a task outcome), each event carrying the
+  agent's identity and live status, never touching another agent's inbox and
+  waking no agent. Message subjects are a closed 22-string corpus validated
+  by exact membership — known or rejected, with variable data in the body.
+  The fleet sidebar is one program again (`sidebar.py`) reading that tree,
+  and staleness shows as colour (done green, failed red, not-heard-from
+  gray) rather than rows appearing and vanishing. The transitional `bus.py`
+  shim is retired; `courier.py` is the single script. Telemetry ≤120 minutes
+  stays live; older messages archive to `~/.cache/orchard/archives/`. The
+  per-repo sidebar hide/show (`/orchard`) is retired — the bar now shows
+  every registered project.
 - 🔊 The bus vocabulary is now specified: `agents/bus.md` carries WIRE GRAMMAR
   v1 — five wire classes (`orchid:status`, `orchid:update`, `orchid:phase`,
   `orchid:subagent:{queue,start,done}`, `orchid:interrupt:question`), each

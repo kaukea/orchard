@@ -25,16 +25,19 @@ the spec starts from his requirements, not the incumbent mechanics.
 - ~~Pane lifecycle for coders: bounded how?~~ Resolved by the 2026-07-21 refinement:
   sowers stack in a dedicated RIGHT COLUMN of the landscaper's window, capped —
   the exact cap is a build-time knob (voluntary deferral), not a scope question.
-- Is tmux-topology the home of the NAMING REWORK — session/window/pane naming scheme
-  designed with the operator, inheriting sidebar-titling's tail — or a separate task
-  this spec only interfaces with?
-- Question-broker popup surface: does this spec define the popup primitives (with
-  [[operator-interacting]] gh#219 consuming them for exchange semantics), or does the
-  whole broker UI stay in operator-interacting?
-- Focus return: does the spec encode [[focus-returning]]'s two-part rule (finish
-  always SELECTS the gardener window; visible focus switches only when the operator
-  sits in the closing window) — confirming that rule now — or stay with the simple
-  "selects the gardener window" and leave gh#216 as the follow-on?
+- ~~Is tmux-topology the home of the NAMING REWORK?~~ RULED (operator,
+  2026-07-26): a separate standalone task — [[tmux-naming]], tmux
+  integration/extraction completing the existing tmux work; this spec only
+  interfaces with it and its naming chapter defers to it.
+- ~~Question-broker popup surface: spec'd here or in operator-interacting?~~
+  RULED (operator, 2026-07-26): operator interaction is designed SEPARATELY
+  in [[operator-interacting]] — it specifies WHAT it does, and the transport
+  can be tmux OR plain OR any other interaction transport. This spec stays
+  silent on popups; tmux is at most one transport gh#219 may choose.
+- ~~Focus return: encode gh#216's two-part rule now?~~ RULED (operator,
+  2026-07-26): the spec states only the simple rule — a finish selects the
+  gardener window; the view-following nuance stays [[focus-returning]]'s
+  own open follow-on (gh#216).
 
 ## Findings
 
