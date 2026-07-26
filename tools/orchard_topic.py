@@ -264,8 +264,9 @@ def do_post(rest: list[str]) -> None:
     # sidebar_v3 reads, not the old topics/repository/<repo>/ directory — same
     # convention courier.py's own orchard transport uses (project_slug() ->
     # project_dir() -> orchard_deliver(), which does the atomic write, the
-    # `<sid>.marker` touch, and the parent-dir mtime bump in one place, so
-    # this script and courier.py can never drift on that convention).
+    # `<sid>.marker` touch, the `<feature>.marker` node merge when identity
+    # carries a feature, and the parent-dir mtime bump in one place, so this
+    # script and courier.py can never drift on that convention).
     slug = courier.project_slug()
     print(courier.orchard_deliver(courier.project_dir(slug), sid, envelope))
 

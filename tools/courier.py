@@ -964,16 +964,107 @@ def _stamp_filename(sid: str) -> str:
     return f"{sid}.{stamp()}.json"
 
 
+# The durable feature-node marker (`<feature-id>.marker`, distinct from the
+# per-session heartbeat marker above): structure + memory for the sidebar
+# tree, merged in place so a late message from an already-archived subagent
+# still lands on the right node. FROZEN SCHEMA v1 — do not vary the shape.
+_FEATURE_SESSION_STATE_BY_SUBJECT = {
+    "orchard:agent:outcome:success": "done",
+    "orchard:agent:outcome:fail": "failed",
+}
+_FEATURE_TASK_STATE_BY_SUBJECT = {
+    "orchard:agent:delegation:begin": "working",
+    "orchard:agent:delegation:end": "done",
+}
+
+
+def _feature_marker_path(dir_path: Path, feature: str) -> Path:
+    return dir_path / f"{feature}.marker"
+
+
+def _load_feature_marker(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _feature_session_state(subject: str) -> str | None:
+    if subject in _FEATURE_SESSION_STATE_BY_SUBJECT:
+        return _FEATURE_SESSION_STATE_BY_SUBJECT[subject]
+    if subject.startswith("orchard:agent:lifecycle:"):
+        return "working"
+    return None
+
+
+def _merge_feature_task(tasks: list[dict], label: str, state: str, now: str) -> None:
+    for task in tasks:
+        if task.get("label") == label:
+            task["state"] = state
+            task["updated"] = now
+            return
+    tasks.append({"label": label, "state": state, "updated": now})
+
+
+def _merge_feature_session(sessions: dict, sid: str, identity: dict, subject: str,
+                            now: str) -> None:
+    session = sessions.setdefault(
+        sid, {"agent": None, "name": None, "parent": None, "state": "working"})
+    session["agent"] = identity.get("agent") or session["agent"]
+    session["name"] = identity.get("name") or session["name"]
+    session["parent"] = identity.get("parent") or session["parent"]
+    state = _feature_session_state(subject)
+    if state:
+        session["state"] = state
+    session["last_seen"] = now
+
+
+def merge_feature_marker(path: Path, project: str, feature: str, sid: str,
+                          envelope: dict, now: str) -> dict:
+    marker = _load_feature_marker(path)
+    marker["schema"] = 1
+    marker["project"] = project
+    marker["feature"] = feature
+    identity = envelope.get("identity") or {}
+    marker["name"] = identity.get("name") or marker.get("name")
+    marker["area"] = identity.get("area") or marker.get("area")
+    _merge_feature_session(marker.setdefault("sessions", {}), sid, identity,
+                            envelope.get("subject", ""), now)
+    tasks = marker.setdefault("tasks", [])
+    task_state = _FEATURE_TASK_STATE_BY_SUBJECT.get(envelope.get("subject", ""))
+    label = (envelope.get("body") or {}).get("subagent") if task_state else None
+    if label:
+        _merge_feature_task(tasks, label, task_state, now)
+    marker["updated"] = now
+    return marker
+
+
+def write_feature_marker(dir_path: Path, project: str, sid: str, envelope: dict) -> None:
+    identity = envelope.get("identity") or {}
+    feature = identity.get("feature")
+    if not feature or "/" in feature or feature in (".", ".."):
+        return
+    path = _feature_marker_path(dir_path, feature)
+    now = datetime.now(timezone.utc).isoformat()
+    marker = merge_feature_marker(path, project, feature, sid, envelope, now)
+    tmp = path.with_name(f".{path.name}.partial")
+    tmp.write_text(json.dumps(marker, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
-    """Atomically write the message, touch/create the marker heartbeat, bump
-    the parent dir's mtime (nested writes don't bubble automatically), then
-    give the compaction pass a chance to run."""
+    """Atomically write the message, touch/create the marker heartbeat, merge
+    the feature-node marker when the envelope carries one, bump the parent
+    dir's mtime (nested writes don't bubble automatically), then give the
+    compaction pass a chance to run."""
     dir_path.mkdir(parents=True, exist_ok=True)
     final = dir_path / _stamp_filename(sid)
     tmp = dir_path / f".{final.name}.partial"
     tmp.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
     os.replace(tmp, final)
     (dir_path / f"{sid}.marker").touch(exist_ok=True)
+    if dir_path.parent.name == "projects":
+        write_feature_marker(dir_path, dir_path.name, sid, envelope)
     os.utime(dir_path, None)
     maybe_compact(dir_path)
     return final
