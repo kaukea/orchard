@@ -1,0 +1,45 @@
+Exit interview — f/sidebar-empty-rows, landscaper session e3e3aabd (round 2).
+
+DEVIATIONS
+
+1. Wrote to the WRONG CHECKOUT. Two sidecar edits used the main checkout's
+   path instead of the worktree's, dropping the worktree prefix. Both
+   reported success, so nothing surfaced until a line count disagreed with
+   itself. Main's working tree was left dirty while on main. Repaired after
+   verifying the diff was purely additive and entirely mine.
+   LESSON: an edit reporting success proves the write landed SOMEWHERE, not
+   where intended. Read back through the same relative path the shell uses.
+
+2. Mis-encoded the operator's own words. He had ruled that a finished step
+   "folds to a plain line as the next opens, keeping its place among the
+   five"; I read "place" as a slot in a shared line and briefed a sower to
+   put all five steps on ONE line and abbreviate them to fit. Corrected only
+   when he restated it. The wrong reading also generated a fake defect
+   (truncation) that then needed its own fix instruction.
+
+3. Took "dimmer" to mean darker. He meant subdued — lighter, less saturated,
+   or hue-harmonising. Applied wrongly across the whole colour model before
+   he corrected it. Cost a rework of both grade-3 colour functions.
+
+4. DRIP-FED REFINEMENTS one per turn until he stopped me: "this is going to
+   go back and fourth so eithr we drop this discussion or we very accurately
+   agree". The fix was to state a complete specification once and build it.
+   This is the single most expensive process failure of the session.
+
+5. Deprioritised the original requirement. Keyboard navigation — "the FIRST
+   thing i asked" — was treated as an end-of-round check rather than the
+   feature's point, and was found completely broken.
+
+6. Relaunched a pane with a relative path, which silently started the wrong
+   copy because the pane's working directory was not the worktree.
+
+WHAT WENT RIGHT AND SHOULD BE REPEATED
+
+- Diagnosing the failed acceptance check before building anything: the defect
+  was not in the code but in which code was on screen.
+- Verifying every sub-agent's claim by looking at the running system. Three
+  reports were wrong or overstated: a "fixed" gardener identity that changed
+  nothing, fixtures described as live that were tool-generated, and a green
+  suite hiding a navigation feature that had never worked.
+- Refusing to present done at any point where the evidence had not touched
+  the running thing.
