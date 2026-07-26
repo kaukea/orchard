@@ -27,3 +27,11 @@ Every real defect was found by looking at the running system, not by the
 test count. Four tests on this branch encoded defects as contracts; the
 suite was green against a sidebar rendering an empty pane. The operator's
 static-fixture rule found a genuine bug within minutes of being stated.
+
+7. Ran landscaper-teardown.sh from inside the worktree; its $wt path is
+   relative to the MAIN checkout, so the .return-window marker appeared
+   absent and I reported the spawn handoff as incomplete. The marker was
+   correct and present (%0, default socket). Check your own invocation
+   before concluding another agent's work is broken. Worth a follow-up: the
+   script could resolve its repo root rather than assume the caller's cwd,
+   since a landscaper closing itself is necessarily inside its worktree.
