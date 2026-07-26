@@ -433,6 +433,35 @@ present and derives one from the project hue when it is absent or
 unparseable — a permanent fallback rather than a stopgap, since a feature
 without an assigned colour must still render sensibly.
 
+## [2026-07-27 CEST] Decision-NNN: Never combine the dim attribute with a custom background
+#sidebar #curses #terminal #rendering
+
+Found by reproduction and bisection while building the colour bands:
+combining ncurses' `A_DIM` with a custom truecolor pair, immediately followed
+by another custom-pair draw on the next row, CORRUPTS that next row's
+background. Dimming is therefore never expressed as an attribute over a
+non-default background; the foreground is blended toward its own background
+in RGB instead, which produces the same visual result without the state
+corruption.
+
+A second rendering trap was found alongside it: writing to a window's literal
+last column with `addstr` triggers an auto-wrap cursor advance that can
+desync the colour state for the row drawn next. That one cell is written with
+`insch` instead, which cannot safely carry wide or multi-byte characters and
+so is used only for a space.
+
+Both are the same class of defect — a drawing call whose damage lands on the
+NEXT row rather than its own — which is why they were only ever visible as an
+unexplained band of wrong colour somewhere else on screen, and why they were
+found by bisection rather than by reading the code.
+
+Related tooling note, recorded because it cost real time: `tmux capture-pane
+-e` does NOT faithfully reconstruct a busy multi-pair row in this environment,
+even under the project's two-stable-captures protocol. It also emits a colour
+only when it CHANGES, so a row inheriting the previous row's background shows
+no escape at all and reads as unstyled. Ground truth for what was actually
+drawn is the raw `pipe-pane` byte stream.
+
 ## [2026-07-26 CEST] Decision-NNN: A feedback surface must run current code
 #tooling #feedback #sidebar #mount
 
@@ -453,9 +482,40 @@ code to gather feedback produces a verdict about the wrong artifact.
 
 ## Result
 
-Result: in-progress — the live eyeball FAILED on 2026-07-26 and the feature
-is reopened. The previous `done` staged below the fold was premature and is
-withdrawn.
+Result: built and automatically tested; AWAITING THE OPERATOR'S LIVE EYEBALL,
+which is the agreed acceptance gate and cannot be self-approved.
+
+ROUND 2 SUMMARY. The round-1 eyeball failed against code that was never on
+screen — the mounted pane runs the fleet-vendored renderer pinned to `main`,
+so the branch build was never what the operator judged. Diagnosing that
+uncovered the deeper problem: the display's model was wrong, not just its
+wiring. A feature spans many tasks, a task passes through five steps, and
+agents sit on steps — where the renderer had three levels and minted one row
+per session.
+
+WHAT SHIPPED, 9 commits this session on `f/sidebar-empty-rows`:
+- `fcb9fe5` role-to-step map in each agent charter's frontmatter
+- `924a5a8` the mount runs the caller's own checkout, not the vendored copy
+- `53629e1` the task travels in every message's identity; marker schema 2
+- `d7a471d` a session's role survives a resume
+- `49724aa` the six-level tree, the three collapses, revival, fail-open
+- `fc9d1c8` the round's rulings staged as decisions
+- `1e3dd99` static-data fixtures pinning the transport contract
+- `f3e4425` depth by background colour, three-grade lineage, computed contrast
+- `7408b6f` a task says its own name again
+
+TESTED: `python3 -m pytest tests/ -q` -> 436 passed, 6 subtests passed (416
+at the start of round 2). Plus live verification against the real bus, not
+fixtures — see the section above: the branch transport wrote the new identity
+shape and upgraded the live marker to schema 2 in place; `courier.py init`
+turned this session's zero-byte heartbeat into a persisted role and
+`identity_of()` then resolved it with the environment variable unset; and the
+rebuilt renderer was read back off the operator's own 32-column pane, with the
+open step's dimmed block confirmed spanning its agent and subagent lines by
+decoding the raw escape sequences.
+
+NOT SELF-APPROVED. Ruling 1's bar is rows AND hue on a live pane, judged by
+the operator. That judgement is his alone and has not been given.
 
 ### LIVE EYEBALL FAILURE, 2026-07-26 (operator verdict, verbatim)
 
@@ -471,6 +531,45 @@ withdrawn.
 
 So the marker half of the build works and the EVENT half does not: structure
 paints, liveness does not. Diagnosis in progress; nothing below is closed.
+
+### Live verification performed against the real bus (round 2)
+
+Not fixtures — the branch code exercised against `/run/user/1000/orchard`:
+
+- THE TRANSPORT WROTE THE NEW SHAPE LIVE. A real status event posted through
+  this worktree's `orchard_topic.py` carries the full identity block —
+  `agent`, `feature`, `feature_name`, `name` as the feature_name alias,
+  `task`, `task_name`, `parent` — and the same post UPGRADED the live
+  `sidebar-empty-rows.marker` IN PLACE to `"schema": 2` with its `tasks[]`
+  entry keyed on `task`. The pre-upgrade schema-1 marker was captured as a
+  fixture first and is now the only surviving record of the retired shape.
+- THE RESUME FIX WORKS ON THE LIVE BUS. `python3 tools/courier.py init` run
+  against this session turned its zero-byte heartbeat marker into
+  `{"role": "landscaper"}`, and with `CLAUDE_CODE_AGENT` UNSET,
+  `courier.identity_of()` then resolves `agent_type: landscaper` from that
+  file rather than from the environment. That is the whole mechanism proven
+  end to end, not asserted.
+- BOTH RENDERERS COMPARED SIDE BY SIDE at identical pane size (32x51) against
+  the identical tree, which is how the failed eyeball was diagnosed: the
+  vendored main build drew three lines and no activity; the branch build drew
+  the rows with live activity subscripts, the stage dots, and the header's
+  exact `ESC[48;2;44;24;62m` purple, updating on a status posted two minutes
+  earlier without a restart.
+
+### OPERATOR ACTION — repairing the running gardener
+
+The gardener session is anonymous on the bus because it was RESUMED and a
+resume drops the role. It cannot be repaired automatically: no record was
+ever written for it. From the gardener's own pane, once this branch is
+merged and synced:
+
+    python3 tools/courier.py init --agent gardener
+
+This persists its role under its session id, and every later event from that
+session — and any future resume of it — then carries an identity. Verified by
+the equivalent run against this landscaper session, above. Until it is run,
+the renderer's fail-open path and the parent-chain derivation are what keep
+the gardener's header and its subagents on screen.
 
 ### Prior build state, retained for reference (NOT a result)
 
@@ -781,6 +880,31 @@ Rolling — folded from each sower's `ingest_increment` as it returned.
   because silently inventing a placement is the defect class this work
   exists to remove.
 
+- ✨ Every message travelling between agents now records which task is being
+  worked, not just which feature. A feature used to mean a single task worked
+  by a single session, so naming the feature was enough; a feature now spans
+  several tasks and more than one is commonly in progress at once, so the
+  feature alone no longer says what anyone is doing. Which stage of the
+  pipeline that task has reached is deliberately not sent, being a question
+  about how work is displayed rather than about what happened.
+
+- 🐛 A session that is resumed no longer forgets what it is. Resuming carries
+  over the session's identifier but not the role it was started with, so every
+  resumed agent became anonymous and the helpers it delegated to were
+  attributed to nobody and never appeared. The role is now remembered against
+  the session's identifier the first time it is known, and a session may also
+  declare its own, which it can always do because it has just read its own
+  charter. A declared role never displaces one the system supplied, and a
+  remembered one is never overwritten — least of all by an absence, which is
+  exactly what a resume looks like.
+
+- ✅ The message transport's contract is now pinned by tests reading bytes
+  captured from the running system, alongside the tests that exercise the code
+  against itself. A test whose input is produced by the same code that reads it
+  can only show the two agree, and this project has twice shipped a green suite
+  over behaviour that was visibly broken. The retired message shape was captured
+  before it was replaced and survives as the only record of it.
+
 - 🐛 The sidebar pane mounted into an agent's window now runs the renderer
   belonging to the checkout that asked for it, falling back unchanged to the
   shared copy for any repository that carries no renderer of its own. It
@@ -788,6 +912,37 @@ Rolling — folded from each sower's `ingest_increment` as it returned.
   branch changing the sidebar could not be seen working in the window of the
   session building it — a full round of review was spent judging code that
   was never on screen.
+
+- 💄 Depth in the sidebar is now shown by background colour rather than by
+  indentation, which had been competing with the content for the same cells:
+  at the width the pane actually runs, an agent's line has twenty-four usable
+  columns and its status and role together are exactly twenty-four. The
+  project header is a gradient, a feature is a band painted the whole line, a
+  task hangs a coloured bar off it, and each of the five steps takes a full
+  centred line of its own. An open step and everything inside it share a
+  dimmer shade, so the work being done reads as one block with findable edges.
+  Colour also carries lineage: a task's colour comes from within its feature's
+  range and its content's from the task's, so which feature a task belongs to
+  is legible without reading a word. Task colours are unordered by design —
+  they say identity, never sequence or priority — and derive from the task
+  itself, so they look arbitrary while staying identical across a redraw, a
+  restart, or two panes showing the same tree. Every foreground and background
+  pairing is checked against the published contrast ratios, and the foreground
+  is what moves until it passes; the background never gives way, being the
+  part that carries meaning. A feature may pin its own base colour, and one
+  that does not simply derives from its project's.
+
+- 🐛 Three things the display was losing are lost no longer: all five steps
+  keep their own line instead of being abbreviated away under narrow width, a
+  status keeps the role that produced it by shortening the status text first,
+  and a task says its own name rather than being blanked for resembling its
+  feature's — an empty-looking row being the very appearance this work exists
+  to remove.
+
+- 🐛 A genuine terminal rendering defect was found and fixed on the way:
+  combining dim text with a custom background could corrupt the background of
+  the row drawn immediately afterwards, so dimming is now done by blending the
+  colour itself rather than by asking the terminal to dim it.
 
 ## Readme delta
 
@@ -798,13 +953,30 @@ tree directly." That is now incomplete in a way a reader would notice, since
 telemetry archives after 120 minutes and the sidebar visibly keeps drawing
 work whose telemetry is gone. Replace that sentence with:
 
-> The fleet sidebar (`tools/sidebar.py`) is the one renderer. It reads the
-> topic tree for what is happening now, and a per-feature task marker for
-> what remains when nothing is: telemetry archives after 120 minutes, but a
-> task stays on screen until the runtime tree itself clears. Agents and the
-> subagents they spin up appear while they work and disappear when they
-> finish — the task is the one that does not. Run it with `--once` to paint
-> a single frame and exit, or `--dump` for a plain-text view of the model.
+> The fleet sidebar (`tools/sidebar.py`) is the one renderer, and it draws a
+> tree: a project holds features, a feature holds the tasks it spans, a task
+> passes through five steps, and the agents working a step appear inside it
+> with the subagents they spawn. It reads the topic tree for what is
+> happening now and a per-feature marker for what remains when nothing is —
+> telemetry archives after 120 minutes, but a task stays on screen until the
+> runtime tree itself clears. Agents and subagents are live only and
+> disappear when they finish; the task is the one that does not. Nothing else
+> is ever hidden: a task folds away once all of it is complete, a feature
+> once all its tasks are, and a new task reopens a finished feature with its
+> completed siblings alongside it.
+>
+> Which step a task is on is worked out from the role of whoever is working
+> it, using the `step:` field in that agent's own charter, so nothing about
+> pipeline stages travels on the message bus. Depth is shown by background
+> colour rather than indentation, and colour is inherited from project to
+> feature to task, so which feature a task belongs to can be seen without
+> reading a word.
+>
+> The pane runs the renderer belonging to the checkout that mounted it,
+> falling back to the shared copy for a repository that has none of its own —
+> so a branch changing the sidebar can be seen working in the window of the
+> session building it. Run it with `--once` to paint a single frame and exit,
+> or `--dump` for a plain-text view of the model.
 
 Rationale for surfacing `--once`/`--dump`: `--once` is a new user-facing
 flag, and the pair is the only way to inspect the sidebar without a live
