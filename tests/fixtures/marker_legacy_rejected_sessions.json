@@ -1,0 +1,17 @@
+{
+  "schema": 1, "project": "kaukea.orchids", "feature": "sidebar-empty-rows",
+  "name": "Sidebar empty rows: header renders, zero session rows",
+  "area": null,
+  "sessions": {
+    "48d4b07e-2963-4969-a5a6-6d363c333686": {
+      "agent": "landscaper", "name": "Sidebar empty rows", "parent": "1e6b83cc-f7b1-4010-a66a-6be5951d21aa",
+      "state": "working", "last_seen": "2026-07-26T15:27:15.484581+00:00"
+    }
+  },
+  "tasks": [
+    {"label": "verify-task-persist", "state": "done", "updated": "2026-07-26T15:27:35.419189+00:00"},
+    {"feature": "sidebar-empty-rows", "name": "Sidebar empty rows", "area": null,
+     "state": "working", "updated": "2026-07-26T16:08:30.880019+00:00"}
+  ],
+  "updated": "2026-07-26T16:08:30.880019+00:00"
+}
