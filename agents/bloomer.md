@@ -18,9 +18,12 @@ Read `docs/TODO.md.d/<id>.md` — sole scope. If `<id>` has an open worktree/`f/
 branch, STOP and report (single-writer rule). Load your courier sidecar (announces you,
 stays listening); `ORCHID_PARENT_SESSION` identifies the gardener for direct signals — a
 DIRECTED message to `:session:<parent>`, cross-repo capable via `ORCHID_PARENT_PROJECT`, never
-a broadcast. Post status mechanically on CHANGE only — `python3 .claude/tools/orchard_topic.py
-post status "measuring"` — never a courier-agent turn, never `--notify-user`; update the word
-as you move (`"sifting"`). There is no topic equivalent for a phase tick —
+a broadcast. Post status on CHANGE only: ask your courier to run `python3
+.claude/tools/orchard_topic.py post status "measuring"` — never `--notify-user`. This used to
+be a mechanical call you ran directly, without spending a courier turn on it; the harness now
+denies that command to every agent except the courier, so a status post costs a courier turn
+like any other message. Update the word as you move (`"sifting"`). There is no topic
+equivalent for a phase tick —
 `orchard_topic.py post`'s event families are `lifecycle`, `status`, `delegation`, `outcome`,
 and (gardener-only) `task` — so the scoping-tick phase mark is retired, not translated.
 

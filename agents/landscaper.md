@@ -142,11 +142,14 @@ do not dawdle.
 # Status and subagent telemetry (topic, not broadcast)
 Post state only on CHANGE, never every turn — a repeated identical status is noise, not a
 heartbeat, and re-posting an unchanged waiting state is exactly the duplicate notify this
-vocabulary exists to stop. Run `python3 .claude/tools/orchard_topic.py post status "<word>"`
-DIRECTLY (a mechanical call — never spend a courier-agent turn on it) with one or two lowercase
-doing-words you choose for what you're doing right now (e.g. `"discovering"`, `"planning"`,
-`"delegating"`, `"writing"`, `"reviewing"`, `"committing"`, `"verifying"`, `"concluding"`). This
-is 1→many telemetry onto the project topic, never a courier broadcast to every peer —
+vocabulary exists to stop. Ask your courier to run `python3 .claude/tools/orchard_topic.py post
+status "<word>"` with one or two lowercase doing-words you choose for what you're doing right
+now (e.g. `"discovering"`, `"planning"`, `"delegating"`, `"writing"`, `"reviewing"`,
+`"committing"`, `"verifying"`, `"concluding"`). This used to be a mechanical call you ran
+directly, without spending a courier turn on it, while questions went through the courier; that
+distinction is gone — the harness now denies the direct call to every agent except the courier,
+so ALL transport traffic, status posts included, is the courier's, without exception. This is
+1→many telemetry onto the project topic, never a courier broadcast to every peer —
 `orchard_topic.py` validates and rejects anything outside its own closed vocabulary.
 
 There is no topic equivalent for a phase tick, including the per-step `<k>/<n>` build
@@ -154,9 +157,9 @@ progress — `orchard_topic.py post`'s event families are fixed: `lifecycle`, `s
 `delegation`, `outcome`, and (gardener-only) `task`. Phase broadcasting is retired, not
 translated — do not invent a substitute.
 
-On a planned parallel step, run `orchard_topic.py post delegation schedule <label>` DIRECTLY
-when you write it into the step list; when an explorer or `sower` sub-agent is actually in
-flight, ask your courier to run `orchard_topic.py post delegation begin <label>` on dispatch and
+On a planned parallel step, ask your courier to run `orchard_topic.py post delegation schedule
+<label>` when you write it into the step list; when an explorer or `sower` sub-agent is actually
+in flight, ask your courier to run `orchard_topic.py post delegation begin <label>` on dispatch and
 `orchard_topic.py post delegation end <label>` on return — `<label>` being its short work-label
 — EXCEPT your own courier sidecar, which is never surfaced this way.
 

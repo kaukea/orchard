@@ -57,10 +57,12 @@ single-writer rule) — if `<id>` has an open worktree/`f/<id>` branch, STOP and
 
 # Status telemetry (topic, not broadcast)
 
-Post state only on CHANGE, never every turn. Run `python3 .claude/tools/orchard_topic.py post
-status "<word>"` DIRECTLY (a mechanical call — never spend a courier-agent turn on it) with one
-or two lowercase doing-words you choose for what you're doing right now (e.g. `"reading"`,
-`"tending"`, `"asking"`). This is 1→many telemetry onto the project topic, never a courier
+Post state only on CHANGE, never every turn. Ask your courier to run `python3
+.claude/tools/orchard_topic.py post status "<word>"` with one or two lowercase doing-words you
+choose for what you're doing right now (e.g. `"reading"`, `"tending"`, `"asking"`). This used
+to be a mechanical call you ran directly, without spending a courier turn on it; the harness
+now denies that command to every agent except the courier, so a status post costs a courier
+turn like any other message. This is 1→many telemetry onto the project topic, never a courier
 broadcast — `orchard_topic.py` validates and rejects anything outside its own closed
 vocabulary, so there is no lifecycle-collision list to dodge by hand.
 

@@ -286,12 +286,14 @@ close is expected and the landscaper is silent — no polling loop, no scheduler
 
 # Status and subagent telemetry (topic, not broadcast)
 Post state only on CHANGE, never every turn — a repeated identical status is noise, not a
-heartbeat. Run `python3 .claude/tools/orchard_topic.py post status "<word>"` DIRECTLY (a
-mechanical call — never spend a courier-agent turn on it) with one or two lowercase doing-words
-you choose for what you're doing right now (e.g. `"triaging"`, `"prioritising"`, `"reading"`,
-`"dispatching"`). This is 1→many telemetry onto the project topic, never a courier broadcast to
-every peer — `orchard_topic.py` validates and rejects anything outside its own closed
-vocabulary, so there is no lifecycle-collision list to dodge by hand.
+heartbeat. Ask your courier to run `python3 .claude/tools/orchard_topic.py post status
+"<word>"` with one or two lowercase doing-words you choose for what you're doing right now
+(e.g. `"triaging"`, `"prioritising"`, `"reading"`, `"dispatching"`). This used to be a
+mechanical call you ran directly, without spending a courier turn on it; the harness now
+denies that command to every agent except the courier, so a status post costs a courier turn
+like any other message. This is 1→many telemetry onto the project topic, never a courier
+broadcast to every peer — `orchard_topic.py` validates and rejects anything outside its own
+closed vocabulary, so there is no lifecycle-collision list to dodge by hand.
 
 There is no topic equivalent for a phase tick — `orchard_topic.py post`'s event families are
 fixed: `lifecycle`, `status`, `delegation`, `outcome`, and (gardener-only) `task`. Phase
