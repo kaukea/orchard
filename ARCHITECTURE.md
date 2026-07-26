@@ -85,6 +85,26 @@ session ──spawns──> courier sidecar (shares parent's session id)
   topics/<name>}/`, named `<sessionid>.<ts>.json` (+ `<sessionid>.marker`).
   tmpfs, per-user, and crosses repos by construction — this replaces the
   repo-scoped `the-works/courier/<sid>/` inboxes as the transport of record.
+- **Task markers** = a SECOND marker kind, `<feature-id>.marker`, written by
+  the same delivery path whenever an envelope's identity names a feature. It
+  is JSON, not a touch-file, and records the TASK — name, area, state —
+  merged and never truncated. Events are what is happening now and are
+  archived after 120 minutes; the task marker is what remains when nothing
+  is happening, and it is what lets the sidebar keep drawing a task whose
+  events are long gone. It holds nothing agent-shaped. Pruning archives a
+  node rather than deleting it (`_archived/`), so moving the file back
+  rehydrates the feature; no pruner exists yet, by operator ruling.
+- **The display hierarchy is five levels**: `project -> feature -> task ->
+  agents -> subagents`. An agent is an own-session delegation sent to
+  complete a task, and there may be several in sequence — a sower, a valve
+  alongside it, a cleanup — before the work returns to the orchestrator. A
+  subagent is what an agent spins up. Agents and subagents are EPHEMERAL:
+  they display while working and stop displaying when they finish, and so do
+  an agent's name, model and activity, which are a subscript of the task
+  rather than something that outlives it. The task is the one that does not
+  disappear. This is why the renderer sources agent and subagent rows live
+  from events only, and takes task rows from the marker: a task whose agents
+  have all stopped stays on screen as a single row carrying its final state.
 - **Addressing**: `From` is always `:session:<id>`. `To` is `:session:<id>` (a
   directed message — a cross-project delivery is gated by the
   `~/.config/orchids/sidebar-registry.json` allowlist) or `:topic:<name>`. A

@@ -204,6 +204,49 @@ from identical data. A supervising loop is mandatory: the watcher is
 restarted, or the polling fallback takes over, and the display never stops
 following the tree while the process lives.
 
+## Result
+
+Result: done (pending the operator's live eyeball, which is the agreed
+acceptance gate and cannot be self-approved)
+
+- branch: `f/sidebar-empty-rows`
+- base: `53aae9d` (local `main`)
+- tested: `python3 -m pytest tests/ -q` → **375 passed, 3 subtests passed**
+  (332 at branch point; 43 added). Plus direct verification against the LIVE
+  orchard tree, not only fixtures: both on-screen states reproduced by
+  removing every event file and reading what the real renderer drew, and a
+  real one-shot frame captured from a throwaway tmux pane via `pipe-pane`,
+  confirming the header's exact `48:2::44:24:62` purple.
+- NOT self-approved: the standing check (a) gate is the operator's live
+  eyeball on a running sidebar. Automated coverage is met; the visual gate
+  is his.
+
+### Follow-ups returned to the gardener — NOT written to the board here
+
+1. `:session:` routing prefix leaks into filenames. The live tree holds
+   `:session:<uuid>.marker` and `:session:<uuid>.<ts>.json`, and inside
+   those envelopes `to` reads `:session::session:<uuid>` — the prefix
+   applied twice. One session therefore owns two markers and is counted
+   twice by anything enumerating the tree. This is a transport addressing
+   defect, out of scope here, and it was deliberately not fixed.
+2. Features carry no `area`. The marker has an `area` field that is always
+   null because nothing in the repository supplies one: zero of 139
+   sidecars carry an `area:` key, and the Functionality|Areas table in
+   ARCHITECTURE.md is a decisions taxonomy enforced by `board_lint.py`, not
+   a per-task attribute. Populating it needs an operator ruling per feature,
+   so it was left dormant rather than invented.
+3. The marker pruner is undesigned, by operator ruling — retention is until
+   restart, and when to prune is a later user-interface concern. Only the
+   archive-and-move-back shape ships.
+4. Residual dead keys in an in-place-upgraded marker: a marker first written
+   by the earlier shape retains top-level `name`/`area` keys after the merge
+   strips `sessions` and the rejected task entries. They are unread and
+   harmless, and the file self-clears with the tmpfs, so this was left
+   alone rather than chased.
+5. `_fold_sessions`'s latest-snapshot-wins fold is sensitive to `iterdir()`
+   order when two events of one session tie on mtime. Pre-existing, noticed
+   while testing, not touched.
+
 ## Changelog entry
 
 Staged verbatim for the gardener to place at ingest (Decision-034).
@@ -260,7 +303,38 @@ Rolling — folded from each sower's `ingest_increment` as it returned.
 
 ## Readme delta
 
-(pending — determined at close)
+Staged for the gardener to apply via the `readme-sync` skill at ingest
+(Decision-034). README.md currently ends its transport section with "The
+fleet sidebar (`tools/sidebar.py`) is the one renderer, reading the topic
+tree directly." That is now incomplete in a way a reader would notice, since
+telemetry archives after 120 minutes and the sidebar visibly keeps drawing
+work whose telemetry is gone. Replace that sentence with:
+
+> The fleet sidebar (`tools/sidebar.py`) is the one renderer. It reads the
+> topic tree for what is happening now, and a per-feature task marker for
+> what remains when nothing is: telemetry archives after 120 minutes, but a
+> task stays on screen until the runtime tree itself clears. Agents and the
+> subagents they spin up appear while they work and disappear when they
+> finish — the task is the one that does not. Run it with `--once` to paint
+> a single frame and exit, or `--dump` for a plain-text view of the model.
+
+Rationale for surfacing `--once`/`--dump`: `--once` is a new user-facing
+flag, and the pair is the only way to inspect the sidebar without a live
+pane, which is what anyone debugging it reaches for first.
+
+## Architecture determination
+
+UPDATED on-branch (ARCHITECTURE.md, the message-courier section). Two
+triggers fired, both from `AGENTS.shared.md`:
+- "how modules or components connect (data flow, wiring)" — the transport
+  now writes a durable task marker that the renderer reads, a new connection
+  between the two that did not exist; the file previously described the
+  transport as "flat message files plus a per-session marker", which no
+  longer covers what is on disk.
+- "a cross-cutting pattern" — the five-level display hierarchy
+  (project → feature → task → agents → subagents) governs what any renderer
+  may treat as durable, and was nowhere in the document.
+Both are now recorded there.
 
 ## Migration determination
 
