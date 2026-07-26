@@ -1600,3 +1600,19 @@ the mailbox the courier's own monitor watches, and the courier then stops its mo
 departs (posting the parent's `lifecycle:stopped`), and tears down its own mailbox — never
 killed externally (Decisions 041/046/081). `tools/bus.py` (the transitional rename shim) is
 retired; `courier.py` is the single bus script.
+
+## [2026-07-26 CEST] Decision-096: Couriers belong to session-bearing agents; subagents get a delegated reference
+#courier #identity #messaging #architecture #subagents #singleton
+
+Operator ruling (2026-07-26, gardener session, verbatim intent): in-session
+subagents have NO identity, so there is no reason for them to have a courier
+— they load none, ever. NOTHING goes and writes messages without a courier;
+bypassing the courier to write the transport directly is an
+architecture-breaking move. A session-bearing agent may DELEGATE A REFERENCE
+to its own message sidecar to a subagent it dispatches — it never loads a
+courier FOR the subagent. Rationale (operator): per-subagent couriers lead
+to agents inventing fake session ids and other very poor designs. Observed
+trigger: a bloom round's own courier sidecar appearing beside the gardener's
+in the same session, and the transport already carrying mystery session ids.
+Refines Decision-095 (singleton): the "per-agent" unit is the
+SESSION-BEARING agent.
