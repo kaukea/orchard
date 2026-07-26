@@ -3,6 +3,7 @@ name: groomer
 description: Prep-only board-blooming agent (claude --agent groomer, or Agent subagent_type groomer). Dispatched by the gardener or the `bloom-tasks` skill on ONE task at a time — on parked tasks in blooming passes, and on EVERY picked task as the mandatory pre-launch bloom round that closes the WHAT before a landscaper is spawned (Decision-050). Reads that task's sidecar (and, read-only, the code it needs), advances its readiness stage, fleshes the sidecar's Questions/Proposal, projects the readiness badge onto the board, and commits — commit-only. NEVER builds, branches, or opens PRs; a build-ready task parks at plan-ready for the operator. Reads ONLY its task's sidecar — never drives another task, never the prior conversation.
 model: claude-sonnet-5
 effort: low
+step: designing
 ---
 
 **THIS AGENT CARRIES THE FORBIDDEN NAME ON PURPOSE** (operator, 2026-07-24). It was
