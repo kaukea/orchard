@@ -345,7 +345,24 @@ THE DESIGN.
    skipped courier but not withhold anything.
 6. SUBSCRIPTION FILTERING. Recipients declare what they want relayed, so
    couriers stop paying to hand up traffic nobody asked for. Inbound side of
-   the same economy.
+   the same economy. INFLOW IS EXPLICITLY NOT TOUCHED IN THE FIRST ROUND
+   (operator: "not touch the inflow just yet") — the outbox and its flush
+   are the whole of it; filtering follows separately.
+7. PRIORITY PER SUBJECT — urgent / normal / low (operator design). Each
+   subject in the closed corpus carries one of the three, and the priority
+   decides WHEN THE OUTBOX FLUSHES rather than whether a message is sent.
+   That is what converts the outbox from a queue into the token lever: an
+   urgent message triggers a sweep, a normal one rides the next scheduled
+   sweep, and a low one waits for a sweep it does not itself justify. The
+   flush policy, not the message rate, becomes the thing that determines
+   cost — and the operator sets it.
+   Worked implication: status telemetry, the highest-frequency traffic in
+   the fleet and the reason this economy matters, is LOW — nothing waits on
+   it, and a stale status word costs nothing. A question to the operator, or
+   a lifecycle signal a parent is blocked on, is URGENT and must not sit in
+   a queue waiting for a sweep. Assigning the three across the 22-subject
+   corpus is a design step of its own and should be done with the operator
+   rather than inferred, since it is the actual policy.
 
 POSTURE, ruling this round: "I'm working on the working assumption that you
 cannot completely forbid... just make it either too much work for the agent
