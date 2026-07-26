@@ -322,11 +322,26 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         for raw_line in lines:
             self.assertFalse(_has_basic_red(raw_line), raw_line)
 
-    def test_working_band_animates_while_other_lines_stay_static(self) -> None:
+    def test_active_step_kitt_sweep_animates_while_other_lines_stay_static(self) -> None:
+        # The animation moved off the feature row (operator correction,
+        # 2026-07-26): a feature row's own full-width band is now STATIC
+        # (see FeatureRowLayoutTests/the module docstring) -- the frame's
+        # one per-frame motion is the KITT sweep on the accordion's ACTIVE
+        # step line. "landscaper" (orch-arch's identity) maps to the
+        # "building" step (agents/landscaper.md's `step:` frontmatter), so
+        # that is the line expected to move here.
         self._launch()
         first = self._capture_when_ready()
         stripped_first = [_strip_sgr(line) for line in first]
-        working_idx = next(
+        active_step_text = sidebar.small_caps("building")
+        # Both orch-arch (working) and sign-arch (idle/stopped) map to the
+        # same "building" step via the shared landscaper->step charter, so
+        # the text appears twice -- ONLY the genuinely live one (orchids,
+        # sorted first) should carry the sweep (`Row.live`, `_step_row`).
+        step_indices = [i for i, l in enumerate(stripped_first) if active_step_text in l]
+        self.assertEqual(len(step_indices), 2, stripped_first)
+        working_idx, idle_step_idx = step_indices
+        feature_idx = next(
             i for i, l in enumerate(stripped_first)
             if "⠧" in l and "sidebar titling" in l
         )
@@ -346,7 +361,12 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
 
         self.assertEqual(len(first), len(second))
         self.assertNotEqual(first[working_idx], second[working_idx],
-                             "working row never changed within the poll window")
+                             "active step row never changed within the poll window")
+        # The feature row itself, the idle repo's own "building" step, and
+        # every other line stay static; only the live active step's own
+        # KITT sweep moves.
+        self.assertEqual(first[feature_idx], second[feature_idx])
+        self.assertEqual(first[idle_step_idx], second[idle_step_idx])
         for i in range(len(first)):
             if i == working_idx:
                 continue

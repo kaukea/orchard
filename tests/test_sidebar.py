@@ -20,7 +20,6 @@ open-question badges, phase ticks, tokens/dollars, age/worked.
 
 Runs under both `python3 -m unittest discover` and `pytest`; stdlib only.
 """
-import curses
 import itertools
 import json
 import os
@@ -1049,6 +1048,43 @@ class FlattenTests(unittest.TestCase):
         self.assertEqual(agent_row.role, "landscaper")
         self.assertEqual(sub_row.label, "sub-a")
 
+    def test_accordion_is_five_lines_one_per_step_not_one_summary_line(self):
+        # operator correction, 2026-07-26: "collapse keeps the line, it
+        # doesn't go to the previous one" -- a task's five steps are FIVE
+        # rows, always, in PHASES order, each keeping its own place whether
+        # done/active/todo; only the active step's agent nests beneath it.
+        agent = _agent(step="building")
+        steps = [
+            sidebar.Step(name=name, state=state,
+                         agents=[agent] if state == "active" else [])
+            for name, state in sidebar.phase_states("building")
+        ]
+        task = sidebar.Task(task_id="t", name="a task", status="working", steps=steps)
+        feature = sidebar.Feature(feature_id="f", name="a feature", status="working",
+                                   tasks=[task])
+        fleet = sidebar.Fleet(repos=[
+            sidebar.Repo(name="r", activity="", status="working",
+                         waiting_on_operator=False, features=[feature]),
+        ])
+        rows = sidebar.flatten(fleet)
+        accordion_rows = [r for r in rows if r.kind == "accordion"]
+        self.assertEqual(len(accordion_rows), 5)
+        self.assertEqual(
+            [sidebar.small_caps(p) in r.label for p, r in zip(sidebar.PHASES, accordion_rows)],
+            [True] * 5,
+        )
+        # only the active ("building") step's row is followed immediately
+        # by an agent row, nested one level deeper than it.
+        active_idx = next(i for i, p in enumerate(sidebar.PHASES) if p == "building")
+        active_row = accordion_rows[active_idx]
+        self.assertTrue(active_row.live)
+        for i, row in enumerate(accordion_rows):
+            if i != active_idx:
+                self.assertFalse(row.live)
+        agent_row_idx = rows.index(active_row) + 1
+        self.assertEqual(rows[agent_row_idx].kind, "agent")
+        self.assertEqual(rows[agent_row_idx].depth, active_row.depth + 1)
+
     def test_feature_row_carries_no_owning_repo_progress_pct(self):
         # progress_pct has no source in this grammar and stays None — the
         # field is still carried on Row (kind == "feature" only) so the
@@ -1127,17 +1163,19 @@ class RenderLinesTests(unittest.TestCase):
         self.assertIn("feat one", lines[1])
         self.assertNotIn("repoA/feat one", lines[1])
 
-    def test_done_feature_row_shows_check_and_percentage(self):
-        # progress_pct has no source in this grammar (see module docstring)
-        # and always renders "0%" — an acknowledged, in-docstring gap, not
-        # something this test pretends is otherwise.
+    def test_done_feature_row_shows_check_and_no_percentage(self):
+        # operator ruling, 2026-07-26: a feature carries no percentage of
+        # its own any more (progress belongs to the task, drawn there as
+        # its fill circle) -- the vestigial "0%" this row used to always
+        # show (no source ever populated it) is gone outright, not fixed
+        # to read "100%".
         fleet = sidebar.Fleet(repos=[
             sidebar.Repo(name="r", activity="", status="idle", waiting_on_operator=False,
                          features=[sidebar.Feature(feature_id="f", name="f", status="done")]),
         ])
         lines = sidebar.render_lines(fleet, width=64)
         self.assertIn(sidebar.STATUS_EMOJI["done"], lines[1])
-        self.assertIn("0%", lines[1])
+        self.assertNotIn("%", lines[1])
 
     def test_done_and_failed_glyphs_are_distinct(self):
         # explicit operator correction: never the same encoding for done vs
@@ -1746,59 +1784,56 @@ class TaskGlyphTests(unittest.TestCase):
 
 
 class TaskColourExclusivityTests(unittest.TestCase):
-    """sidebar-empty-rows step 7: `curses.color_pair(n)` bits from two
-    different sources OR together into a third, arbitrary pair -- exactly
-    one source may contribute colour-pair bits to a row. A terminal task's
-    status colour must win over its agent-identity tint; a working task
-    keeps the agent tint so concurrent tasks stay distinguishable."""
+    """sidebar-empty-rows step 7 / operator colour-lineage spec, 2026-07-26:
+    a terminal subagent's own done/failed colour always wins over the
+    generic block tint -- the exclusivity rule now lives in
+    `_SUBAGENT_TERMINAL_FG` rather than a curses colour-pair id, since a
+    subagent row's real background is now the RGB open-block colour
+    (`_open_block_bg`), painted through `_ColourCache` -- which needs a
+    real initscr()'d terminal, so exact curses attrs are asserted by the
+    tmux frame tests (test_sidebar_frame.py) instead; this class covers
+    the exclusivity DECISION as a pure function."""
 
-    DONE_PAIR = 1 << 8
-    FAILED_PAIR = 2 << 8
-    WORKING_PAIR = 3 << 8
-    AGENT_PAIR_A = 4 << 8
-    AGENT_PAIR_B = 5 << 8
+    def test_done_and_failed_subagent_colours_are_distinct(self):
+        self.assertNotEqual(sidebar._SUBAGENT_TERMINAL_FG["done"],
+                             sidebar._SUBAGENT_TERMINAL_FG["failed"])
 
-    def _draw_one(self, row, agent_colours):
-        colour_pairs = {
-            "working": self.WORKING_PAIR,
-            "done": self.DONE_PAIR | curses.A_BOLD,
-            "failed": self.FAILED_PAIR | curses.A_BOLD,
-        }
-        stdscr = _StubStdscr()
-        sidebar._draw(stdscr, [row], selected=-1, offset=0,
-                       colour_pairs=colour_pairs, agent_colours=agent_colours,
-                       colours=None, tick=0, has_moved=False)
-        self.assertEqual(len(stdscr.calls), 1)
-        return stdscr.calls[0][3]
+    def test_done_subagent_uses_the_done_task_colour(self):
+        self.assertEqual(sidebar._SUBAGENT_TERMINAL_FG["done"], sidebar.GREEN)
 
-    def test_working_task_uses_its_agent_colour_pair(self):
-        row = _subagent_row("working", label="sub-a")
-        agent_colours = [self.AGENT_PAIR_A, self.AGENT_PAIR_B]
-        with mock.patch.object(sidebar, "_agent_colour_index", return_value=0):
-            attr = self._draw_one(row, agent_colours)
-        self.assertEqual(attr & 0xFF00, self.AGENT_PAIR_A)
+    def test_working_subagent_has_no_terminal_override(self):
+        # a live (scheduled/doing) subagent falls through to the generic
+        # TEXT colour, not done's green nor failed's muted -- it hasn't
+        # reached either terminal state.
+        self.assertNotIn("working", sidebar._SUBAGENT_TERMINAL_FG)
+        self.assertNotIn("scheduled", sidebar._SUBAGENT_TERMINAL_FG)
+        self.assertNotIn("doing", sidebar._SUBAGENT_TERMINAL_FG)
 
-    def test_done_task_uses_the_done_pair_not_a_combined_one(self):
-        row = _subagent_row("done", label="sub-a")
-        agent_colours = [self.AGENT_PAIR_A, self.AGENT_PAIR_B]
-        with mock.patch.object(sidebar, "_agent_colour_index", return_value=0):
-            attr = self._draw_one(row, agent_colours)
-        self.assertEqual(attr & 0xFF00, self.DONE_PAIR)
-        self.assertNotEqual(attr & 0xFF00, self.DONE_PAIR | self.AGENT_PAIR_A)
 
-    def test_done_and_working_rows_resolve_to_different_pair_bits(self):
-        agent_colours = [self.AGENT_PAIR_A]
-        with mock.patch.object(sidebar, "_agent_colour_index", return_value=0):
-            done_attr = self._draw_one(_subagent_row("done"), agent_colours)
-            working_attr = self._draw_one(_subagent_row("working"), agent_colours)
-        self.assertNotEqual(done_attr & 0xFF00, working_attr & 0xFF00)
+class OpenBlockColourTests(unittest.TestCase):
+    """`_open_block_bg` -- the dimmed background an agent/subagent row
+    nested under an OPEN step shares with that step's own line (operator
+    ruling, 2026-07-26: "the whole open region... shares that dimmer
+    background... as one contiguous block")."""
 
-    def test_failed_task_uses_the_failed_pair_not_the_agent_pair(self):
-        row = _subagent_row("failed", label="sub-a")
-        agent_colours = [self.AGENT_PAIR_A]
-        with mock.patch.object(sidebar, "_agent_colour_index", return_value=0):
-            attr = self._draw_one(row, agent_colours)
-        self.assertEqual(attr & 0xFF00, self.FAILED_PAIR)
+    def test_none_task_colour_yields_no_block_background(self):
+        row = sidebar.Row(depth=4, kind="agent", target="t", label="x", status="working",
+                           task_colour=None)
+        self.assertIsNone(sidebar._open_block_bg(row))
+
+    def test_task_colour_yields_a_darkened_block_background(self):
+        task_colour = (0xAC, 0x88, 0xD6)
+        row = sidebar.Row(depth=4, kind="agent", target="t", label="x", status="working",
+                           task_colour=task_colour)
+        bg = sidebar._open_block_bg(row)
+        self.assertIsNotNone(bg)
+        # darker than the task's own colour -- and distinct from the flat
+        # (non-open) content colour a collapsed step would use, so the
+        # open block has a findable edge (operator ruling, 2026-07-26: "a
+        # dim so subtle it cannot be located defeats the entire purpose").
+        self.assertLess(sidebar.relative_luminance(bg), sidebar.relative_luminance(task_colour))
+        content = sidebar.content_colour_base(task_colour)
+        self.assertLess(sidebar.relative_luminance(bg), sidebar.relative_luminance(content))
 
 
 if __name__ == "__main__":

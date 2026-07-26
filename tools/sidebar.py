@@ -27,9 +27,12 @@ SESSION and could draw one feature twice): project (repo header) -> feature
     record would win, were one ever posted) and FAILS OPEN: a missing or
     unmapped role still renders, just without a step (`Task.
     unstepped_agents`) — see `_agent_from_rec`. A task's five steps render
-    as ONE line, the ACCORDION (`_accordion_row`, always small caps, never
-    two lines) — only the currently active step's agents (and their
-    subagents) render as their own rows beneath it.
+    as FIVE LINES, the ACCORDION (`_step_row`, always small caps) — a
+    collapse keeps its own line rather than folding into the previous one
+    (operator correction, 2026-07-26: "collapse keeps the line, it doesn't
+    go to the previous one"), so done/todo steps each stay a single bare
+    line and only the currently active step's agents (and their subagents)
+    nest beneath it, one level deeper.
   - A SESSION WITH EVENTS ALWAYS RENDERS SOMETHING (operator ruling,
     2026-07-26): missing identity, unknown/unmapped role, absent feature or
     task — none of these drop a session or orphan the subagents registered
@@ -60,12 +63,22 @@ PRESENTATION IS "VERY COMPACT FORM" BY DEFAULT (operator ruling, 2026-07-26,
 supersedes an earlier, roomier draft): 2 columns of indent per tree level
 (`INDENT_UNIT`); an agent's identity renders as a quote with its role riding
 the SAME line by default (`identity_block`'s "tight" rung) — the quote
-NEVER drops, but role/model degrade before a second line is ever spent (see
+NEVER drops, and now nor does the role once it has any: the ACTIVITY text is
+what shrinks first (ellipsised) to make room for it (`tight_line_parts`),
+role/model still degrade before a second line is ever spent (see
 `_agent_expansion_fits`); a task row's progress is a single right-aligned
 quarter-fill circle (`_task_progress_glyph`, `○ ◔ ◑ ◕ ●` for 0-4 of 5 steps
 done — 5-of-5 is a terminal task and collapses instead), never a column-
-hungry percentage, and the task NAME is what ellipsises under width
-pressure, never the circle.
+hungry percentage — the numeric-percentage variant stays deliberately
+unbuilt (operator ruling, 2026-07-26: "the circle is unconditional") — and
+the task NAME is what ellipsises under width pressure, never the circle. A
+FEATURE carries no percentage of its own any more either (progress is the
+task's alone) — its own row is instead set apart from a task's by a
+full-width dimmer background band (curses-only, `_draw_feature_row`), which
+is the load-bearing fix for a feature and its sole same-named task
+otherwise reading as identical text; that same task row also drops its own
+name when it is the feature's only task and shares its exact name, showing
+its progress circle and accordion instead of repeating the string.
 
 NOT ported (no source in the new event grammar — orchard_topic.py's `post`
 verbs are lifecycle/status/delegation/outcome/task only — so nothing below
@@ -90,22 +103,37 @@ blessed `approved-frame.ans` are the source of truth for every glyph, RGB
 constant, spacing and animation rule below. Every constant named after the
 mock (REPO_HUES, MODEL_TIERS, HEADER_FG/TEXT/MUTED/GREEN/GREEN_SOFT/AMBER/
 FILL_GREEN, PHASES, ROLE_EMOJI, LOCATION_BADGES, NBSP) is copied from it
-verbatim, not re-derived. Known licensed deviation (recorded debt, out of
-scope for this step): the KITT-scanner bright-core-with-trailing-fade polish
-— this port implements the mock's lifted-band sweep as-is, un-polished.
+verbatim, not re-derived.
+
+The project header is a left-to-right GRADIENT (`header_gradient_colour`)
+from the repo's own exact hue (`REPO_HUES[repo]["header"]`, column 0 —
+still resolved through the direct-colour terminfo path, never approximated
+away) toward that same repo's dimmer `"fill"` hue — no new palette, the
+gradient is built purely from the triple the repo already owns. A feature
+row's full-width dimmer background band uses that same `"fill"` hue,
+unconditionally (every feature row, any status — it is what makes a feature
+visibly not a task, see `_draw_feature_row`). The accordion's ACTIVE step
+carries the KITT sweep — a bright cell with a two-column fading tail,
+sweeping the same bidirectional triangular wave (`band_position`/
+`band_span`, reused from the pre-existing lifted-band geometry) across a
+small fixed-width dot strip beside its label (`_draw_step_row`) — the
+liveness signal for "this is the step actually moving right now". Known
+licensed deviation (recorded debt): true per-pixel gradient fade on the
+KITT core, beyond the 3-step bright/soft/muted banding implemented here.
 
 ANIMATION IS STATE-DRIVEN, curses-only: the pure text path (`render_lines`)
 never animates — a repeated render of the same Fleet is byte-identical. In
-curses, a "working" feature row carries the frame's ONE per-frame motion —
-the bidirectional lifted-band sweep under its name (mock docstring: "only
-the live feature line animates in place") — driven by a tick counter from
-the main loop's getch cadence. The row's own status glyph is a STATIC
-accent-coloured member of the spinner family (`STATUS_EMOJI["working"]`),
-deliberately not cycled any more: cycling it too would be a second, redundant
-motion the mock never shows.
+curses, the accordion's ACTIVE step line carries the frame's ONE per-frame
+motion — the KITT sweep described above — driven by a tick counter from the
+main loop's getch cadence. A missing/impossible frame (no width for the
+strip) never costs the step line itself: it still renders its label
+statically and legibly, same as any other row (ANIMATION CAVEAT). The
+feature row's own status glyph is a STATIC accent-coloured member of the
+spinner family (`STATUS_EMOJI["working"]`), never cycled.
 
-Every other row (repo header, done/todo feature, subagent, courier) stays a
-single fixed-width character, unconditionally the same on every frame.
+Every other row (repo header text, done/todo feature glyph, subagent,
+courier) stays a single fixed-width character, unconditionally the same on
+every frame.
 
 CLI:
   python3 tools/sidebar.py          run the interactive curses UI
@@ -121,6 +149,7 @@ STDLIB ONLY.
 """
 from __future__ import annotations
 
+import colorsys
 import curses
 import functools
 import json
@@ -280,6 +309,22 @@ def lerp(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[in
     return tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
+def _muted_toward(
+    fg: tuple[int, int, int], bg: tuple[int, int, int], amount: float = 0.35,
+) -> tuple[int, int, int]:
+    """A visually "thinner"/less prominent variant of `fg` against `bg`,
+    blended in RGB space — NEVER via `curses.A_DIM`. Verified against a
+    real capture (2026-07-26): combining `A_DIM` with a custom truecolor
+    pair, followed by ANOTHER custom-pair draw on a later row, silently
+    drops that later row's own background on this tmux+ncurses build
+    (reproduced in isolation — a bare two-line repro with `A_DIM` on row 0
+    corrupted row 1's background even though row 1 never used `A_DIM`
+    itself). No code path in this file combines `A_DIM` with a non-default
+    background any more; every "muted" look below is this function
+    instead."""
+    return lerp(fg, bg, amount)
+
+
 def _derive_fallback_hue(header: tuple[int, int, int]) -> dict[str, tuple[int, int, int]]:
     """A repo not in `REPO_HUES` still needs a fill/accent, not just a
     header — derived deterministically from its fallback header colour so
@@ -303,6 +348,248 @@ def _repo_hue(repo_name: str) -> dict[str, tuple[int, int, int]]:
     return _derive_fallback_hue(FALLBACK_HEADER_HUES[index])
 
 
+def header_gradient_colour(
+    hue: dict[str, tuple[int, int, int]], col: int, width: int,
+) -> tuple[int, int, int]:
+    """The header background colour at column `col` of `width` — a
+    left-to-right gradient built FROM the repo's own exact hue triple
+    (operator spec, 2026-07-26: no new palette), column 0 the exact
+    `hue["header"]` — the same RGB a direct-colour terminal must still
+    resolve — fading toward that repo's own dimmer `hue["fill"]` at the
+    far edge."""
+    if width <= 1:
+        return hue["header"]
+    return lerp(hue["header"], hue["fill"], col / (width - 1))
+
+
+# --------------------------------------------------------------------------
+# Three-grade colour lineage (operator spec, 2026-07-26): FEATURE colour
+# base (grade 1, the project's own hue) -> TASK colour base (grade 2, Ct —
+# each task its OWN colour, allocated within its feature's hue RANGE, never
+# the global palette) -> CONTENT colour base (grade 3, derived in turn from
+# the task's own colour — the step bands and the dimmed open-stage block).
+# Colour therefore encodes lineage: which feature a task belongs to, and
+# which task a block of content belongs to, readable without a word.
+#
+# Contrast is COMPUTED (WCAG 2.x relative-luminance ratio), never
+# hardcoded/eyeballed — `ensure_contrast` pushes a foreground toward
+# white/black until it clears the guideline minimum against whatever
+# background it actually landed on, since the feature hue (and everything
+# derived from it) varies per project/task. This runs BEFORE the RGB
+# reaches `_ColourCache`, so a low-colour terminal's own xterm-256/
+# attribute-only degradation (already handled there) still applies on top
+# of an already-readable pair — contrast compliance takes precedence over
+# fidelity to the derived hue, never abandoned by discarding the
+# background instead (the background carries the structural/lineage
+# meaning; the foreground is what yields).
+# --------------------------------------------------------------------------
+
+_CONTRAST_MIN_TEXT = 4.5  # WCAG "normal text"
+_CONTRAST_MIN_MARK = 3.0  # WCAG "large/bold text" and meaningful non-text marks
+
+
+def _srgb_channel_linear(c: int) -> float:
+    c = c / 255
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def relative_luminance(rgb: tuple[int, int, int]) -> float:
+    r, g, b = (_srgb_channel_linear(c) for c in rgb)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast_ratio(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
+    la, lb = relative_luminance(a), relative_luminance(b)
+    lighter, darker = max(la, lb), min(la, lb)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def ensure_contrast(
+    fg: tuple[int, int, int], bg: tuple[int, int, int], min_ratio: float,
+    *, step: float = 0.06, max_steps: int = 16,
+) -> tuple[int, int, int]:
+    """`fg`, pushed toward WHITE or BLACK (whichever the background is
+    farther from) in small steps until it clears `min_ratio` against `bg`
+    — never raises, never abandons `bg` (operator ruling, 2026-07-26: the
+    derived background carries structural meaning — fix the foreground,
+    not the background). Best-effort (near-white/near-black) if
+    `max_steps` isn't enough, rather than shipping something unreadable."""
+    if contrast_ratio(fg, bg) >= min_ratio:
+        return fg
+    target = WHITE if relative_luminance(bg) < 0.5 else (0, 0, 0)
+    candidate = fg
+    for _ in range(max_steps):
+        candidate = lerp(candidate, target, step)
+        if contrast_ratio(candidate, bg) >= min_ratio:
+            break
+    return candidate
+
+
+# A feature's own assigned base colour, when one has been decided at
+# feature-creation time and persisted to its sidecar (operator spec,
+# 2026-07-26: "feature base colours can be decided in advance... kept in
+# repo and synchronized with github") — READ side only; assigning and
+# writing one is board/board_gh.py territory, a separate task, never this
+# module. `docs/TODO.md.d/<feature_id>.md`'s frontmatter is the same
+# `---\nkey: value\n---` shape `_parse_frontmatter` already reads for
+# agent charters (`load_role_step_map`) — reused, not reinvented. Only
+# reachable for the repo this tool itself runs from (same limitation
+# `_AGENTS_DIR` already has for `agents/*.md`): a sidebar rendering
+# ANOTHER repo's features has no path to that repo's own checkout, so it
+# always falls back for them — the correct, honest "absent" state, not a
+# broken promise.
+_FEATURE_SIDECAR_DIR = Path(__file__).resolve().parent.parent / "docs" / "TODO.md.d"
+_HEX_COLOUR_RE = re.compile(r"^#?([0-9a-fA-F]{6})$")
+
+
+def _parse_hex_colour(text: str | None) -> tuple[int, int, int] | None:
+    """A plain hex string ("#AC88D6" or "AC88D6") -> RGB — the minimum
+    form a human assigning a colour by hand would write (operator spec,
+    2026-07-26). None for anything else, never a raise — malformed is the
+    same as absent."""
+    if not text:
+        return None
+    match = _HEX_COLOUR_RE.match(text.strip())
+    if not match:
+        return None
+    hex6 = match.group(1)
+    return (int(hex6[0:2], 16), int(hex6[2:4], 16), int(hex6[4:6], 16))
+
+
+def _read_feature_base_colour(
+    feature_id: str, sidecar_dir: Path | None = None,
+) -> tuple[int, int, int] | None:
+    """A feature's own base colour from its sidecar's frontmatter
+    (`colour:`/`color:`, either spelling), or None — missing file,
+    missing key, or an unparseable value are all the SAME "absent" result
+    (fail-open, same rule as everywhere else in this module): the caller
+    then derives grade 1 from the project hue exactly as when no colour
+    was ever assigned, never a raise, never a blank row."""
+    sidecar_dir = sidecar_dir or _FEATURE_SIDECAR_DIR
+    try:
+        text = (sidecar_dir / f"{feature_id}.md").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    fields = _parse_frontmatter(text)
+    return _parse_hex_colour(fields.get("colour") or fields.get("color"))
+
+
+def feature_colour_base(
+    hue: dict[str, tuple[int, int, int]], feature_id: str | None = None,
+    sidecar_dir: Path | None = None,
+) -> tuple[int, int, int]:
+    """Grade 1 — a feature's own ASSIGNED base colour when its sidecar has
+    one (`_read_feature_base_colour`); otherwise the project's own hue
+    (`_repo_hue`'s `"accent"`, the mock-canonical bright per-repo colour),
+    exactly as before this field existed — the fallback is not a stopgap:
+    every feature renders sensibly whether or not a colour has been
+    assigned (true for all of them today, since nothing writes one yet).
+    The orchid palette is the starting point, not a closed set — any
+    repo's own hue (pinned or hash-derived, see `_repo_hue`), or any
+    feature's own assigned colour, works here identically."""
+    if feature_id is not None:
+        assigned = _read_feature_base_colour(feature_id, sidecar_dir)
+        if assigned is not None:
+            return assigned
+    return hue["accent"]
+
+
+def _hash_unit(key: str, salt: int = 0) -> float:
+    """A stable [0, 1) pseudo-random value from `key` (+ `salt`, so a
+    perceptual collision can be deterministically re-rolled) — crc32, the
+    same stable-hash primitive already used elsewhere in this file
+    (`_repo_hue`/`_agent_colour_index`), never `random`: a task's colour
+    must be identical across every redraw, a restart, and two panes
+    rendering the same tree at once, not merely "look random once"."""
+    return (zlib.crc32(f"{key}:{salt}".encode("utf-8")) % 10_000) / 10_000
+
+
+# "Goes with purple, not ordered by it" (operator, 2026-07-26): a task's
+# colour carries identity only, never sequence/age/progress — so it is a
+# deterministic-but-unordered point within a hue/lightness/saturation
+# JITTER around the feature's own accent, not a ramp or an evenly-spaced
+# rotation. Wide enough to read as "randomly its own", tight enough to
+# still sit in the same family as the feature's hue.
+_TASK_HUE_JITTER_DEGREES = 70.0
+_TASK_LIGHTNESS_JITTER = 0.08
+_TASK_SATURATION_JITTER = 0.12
+
+# The rejection test's "too close to an already-assigned sibling" floor
+# (Euclidean, see `_perceptual_distance`) and how many deterministic
+# re-rolls (hash salted 1, 2, 3…) are tried before just accepting the best
+# candidate seen. This bounds a loop, not an allocation — 16.7M colours is
+# never actually short on room (operator ruling, 2026-07-26: tasks never
+# reopen, so a completed task's colour is simply available for reuse by no
+# longer appearing in `sibling_colours`; no eviction/recycling bookkeeping).
+_TASK_MIN_PERCEPTUAL_DISTANCE = 40.0
+_TASK_COLOUR_MAX_REROLLS = 8
+
+
+def _perceptual_distance(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
+    """A cheap, good-enough Euclidean distance in sRGB space for the
+    rejection test — not a full CIEDE2000 delta-E (out of scope for a test
+    that only needs "close enough to collide" vs. "clearly different"),
+    weighted with the same luma emphasis WCAG's own coefficients use so a
+    green/red difference isn't under-counted relative to blue."""
+    dr, dg, db = (a[i] - b[i] for i in range(3))
+    return (0.30 * dr ** 2 + 0.59 * dg ** 2 + 0.11 * db ** 2) ** 0.5
+
+
+def task_colour_base(
+    hue: dict[str, tuple[int, int, int]], feature_id: str, task_id: str,
+    sibling_colours: list[tuple[int, int, int]] = (),
+    sidecar_dir: Path | None = None,
+) -> tuple[int, int, int]:
+    """Grade 2 — this task's own colour (Ct): a deterministic, UNORDERED
+    point drawn from within its feature's own harmonious range around
+    grade 1 (`feature_colour_base(hue, feature_id)` — the feature's own
+    assigned sidecar colour when it has one, else derived from the
+    project hue) (operator ruling, 2026-07-26: "they have different
+    colours randomly selected not ordered... whatever falls off the tree
+    that goes with purple" — no ramp, no ordinal meaning). Hashed from the
+    task's own id (`_hash_unit`) so it is STABLE for the task's whole
+    life. Rejected and deterministically re-rolled against
+    `sibling_colours` — every OTHER currently-open task's own already-
+    assigned Ct in the same feature — until `_TASK_MIN_PERCEPTUAL_
+    DISTANCE` is cleared or `_TASK_COLOUR_MAX_REROLLS` is spent (accepts
+    the least-close candidate tried rather than looping forever)."""
+    r0, g0, b0 = (c / 255 for c in feature_colour_base(hue, feature_id, sidecar_dir))
+    h0, l0, s0 = colorsys.rgb_to_hls(r0, g0, b0)
+
+    best_candidate, best_distance = None, -1.0
+    for salt in range(_TASK_COLOUR_MAX_REROLLS):
+        h = (h0 + (_hash_unit(task_id, salt) - 0.5) * (_TASK_HUE_JITTER_DEGREES / 360.0)) % 1.0
+        l = min(max(l0 + (_hash_unit(f"{task_id}:l", salt) - 0.5) * _TASK_LIGHTNESS_JITTER, 0.0), 1.0)
+        s = min(max(s0 + (_hash_unit(f"{task_id}:s", salt) - 0.5) * _TASK_SATURATION_JITTER, 0.0), 1.0)
+        r, g, b = colorsys.hls_to_rgb(h, l, s)
+        candidate = (round(r * 255), round(g * 255), round(b * 255))
+        distance = min(
+            (_perceptual_distance(candidate, sib) for sib in sibling_colours), default=float("inf"),
+        )
+        if distance >= _TASK_MIN_PERCEPTUAL_DISTANCE:
+            return candidate
+        if distance > best_distance:
+            best_candidate, best_distance = candidate, distance
+    return best_candidate
+
+
+def content_colour_base(task_colour: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Grade 3 — a step band's flat background (C), darkened from the
+    TASK's own colour (grade 2) rather than from the project hue directly
+    — content visibly belongs to its task the same way a task visibly
+    belongs to its feature."""
+    return lerp(task_colour, (0, 0, 0), 0.55)
+
+
+def open_stage_colour(content_colour: tuple[int, int, int]) -> tuple[int, int, int]:
+    """The OPEN step's own block background — a further, deliberately
+    LARGE darkening step past `content_colour_base` (operator ruling,
+    2026-07-26: "a dim so subtle it cannot be located defeats the entire
+    purpose" — the point is a findable bounding box, not a tasteful
+    gradation)."""
+    return lerp(content_colour, (0, 0, 0), 0.5)
+
+
 # --------------------------------------------------------------------------
 # Small caps (phase label, e.g. "building" -> "ʙᴜɪʟᴅɪɴɢ")
 # --------------------------------------------------------------------------
@@ -322,8 +609,16 @@ def small_caps(text: str) -> str:
 
 
 # --------------------------------------------------------------------------
-# Progress fill / band sweep geometry (pure — the curses draw path is the
-# only caller that turns these into actual screen colour)
+# Progress fill / band sweep geometry (pure). `band_position`/`band_span`
+# are still live — the accordion's ACTIVE step KITT sweep reuses them
+# (`_draw_step_row`). `fill_cols`/`band_travel_end`/`progress_column_colour`/
+# `band_column_colour`/`lifted_fill_colour` were the feature row's own
+# percentage-driven partial fill, superseded 2026-07-26 by its unconditional
+# full-width band (a feature carries no percentage any more) — kept defined
+# and exercised by their own tests (same "stays defined, no live caller"
+# pattern as `footer_lines`/`done_footer_line`) rather than deleted, since
+# the geometry is exactly reusable if a percentage-driven fill is ever
+# wanted again.
 # --------------------------------------------------------------------------
 
 def fill_cols(pct: int, width: int) -> int:
@@ -487,14 +782,37 @@ def _attribution_line(role: str | None, model: str | None, width: int) -> str:
     return f"— {role_text}{tail}"
 
 
-def tight_line_role(role: str | None, quote: str, width: int) -> str | None:
-    """The role text for the collapsed 1-line form ("<quote> — <role>"), or
-    None once even that combined length overflows `width` — the caller
-    then falls back to the bare quote (role is the LAST thing to drop,
-    2026-07-26: it says WHO is working, wanted before the model is)."""
+# The floor a squeezed quote is still allowed to shrink to in the tight
+# rung (`tight_line_parts`) before the role is given up on — small enough
+# to still read as "a quote" (opening mark, at least one character,
+# ellipsis/closing mark), never zero.
+_MIN_TIGHT_QUOTE_WIDTH = 3
+
+
+def tight_line_parts(activity: str, role: str | None, width: int) -> tuple[str, str]:
+    """(shown_quote, tail) for the tight (1-line) rung — `tail` is
+    "" — <role>" once there is room for it, "" only once even a
+    minimally-squeezed quote plus the role still doesn't fit `width`
+    (operator ruling, 2026-07-26: "the role is the LAST thing to drop,
+    never the first" — the ACTIVITY text is what shrinks first, via
+    `_truncate`'s ellipsis, to make room for the role, not the other way
+    round). `shown_quote` alone is never truncated below the plain quote
+    unless making room for the role actually requires it."""
+    quote = f"“{activity}”"
+    if not role:
+        return _truncate(quote, width), ""
     role_text = _role_text(role)
-    combined_width = _cell_width(quote) + _cell_width(" — ") + _cell_width(role_text)
-    return role_text if combined_width <= width else None
+    tail = f" — {role_text}"
+    quote_budget = width - _cell_width(tail)
+    if quote_budget >= _MIN_TIGHT_QUOTE_WIDTH:
+        shown_quote = quote if _cell_width(quote) <= quote_budget else _truncate(quote, quote_budget)
+        return shown_quote, tail
+    return _truncate(quote, width), ""
+
+
+def tight_line(activity: str, role: str | None, width: int) -> str:
+    quote, tail = tight_line_parts(activity, role, width)
+    return f"{quote}{tail}"
 
 
 def identity_block(activity: str, role: str | None, model: str | None,
@@ -505,14 +823,13 @@ def identity_block(activity: str, role: str | None, model: str | None,
     column budget. Lines are returned WITHOUT the row's own depth indent —
     callers prepend that uniformly; the attribution line's extra
     `_ATTRIBUTION_INDENT` beneath the quote is already baked in."""
-    quote = f"“{activity}”"
     if not role:
-        return [quote]
+        return [f"“{activity}”"]
     if expand:
+        quote = f"“{activity}”"
         attribution_width = max(width - len(_ATTRIBUTION_INDENT), 0)
         return [quote, _ATTRIBUTION_INDENT + _attribution_line(role, model, attribution_width)]
-    role_text = tight_line_role(role, quote, width)
-    return [f"{quote} — {role_text}"] if role_text else [quote]
+    return [tight_line(activity, role, width)]
 
 
 def _agent_expansion_fits(rows: list[Row], height: int | None) -> bool:
@@ -1344,50 +1661,72 @@ class Row:
     activity: str = field(default="")  # kind == "agent" only — the "doing" text
     role: str | None = field(default=None)  # kind == "agent" only
     model: str | None = field(default=None)  # kind == "agent" only
+    # kind == "accordion" only — the ACTIVE step's own KITT sweep gate: true
+    # only when it also has a genuinely "working" agent, not merely the
+    # furthest-along position (an idle/stale/stopped agent's step is still
+    # positionally "active" but has nothing live to signal — see
+    # `_step_row`/`_draw_step_row`).
+    live: bool = field(default=False)
+    # kind in {"task", "accordion", "agent", "subagent"} only — this row's
+    # owning OPEN task's own already-allocated colour (Ct, grade 2,
+    # `task_colour_base`, computed once per feature by `_assign_task_
+    # colours` so every row under the same task agrees on it). None for a
+    # terminal task's own row (it uses a fixed done/failed colour instead,
+    # see `_draw_task_row`) and for repo/feature rows (not applicable).
+    task_colour: tuple[int, int, int] | None = field(default=None)
 
 
-def _agent_row(agent: Agent, target: str, depth: int) -> Row:
+def _agent_row(agent: Agent, target: str, depth: int, task_colour: tuple[int, int, int] | None) -> Row:
     return Row(depth=depth, kind="agent", target=target, label=agent.role or agent.session_id,
+               task_colour=task_colour,
                status=agent.status, activity=agent.activity, role=agent.role, model=agent.model)
 
 
-def _subagent_row(sub: Subagent, target: str, depth: int) -> Row:
-    return Row(depth=depth, kind="subagent", target=target, label=sub.label, status=sub.state)
+def _subagent_row(
+    sub: Subagent, target: str, depth: int, task_colour: tuple[int, int, int] | None,
+) -> Row:
+    return Row(depth=depth, kind="subagent", target=target, label=sub.label, status=sub.state,
+               task_colour=task_colour)
 
 
-def _agent_and_subagent_rows(agent: Agent, target: str, depth: int) -> list[Row]:
+def _agent_and_subagent_rows(
+    agent: Agent, target: str, depth: int, task_colour: tuple[int, int, int] | None,
+) -> list[Row]:
     """An agent's identity-line row, followed by its own subagent rows at
     the SAME depth (rule 6, 2026-07-26: a subagent hangs under the STEP its
-    parent agent is on, not one level deeper than its parent)."""
-    return [_agent_row(agent, target, depth), *(
-        _subagent_row(sub, target, depth) for sub in agent.subagents
+    parent agent is on, not one level deeper than its parent) — both carry
+    the owning task's own colour (`task_colour`, Ct), so the curses draw
+    path can paint them on the same open-block background as their step
+    without any further lookup."""
+    return [_agent_row(agent, target, depth, task_colour), *(
+        _subagent_row(sub, target, depth, task_colour) for sub in agent.subagents
     )]
 
 
-# Per-step glyph inside the accordion line — done/active carry a mark,
-# todo is bare (small caps alone already reads as "not reached yet" next
-# to a marked neighbour, and a bare glyph column would just add noise).
+# Per-step glyph — done/active carry a mark, todo is bare (small caps alone
+# already reads as "not reached yet" next to a marked neighbour, and a bare
+# glyph column would just add noise).
 _ACCORDION_STEP_GLYPH = {"done": "✓", "active": "⠧", "todo": ""}
 
 
-def _accordion_text(steps: list[Step]) -> str:
-    """The task's own five-step accordion, ALWAYS one line, ALWAYS small
-    caps (operator ruling, 2026-07-26: "the accordion is one line, always,
-    for all five steps — it never wraps and never becomes two"; "steps
-    small caps always") — nothing about a step's state is ever dropped to
-    save space, only rendered compactly."""
-    words = []
-    for step in steps:
-        glyph = _ACCORDION_STEP_GLYPH[step.state]
-        word = small_caps(step.name)
-        words.append(f"{glyph} {word}" if glyph else word)
-    return " · ".join(words)
-
-
-def _accordion_row(task: Task, target: str, depth: int) -> Row:
-    active = next((s for s in task.steps if s.state == "active"), None)
-    return Row(depth=depth, kind="accordion", target=target, label=_accordion_text(task.steps),
-               status="working" if active else "idle")
+def _step_row(
+    step: Step, target: str, depth: int, task_colour: tuple[int, int, int] | None,
+) -> Row:
+    """One line of the task's five-step accordion — a COLLAPSE KEEPS ITS
+    OWN LINE (operator correction, 2026-07-26: "collapse keeps the line,
+    it doesn't go to the previous one"), so every one of the five states
+    (done/active/todo) gets its own row, always small caps, keeping its
+    place among the five rather than folding into a shared summary line.
+    The active step's agents (and their subagents) are the caller's job to
+    nest beneath this row, one level deeper (see `_task_rows`) — this row
+    itself only ever carries the step's own name and mark, plus the owning
+    task's own colour (`task_colour`, Ct) its grade-3 content colour is
+    derived from (`content_colour_base`, curses-only)."""
+    glyph = _ACCORDION_STEP_GLYPH[step.state]
+    label = f"{glyph} {small_caps(step.name)}" if glyph else small_caps(step.name)
+    live = step.state == "active" and any(a.status == "working" for a in step.agents)
+    return Row(depth=depth, kind="accordion", target=target, label=label, status=step.state,
+               live=live, task_colour=task_colour)
 
 
 # 0..4 completed-of-five steps -> a quarter-fill circle (operator ruling,
@@ -1411,26 +1750,34 @@ def _task_progress_glyph(task: Task) -> str | None:
     return _PROGRESS_CIRCLES[min(done, len(_PROGRESS_CIRCLES) - 1)]
 
 
-def _task_rows(task: Task, target: str, depth: int) -> list[Row]:
+def _task_rows(
+    task: Task, target: str, depth: int, hide_name: bool = False,
+    task_colour: tuple[int, int, int] | None = None,
+) -> list[Row]:
     """A task's own row (name left-aligned, its progress circle right-
-    aligned — `_task_progress_glyph`), plus — while it is still open — its
-    one-line step accordion (`_accordion_row`), the currently active
-    step's agents (and their subagents), and any role-unmapped agent
-    (fails open, rendered directly under the task, no step to nest it in).
-    A terminal task (`TERMINAL_TASK_STATUSES`) folds: its own row is all
-    that shows."""
-    rows = [Row(depth=depth, kind="task", target=target, label=task.name, status=task.status,
-                 progress_glyph=_task_progress_glyph(task))]
+    aligned — `_task_progress_glyph`; `hide_name` blanks the name instead
+    of repeating the feature's own — see `_feature_rows`; `task_colour` is
+    this task's own already-allocated Ct, grade 2, computed once per
+    feature by `_assign_task_colours` — None for a terminal task, which
+    uses a fixed done/failed colour instead, curses-only), plus — while it
+    is still open — its five-line step accordion (`_step_row`, one row per
+    `PHASES` entry, each keeping its own place whether done/active/todo),
+    the active step's agents (and their subagents) nested one level deeper
+    than that step's own row, and any role-unmapped agent (fails open,
+    rendered directly under the task, no step to nest it in). A terminal
+    task (`TERMINAL_TASK_STATUSES`) folds: its own row is all that shows."""
+    name = "" if hide_name else task.name
+    rows = [Row(depth=depth, kind="task", target=target, label=name, status=task.status,
+                 progress_glyph=_task_progress_glyph(task), task_colour=task_colour)]
     if task.status in TERMINAL_TASK_STATUSES:
         return rows
-    if task.steps:
-        rows.append(_accordion_row(task, target, depth + 1))
-        active = next((s for s in task.steps if s.state == "active"), None)
-        if active:
-            for agent in active.agents:
-                rows.extend(_agent_and_subagent_rows(agent, target, depth + 2))
+    for step in task.steps:
+        rows.append(_step_row(step, target, depth + 1, task_colour))
+        if step.state == "active":
+            for agent in step.agents:
+                rows.extend(_agent_and_subagent_rows(agent, target, depth + 2, task_colour))
     for agent in task.unstepped_agents:
-        rows.extend(_agent_and_subagent_rows(agent, target, depth + 1))
+        rows.extend(_agent_and_subagent_rows(agent, target, depth + 1, task_colour))
     return rows
 
 
@@ -1443,14 +1790,53 @@ def _feature_collapsed(feature: Feature) -> bool:
     return bool(feature.tasks) and all(t.status == "done" for t in feature.tasks)
 
 
+def _hide_solo_task_name(feature: Feature) -> bool:
+    """True when a feature holds exactly ONE task whose name equals the
+    feature's own — the original complaint this fixes (operator, 2026-07-
+    26: "first two lines have the same text, not sure which one is which")
+    still held once the feature row alone got its full-width band, because
+    the marker gives a solo task the feature's own name verbatim. Only
+    while the task is still OPEN: a terminal task's own row is the only
+    thing left to show for it, so blanking its name there would leave a
+    genuinely empty-looking line instead of the progress circle + accordion
+    this is meant to reveal in its place. Never applied when the names
+    genuinely differ, or when there is more than one task."""
+    if len(feature.tasks) != 1:
+        return False
+    task = feature.tasks[0]
+    return task.name == feature.name and task.status not in TERMINAL_TASK_STATUSES
+
+
+def _assign_task_colours(
+    hue: dict[str, tuple[int, int, int]], feature_id: str, tasks: list[Task],
+) -> dict[str, tuple[int, int, int]]:
+    """One Ct (grade 2, `task_colour_base`) per OPEN task in `tasks`,
+    keyed by `task_id` — computed together, in order, so each new task's
+    rejection test sees every sibling already assigned so far (a terminal
+    task never enters or occupies this: it uses its own fixed done/failed
+    colour instead, and freeing up its slot for reuse needs no bookkeeping
+    beyond simply not being in this dict, operator ruling 2026-07-26)."""
+    assigned: dict[str, tuple[int, int, int]] = {}
+    for task in tasks:
+        if task.status in TERMINAL_TASK_STATUSES:
+            continue
+        assigned[task.task_id] = task_colour_base(
+            hue, feature_id, task.task_id, list(assigned.values()),
+        )
+    return assigned
+
+
 def _feature_rows(feature: Feature, repo_name: str, depth: int) -> list[Row]:
     target = f"{repo_name}{TARGET_SEPARATOR}{feature.name}"
     rows = [Row(depth=depth, kind="feature", target=target, label=feature.name,
                  status=feature.status, repo_name=repo_name)]
     if _feature_collapsed(feature):
         return rows
+    hide_name = _hide_solo_task_name(feature)
+    task_colours = _assign_task_colours(_repo_hue(repo_name), feature.feature_id, feature.tasks)
     for task in feature.tasks:
-        rows.extend(_task_rows(task, target, depth + 1))
+        rows.extend(_task_rows(task, target, depth + 1, hide_name=hide_name,
+                                task_colour=task_colours.get(task.task_id)))
     return rows
 
 
@@ -1506,8 +1892,11 @@ def _row_text(row: Row) -> str:
     if row.kind == "agent":
         return _agent_row_lines(row, width=200, expand=False)[0]  # defensive fallback only
     if row.kind == "repo" or row.kind == "accordion":
-        # the accordion's `label` is already the fully composed one-line
-        # text (glyph+small-caps per step, joined) — nothing more to add.
+        # an accordion row is one step's own line — `label` is already the
+        # fully composed glyph+small-caps text (`_step_row`), nothing more
+        # to add; the curses draw path (`_draw_step_row`) additionally
+        # layers the ACTIVE step's KITT sweep, which the plain-text path
+        # never does (curses-only animation).
         return f"{indent}{row.label}"
     if row.kind == "task":
         return f"{indent}{compose_task_row_text(STATUS_EMOJI.get(row.status, '○'), row.label, row.progress_glyph, 200)}"
@@ -1525,15 +1914,23 @@ def _truncate(text: str, width: int) -> str:
 
 
 def _feature_row_layout(
-    glyph: str, name: str, pct: int, width: int, badge: str | None,
+    glyph: str, name: str, pct: int | None, width: int, badge: str | None,
 ) -> tuple[str, str, int, str, str]:
     """(glyph, shown_name, pad_width, badge_text, pct_text) for a feature row
     at `width` columns — the single source of truth for BOTH the plain-text
     dump path (`compose_feature_row_text`) and the curses per-column
     painter (`_draw_feature_row`), so their layouts can never drift apart
     (the same sharing pattern the file already used for
-    `_feature_row_segments` before this step)."""
-    pct_text = f"{pct}%"
+    `_feature_row_segments` before this step).
+
+    `pct` is `None` for every live caller (operator ruling, 2026-07-26: a
+    feature carries no percentage of its own — progress belongs to the
+    task alone, drawn there as its fill circle) — `pct_text` is then "",
+    the same as an absent badge. The parameter itself stays (rather than
+    being deleted) purely so `FeatureRowLayoutTests` can keep asserting on
+    the tail-composition math directly; nothing in the live render path
+    ever passes an int here any more."""
+    pct_text = f"{pct}%" if pct is not None else ""
     badge_text = f"{badge} " if badge else ""
     tail_len = len(badge_text) + len(pct_text)
     budget_for_name = max(width - len(glyph) - 1 - tail_len, 0)
@@ -1544,7 +1941,7 @@ def _feature_row_layout(
 
 
 def compose_feature_row_text(
-    glyph: str, name: str, pct: int, width: int, badge: str | None = None,
+    glyph: str, name: str, pct: int | None, width: int, badge: str | None = None,
 ) -> str:
     glyph, shown_name, pad_width, badge_text, pct_text = _feature_row_layout(
         glyph, name, pct, width, badge,
@@ -1637,8 +2034,12 @@ def render_lines(
             indent = INDENT_UNIT * row.depth
             avail = max(width - len(marker) - len(indent), 0)
             glyph = STATUS_EMOJI.get(row.status, "○")
-            pct = row.progress_pct if row.progress_pct is not None else 0
-            body = compose_feature_row_text(glyph, row.label, pct, avail)
+            # A feature carries no percentage of its own (operator ruling,
+            # 2026-07-26) — pct=None, so compose_feature_row_text's tail is
+            # empty; the pane's own dimmer background band (curses-only,
+            # `_draw_feature_row`) is what sets a feature row apart from a
+            # task row, not a number.
+            body = compose_feature_row_text(glyph, row.label, None, avail)
             lines.append(_truncate(f"{marker}{indent}{body}", width))
         elif row.kind == "task":
             indent = INDENT_UNIT * row.depth
@@ -1987,6 +2388,36 @@ def _safe_addstr(stdscr, y: int, x: int, text: str, attr: int) -> None:
         pass  # bottom-right cell write raises; harmless, just skip it
 
 
+def _safe_addch(stdscr, y: int, x: int, ch: str, attr: int) -> None:
+    """Single-cell-safe write for a row painted edge-to-edge (a header/
+    feature/step full-width band, or an open-block background fill). The
+    window's own LAST column needs `insch`, never `addstr` — verified
+    against a real capture (2026-07-26, this tmux+ncurses build):
+    `addstr`ing the rightmost column triggers the terminal's auto-wrap
+    cursor advance, which then desyncs the colour-pair state for whatever
+    gets drawn on the NEXT row — that row's own background silently
+    vanishes even though it never touched the corrupted column itself
+    (reproduced in isolation, bisected down to exactly `x == width - 1`).
+    `insch` inserts without moving the cursor past the edge, avoiding that
+    corruption — but ncurses' legacy narrow `insch` cannot safely carry an
+    arbitrary (possibly multi-byte) Unicode character (verified the same
+    way: a truncation ellipsis landing on that exact column came out as
+    mojibake), so the true content character is dropped in favour of a
+    plain space there — the row's BACKGROUND still reaches this cell
+    edge-to-edge, only the text glyph doesn't, an acceptable one-column
+    trade against a real corruption bug. Uses the window's OWN reported
+    width (`getmaxyx`), not a caller-supplied one, so every call site gets
+    this for free without having to track the real edge itself."""
+    _, max_x = stdscr.getmaxyx()
+    if x == max_x - 1:
+        try:
+            stdscr.insch(y, x, ord(" "), attr)
+        except curses.error:
+            pass
+        return
+    _safe_addstr(stdscr, y, x, ch, attr)
+
+
 # --------------------------------------------------------------------------
 # Curses drawing — repo header
 # --------------------------------------------------------------------------
@@ -1995,25 +2426,36 @@ def _draw_header(
     stdscr, y: int, width: int, title: str, paused: bool, selected: bool,
     colours: _ColourCache,
 ) -> None:
-    """SOLID per-repo hue block (sidebar-titling OVERRIDE 1, hue now sourced
-    from `_repo_hue(title)["header"]`) with the centred title drawn on top,
-    thin/DIM and never bold — STATIC, no per-frame movement. PAUSED stays
-    flat light-gray. `selected` here means "the cursor is here AND the user
-    has actually moved it" (see `_draw`'s `has_moved`/`main`'s tracking of
-    it) — the resting first frame never inverts a header merely because
-    `selected == 0` happens to default there; A_REVERSE only appears once
-    the operator has genuinely navigated."""
-    bg_rgb = PAUSED_HEADER_GRAY if paused else _repo_hue(title)["header"]
+    """Per-repo hue GRADIENT block (operator spec, 2026-07-26 — supersedes
+    the earlier solid fill: "centered, with a gradient", built from the
+    exact per-repo hue via `header_gradient_colour`, column 0 always the
+    exact `_repo_hue(title)["header"]` RGB so a direct-colour terminal
+    still resolves it precisely) with the centred title drawn on top,
+    thin (never bold) and never bold — STATIC, no per-frame movement.
+    PAUSED stays flat light-gray, no gradient. `selected` here means "the
+    cursor is here AND the user has actually moved it" (see `_draw`'s
+    `has_moved`/`main`'s tracking of it) — the resting first frame never
+    inverts a header merely because `selected == 0` happens to default
+    there; A_REVERSE only appears once the operator has genuinely
+    navigated. The title's "thin" look is `_muted_toward`, blended toward
+    its own column's background — never `curses.A_DIM` (see that
+    function's docstring for why)."""
+    hue = _repo_hue(title)
     text = render_header_line(title, width)
-    fill_attr = colours.pair(HEADER_FG, bg_rgb)
-    text_attr = colours.pair(HEADER_FG, bg_rgb, dim=True) | (curses.A_REVERSE if selected else 0)
-    _safe_addstr(stdscr, y, 0, " " * width, fill_attr)
-    _safe_addstr(stdscr, y, 0, text, text_attr)
+    reverse = curses.A_REVERSE if selected else 0
+    for col in range(width):
+        bg_rgb = PAUSED_HEADER_GRAY if paused else header_gradient_colour(hue, col, width)
+        ch = text[col] if col < len(text) else " "
+        fg = _muted_toward(HEADER_FG, bg_rgb) if ch != " " else HEADER_FG
+        attr = colours.pair(fg, bg_rgb) | reverse
+        _safe_addch(stdscr, y, col, ch, attr)
 
 
 # --------------------------------------------------------------------------
-# Curses drawing — feature row (glyph + name-over-progress-fill + badge/pct,
-# with the band sweep layered on top for a "working" row)
+# Curses drawing — feature row (glyph + name over a full-width dimmer
+# background band — no percentage, no per-status partial fill: this band is
+# the load-bearing signal that a feature row is NOT a task row, operator
+# ruling 2026-07-26, so it runs the row's entire width unconditionally)
 # --------------------------------------------------------------------------
 
 # "stale" and "failed" both fall through to MUTED here — MUTED IS the mock's
@@ -2045,52 +2487,53 @@ def _feature_fill_colour(status: str | None, hue: dict[str, tuple[int, int, int]
 
 def _feature_row_cell_styles(
     layout: tuple[str, str, int, str, str], status: str | None, accent: tuple[int, int, int],
-) -> list[tuple[tuple[int, int, int], bool]]:
-    """[(fg_rgb, dim)] per character of the row text `_feature_row_layout`
+    fill_rgb: tuple[int, int, int],
+) -> list[tuple[int, int, int]]:
+    """[fg_rgb] per character of the row text `_feature_row_layout`
     composes — one entry per column, so the curses painter and
     `compose_feature_row_text` can never disagree on where a segment
-    starts."""
+    starts. A "muted" look (idle/stale body, the tail/badge) is
+    `_muted_toward(colour, fill_rgb)` — never `curses.A_DIM` (see that
+    function's docstring for why)."""
     _glyph, shown_name, pad_width, badge_text, pct_text = layout
-    dim_body = status not in ("working", "done")
-    glyph_style = (_feature_glyph_colour(status, accent), dim_body)
-    name_style = (_feature_name_colour(status), dim_body)
-    tail_style = (MUTED, True)
-    badge_style = (AMBER, True)
+    muted_body = status not in ("working", "done")
+    glyph_colour = _feature_glyph_colour(status, accent)
+    name_colour = _feature_name_colour(status)
+    if muted_body:
+        glyph_colour = _muted_toward(glyph_colour, fill_rgb)
+        name_colour = _muted_toward(name_colour, fill_rgb)
+    tail_colour = _muted_toward(MUTED, fill_rgb)
+    badge_colour = _muted_toward(AMBER, fill_rgb)
     return (
-        [glyph_style]
-        + [name_style] * (1 + len(shown_name))
-        + [tail_style] * pad_width
-        + [badge_style] * len(badge_text)
-        + [tail_style] * len(pct_text)
+        [glyph_colour]
+        + [name_colour] * (1 + len(shown_name))
+        + [tail_colour] * pad_width
+        + [badge_colour] * len(badge_text)
+        + [tail_colour] * len(pct_text)
     )
 
 
 def _draw_feature_row(
-    stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache, tick: int,
+    stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache,
 ) -> None:
     hue = _repo_hue(row.repo_name)
     status = row.status
     glyph = STATUS_EMOJI.get(status, "○")
-    pct = row.progress_pct if row.progress_pct is not None else 0
-    layout = _feature_row_layout(glyph, row.label, pct, width, None)
-    text = compose_feature_row_text(glyph, row.label, pct, width)
-    styles = _feature_row_cell_styles(layout, status, hue["accent"])
+    layout = _feature_row_layout(glyph, row.label, None, width, None)
+    text = compose_feature_row_text(glyph, row.label, None, width)
     fill_rgb = _feature_fill_colour(status, hue)
-
-    if status == "working":
-        travel_end = band_travel_end(pct, width)
-        span = band_span(travel_end)
-        pos = band_position(tick, span)
-        bg_at = lambda col: band_column_colour(col, pos, travel_end, fill_rgb)  # noqa: E731
-    else:
-        cols = fill_cols(pct, width)
-        bg_at = lambda col: progress_column_colour(col, cols, fill_rgb)  # noqa: E731
+    styles = _feature_row_cell_styles(layout, status, hue["accent"], fill_rgb)
 
     reverse = curses.A_REVERSE if selected else 0
     for col, ch in enumerate(text[:width]):
-        fg, dim = styles[col] if col < len(styles) else (MUTED, True)
-        attr = colours.pair(fg, bg_at(col), dim=dim) | reverse
-        _safe_addstr(stdscr, y, col, ch, attr)
+        fg = styles[col] if col < len(styles) else _muted_toward(MUTED, fill_rgb)
+        attr = colours.pair(fg, fill_rgb) | reverse
+        _safe_addch(stdscr, y, col, ch, attr)
+    # The band covers the FULL row width, including any trailing columns
+    # past the composed text (name shorter than the pane) — a feature row
+    # reads as a solid band, not a highlighted word.
+    for col in range(len(text), width):
+        _safe_addch(stdscr, y, col, " ", colours.pair(_muted_toward(MUTED, fill_rgb), fill_rgb) | reverse)
 
 
 # --------------------------------------------------------------------------
@@ -2105,51 +2548,206 @@ def _draw_feature_row(
 # live draw path calls them.
 # --------------------------------------------------------------------------
 
+# A "block" background — set once a step is OPEN (its own line, plus every
+# agent/subagent line nested inside it) — is threaded down to these three
+# functions as `bg: tuple[int, int, int] | None`: None outside any open
+# step (task/feature/repo rows never get one), the step's own
+# `open_stage_colour(...)` otherwise (operator ruling, 2026-07-26: "the
+# agent and subagent lines do sit on the step's background... specifically
+# the dimmer variant, and specifically so that the block has visible
+# bounds" — the whole open region reads as ONE contiguous block). A
+# constant, small breathing indent replaces the old depth-scaled one here
+# (curses-only — depth is now colour, not columns; the plain-text path
+# still uses `INDENT_UNIT * row.depth`, see `render_lines`, since it has no
+# colour to carry structure with).
+_BLOCK_CONTENT_INDENT = "  "
+
+
+def _fill_row_bg(stdscr, y: int, width: int, bg: tuple[int, int, int], colours: _ColourCache) -> None:
+    attr = colours.pair(MUTED, bg)
+    _safe_addstr(stdscr, y, 0, " " * max(width - 1, 0), attr)
+    if width > 0:
+        _safe_addch(stdscr, y, width - 1, " ", attr)
+
+
+def _open_block_bg(row: Row) -> tuple[int, int, int] | None:
+    """The open step's own block background this row sits inside —
+    derived straight from `row.task_colour` (Ct, grade 2, threaded onto
+    every row under an open task at model-build time — see `_task_rows`),
+    so no separate state needs tracking across `_draw`'s row loop. None
+    only for a row with no owning task at all (shouldn't happen for an
+    agent/subagent in practice — they only ever render under an open
+    step — but never crashes if it does)."""
+    if row.task_colour is None:
+        return None
+    return open_stage_colour(content_colour_base(row.task_colour))
+
+
 def _draw_identity_block(
     stdscr, y: int, width: int, row: Row, reverse: bool, expand: bool, colours: _ColourCache,
 ) -> int:
     """Draws the agent's quote + subordinate attribution (see
     `identity_block`'s docstring for the exact ladder) — 1 or 2 curses rows
     depending on `expand`; returns the next unused y. Shares its content
-    decisions (`attribution_text`/`tight_line_role`) with the pure text
+    decisions (`attribution_text`/`tight_line_parts`) with the pure text
     path so the two can never disagree; only the per-segment colouring
-    (quote plain ITALIC — operator ruling, 2026-07-26 — role dim-italic,
-    model tier-coloured, "the model keeps its existing colour coding") is
-    curses-only."""
-    indent = INDENT_UNIT * row.depth
+    (quote plain ITALIC, role dim-italic, model tier-coloured) is
+    curses-only. The owning step's open-block colour (`_open_block_bg`) is
+    painted across the FULL row width first, then every foreground colour
+    is contrast-checked against it (operator ruling, 2026-07-26: legible
+    text on the dimmed background is a hard requirement, achieved by
+    adjusting the foreground, never by dimming the content itself — so the
+    role/model text below drops its old A_DIM attribute in favour of an
+    explicitly contrast-safe colour)."""
+    bg = _open_block_bg(row)
+    indent = _BLOCK_CONTENT_INDENT
     content_width = max(width - len(indent), 0)
     reverse_attr = curses.A_REVERSE if reverse else 0
-    quote = f"“{row.activity}”"
-    _safe_addstr(stdscr, y, 0, _truncate(indent + quote, width),
-                 colours.pair(TEXT, italic=True) | reverse_attr)
-    if not row.role:
-        return y + 1
+    block_bg = bg if bg is not None else (0, 0, 0)
+    quote_fg = ensure_contrast(TEXT, block_bg, _CONTRAST_MIN_TEXT)
+    role_fg = ensure_contrast(MUTED, block_bg, _CONTRAST_MIN_TEXT)
+
+    if bg is not None:
+        _fill_row_bg(stdscr, y, width, bg, colours)
+        if expand:
+            _fill_row_bg(stdscr, y + 1, width, bg, colours)
+
     if not expand:
-        role_text = tight_line_role(row.role, quote, content_width)
-        if role_text:
-            x = len(indent) + _cell_width(quote)
-            tail = f" — {role_text}"
+        shown_quote, tail = tight_line_parts(row.activity, row.role, content_width)
+        _safe_addstr(stdscr, y, 0, _truncate(indent + shown_quote, width),
+                     colours.pair(quote_fg, bg, italic=True) | reverse_attr)
+        if tail:
+            x = len(indent) + _cell_width(shown_quote)
             _safe_addstr(stdscr, y, x, _truncate(tail, max(width - x, 0)),
-                         colours.pair(MUTED, dim=True, italic=True) | reverse_attr)
+                         colours.pair(role_fg, bg, italic=True) | reverse_attr)
         return y + 1
 
+    quote = f"“{row.activity}”"
+    _safe_addstr(stdscr, y, 0, _truncate(indent + quote, width),
+                 colours.pair(quote_fg, bg, italic=True) | reverse_attr)
+    if not row.role:
+        return y + 1
     y += 1
     attribution_width = max(content_width - len(_ATTRIBUTION_INDENT), 0)
     role_text, model_text = attribution_text(row.role, row.model, attribution_width)
     x = 0
-    _safe_addstr(stdscr, y, x, indent + _ATTRIBUTION_INDENT, colours.pair(MUTED, dim=True) | reverse_attr)
     x += len(indent) + len(_ATTRIBUTION_INDENT)
     prefix = "— "
-    _safe_addstr(stdscr, y, x, prefix, colours.pair(MUTED, dim=True) | reverse_attr)
+    _safe_addstr(stdscr, y, x, prefix, colours.pair(role_fg, bg) | reverse_attr)
     x += len(prefix)
-    _safe_addstr(stdscr, y, x, role_text, colours.pair(MUTED, dim=True, italic=True) | reverse_attr)
+    _safe_addstr(stdscr, y, x, role_text, colours.pair(role_fg, bg, italic=True) | reverse_attr)
     x += _cell_width(role_text)
     if model_text:
         sep = " · "
-        _safe_addstr(stdscr, y, x, sep, colours.pair(MUTED, dim=True) | reverse_attr)
+        _safe_addstr(stdscr, y, x, sep, colours.pair(role_fg, bg) | reverse_attr)
         x += len(sep)
-        _safe_addstr(stdscr, y, x, model_text,
-                     colours.pair(model_tier_colour(row.model), italic=True) | reverse_attr)
+        model_fg = ensure_contrast(model_tier_colour(row.model), block_bg, _CONTRAST_MIN_TEXT)
+        _safe_addstr(stdscr, y, x, model_text, colours.pair(model_fg, bg, italic=True) | reverse_attr)
+    return y + 1
+
+
+_SUBAGENT_TERMINAL_FG = {"done": GREEN, "failed": MUTED}
+
+
+def _draw_subagent_row(
+    stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache,
+) -> int:
+    """A subagent's own line — presence glyph (`_row_text`'s existing
+    scheduled/doing/done/failed vocabulary) + label, on the owning step's
+    open-block background (see `_draw_identity_block`'s docstring for why),
+    full width, contrast-checked."""
+    reverse = curses.A_REVERSE if selected else 0
+    bg = _open_block_bg(row)
+    block_bg = bg if bg is not None else (0, 0, 0)
+    fg = ensure_contrast(
+        _SUBAGENT_TERMINAL_FG.get(row.status, TEXT), block_bg, _CONTRAST_MIN_TEXT,
+    )
+    if bg is not None:
+        _fill_row_bg(stdscr, y, width, bg, colours)
+    glyph = (STATUS_EMOJI[row.status] if row.status in TERMINAL_TASK_STATUSES
+             else _SUBAGENT_LIVE_GLYPH.get(row.status, SUBAGENT_GLYPH))
+    text = _truncate(f"{_BLOCK_CONTENT_INDENT}{glyph} {row.label}", width)
+    _safe_addstr(stdscr, y, 0, text, colours.pair(fg, bg) | reverse)
+    return y + 1
+
+
+_TASK_BAR_GLYPH = "▎"
+
+
+def _draw_task_row(
+    stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache,
+    hue: dict[str, tuple[int, int, int]],
+) -> int:
+    """A task's own row: a single accent BAR cell — background B
+    (`hue["fill"]`, grade 1), foreground Ct (grade 2, `row.task_colour`,
+    already allocated once per feature by `_assign_task_colours` within
+    its feature's own hue range, so two open tasks are told apart by bar
+    colour alone) — followed by its name and right-aligned progress circle
+    as PLAIN text, no background (operator spec, 2026-07-26: this is what
+    keeps a task row visibly distinct from a feature row's own full solid
+    band). A terminal task's own green/"failed" colour always wins over
+    its Ct tint, same exclusivity rule as before."""
+    reverse = curses.A_REVERSE if selected else 0
+    bg = hue["fill"]
+    if row.status == "done":
+        bar_fg = GREEN
+    elif row.status == "failed":
+        bar_fg = MUTED
+    else:
+        bar_fg = row.task_colour or feature_colour_base(hue)
+    bar_fg = ensure_contrast(bar_fg, bg, _CONTRAST_MIN_MARK)
+    _safe_addstr(stdscr, y, 0, _TASK_BAR_GLYPH, colours.pair(bar_fg, bg) | reverse)
+    glyph = STATUS_EMOJI.get(row.status, "○")
+    avail = max(width - 2, 0)
+    body = _truncate(compose_task_row_text(glyph, row.label, row.progress_glyph, avail), avail)
+    text_fg = GREEN if row.status == "done" else MUTED if row.status == "failed" else TEXT
+    _safe_addstr(stdscr, y, 2, body, colours.pair(text_fg) | reverse)
+    return y + 1
+
+
+_STEP_LINE_COLOUR = {"done": GREEN_SOFT, "active": TEXT, "todo": MUTED}
+
+
+def _draw_step_row(
+    stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache, tick: int,
+) -> int:
+    """One line of the task's five-step accordion (operator correction,
+    2026-07-26: "collapse keeps the line" — every step gets its own row,
+    always), FULL WIDTH from cell 1, CENTRED, small caps — a collapsed
+    (done/todo) step on flat CONTENT colour (grade 3, `content_colour_
+    base(row.task_colour)`); the OPEN (active) step on the deliberately
+    DARKER `open_stage_colour(...)` instead, so the whole open region
+    reads as one block with a findable edge against its plain siblings.
+    If it is also LIVE (a genuinely "working" agent on it, not merely the
+    furthest-along position — `row.live`, see `_step_row`/the model-layer
+    function of the same name) the open block additionally carries the
+    MOVING GRADIENT sweep — reusing the pre-existing lifted-band
+    triangular-wave geometry (`band_position`/`band_span`/
+    `band_column_colour`) at the row's own full width. No room/no motion
+    just means a static (but still correctly coloured) block (ANIMATION
+    CAVEAT: a missing animation must never mean a missing step)."""
+    reverse = curses.A_REVERSE if selected else 0
+    content = content_colour_base(row.task_colour or MUTED)
+    text = render_header_line(row.label, width)
+
+    if row.status != "active":
+        fg = ensure_contrast(_STEP_LINE_COLOUR.get(row.status, MUTED), content, _CONTRAST_MIN_TEXT)
+        for col, ch in enumerate(text):
+            _safe_addch(stdscr, y, col, ch, colours.pair(fg, content) | reverse)
+        return y + 1
+
+    open_bg = open_stage_colour(content)
+    if row.live:
+        span = band_span(max(width - 1, 1))
+        pos = band_position(tick, span)
+        for col, ch in enumerate(text):
+            bg = band_column_colour(col, pos, width, open_bg) or open_bg
+            fg = ensure_contrast(TEXT, bg, _CONTRAST_MIN_TEXT)
+            _safe_addch(stdscr, y, col, ch, colours.pair(fg, bg) | reverse)
+    else:
+        fg = ensure_contrast(TEXT, open_bg, _CONTRAST_MIN_TEXT)
+        for col, ch in enumerate(text):
+            _safe_addch(stdscr, y, col, ch, colours.pair(fg, open_bg) | reverse)
     return y + 1
 
 
@@ -2168,41 +2766,39 @@ def _draw(
 
     expand = _agent_expansion_fits(rows, max_y)
     y = 0
+    # The current repo's hue triple — updated on every "repo" row, reused
+    # by every "task" row until the next one (a task row needs grade 1's
+    # "B" for its bar's background; feature/step/agent/subagent rows carry
+    # everything colour-related they need directly on the Row already, see
+    # `task_colour`/`_open_block_bg`).
+    hue = _repo_hue("")
     for i, row in enumerate(rows[offset:offset + max_y], start=offset):
         if y >= max_y:
             break
         if row.kind == "repo":
+            hue = _repo_hue(row.label)
             _draw_header(stdscr, y, max_x, row.label, row.paused, i == selected and has_moved, colours)
             y += 1
             continue
         if row.kind == "feature":
-            _draw_feature_row(stdscr, y, max_x, row, i == selected, colours, tick)
+            _draw_feature_row(stdscr, y, max_x, row, i == selected, colours)
             y += 1
+            continue
+        if row.kind == "task":
+            y = _draw_task_row(stdscr, y, max_x, row, i == selected, colours, hue)
+            continue
+        if row.kind == "accordion":
+            y = _draw_step_row(stdscr, y, max_x, row, i == selected, colours, tick)
             continue
         if row.kind == "agent":
             y = _draw_identity_block(stdscr, y, max_x, row, i == selected, expand, colours)
             continue
+        if row.kind == "subagent":
+            y = _draw_subagent_row(stdscr, y, max_x, row, i == selected, colours)
+            continue
 
-        if row.kind == "task":
-            indent = INDENT_UNIT * row.depth
-            avail = max(max_x - len(indent), 0)
-            glyph = STATUS_EMOJI.get(row.status, "○")
-            row_text = indent + compose_task_row_text(glyph, row.label, row.progress_glyph, avail)
-        else:
-            row_text = _row_text(row)
-        text = _truncate(row_text, max_x)
-        # Exactly one source may contribute colour-pair bits per row: a
-        # terminal task's status (green done / red failed) always wins over
-        # its agent-identity tint, since curses.color_pair() ids don't OR
-        # together into a third, arbitrary pair (the pre-existing clobber
-        # this guards against). A still-working task keeps its
-        # agent-identity colour, which is what tells concurrent tasks apart.
-        if row.status in TERMINAL_TASK_STATUSES:
-            attr = colour_pairs.get(row.status, 0)
-        elif agent_colours:
-            attr = agent_colours[_agent_colour_index(_agent_colour_key(row))]
-        else:
-            attr = colour_pairs.get(row.status, 0)
+        text = _truncate(_row_text(row), max_x)
+        attr = colour_pairs.get(row.status, 0)
         if i == selected:
             attr |= curses.A_REVERSE
         _safe_addstr(stdscr, y, 0, text, attr)
