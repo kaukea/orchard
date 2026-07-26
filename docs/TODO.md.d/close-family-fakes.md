@@ -48,11 +48,26 @@
 RULED (operator, 2026-07-25 afternoon — Decision-090): the build IS the
 SUPERVISING CONTROLLER, started immediately when [[bus-finishing]] lands:
 
-- The close moves to the gardener: its own groundskeeper subagent fires on
-  the landscaper's directed `orchard:agent:lifecycle:stopped` (outcome via
-  `orchard:agent:outcome:success|fail`) or on detected death — detection
-  mechanism per Question below — and releases what the gardener created —
-  worktree, branch, window — in reverse creation order.
+- OPERATOR RULING (2026-07-26, gardener session): the flow moves to a
+  DEDICATED SUPERVISOR subagent. The gardener only asks it to start the
+  work; the supervisor decides which agent runs, detects when work is
+  closing or closed (bus lifecycle events), and calls the next agent —
+  choreography CENTRALISED, agents blind to one another, the flow decidable
+  per task. Constraints preserved: operator gates relayed verbatim, never
+  absorbed; creator-owns-and-cleans stays structural one level down (the
+  supervisor releases what it creates; the gardener releases the supervisor
+  and watches for ITS death); supervision collects, never kills
+  (Decision-081); writer writes once — the supervisor choreographs, never
+  authors. This amends Decision-090's homing clause ("the gardener's own
+  groundskeeper" → the groundskeeper fires inside the gardener's supervisor
+  subagent) — formal supersession entry recorded on the implementing branch,
+  not before (Decision-006 precedent). Settles the controller-home question:
+  the supervisor is built ONCE here; [[summon-restarting]] consumes it.
+- The close moves out of the landscaper: the supervisor's groundskeeper
+  fires on the landscaper's directed `orchard:agent:lifecycle:stopped`
+  (outcome via `orchard:agent:outcome:success|fail`) or on detected death —
+  detection mechanism per Question below — and releases what its creator
+  scope created — worktree, branch, window — in reverse creation order.
 - The landscaper becomes a pure scope: its courier, monitors, sowers and log
   all die inside it before exit (final State + `_closed` + telemetry are its
   LAST acts); it dispatches no closer and touches no window. `.return-window`
