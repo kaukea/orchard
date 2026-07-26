@@ -504,8 +504,29 @@ WHAT SHIPPED, 9 commits this session on `f/sidebar-empty-rows`:
 - `f3e4425` depth by background colour, three-grade lineage, computed contrast
 - `7408b6f` a task says its own name again
 
-TESTED: `python3 -m pytest tests/ -q` -> 436 passed, 6 subtests passed (416
-at the start of round 2). Plus live verification against the real bus, not
+LATER COMMITS in the same round, after the first live look and the
+navigation finding:
+- `6662124` keyboard navigation actually resolves a window
+- `9924533` a repo row goes to its session's orchestrator window
+- `7648c43` the task spinner spins; subdue rather than darken
+- plus the write-ups at `aa0d667`, `ca6bc47`, `c59bf73` and this one
+
+VERIFIED BY LOOKING, on the operator's own 32-column pane, not by trusting a
+sub-agent's report:
+- the task spinner ADVANCES — `⠴` then `⠇` three seconds apart on the live
+  pane, the defect he reported as "the spinner on the task doesn't spin";
+- ALL FIVE STEP TITLES share one background, `(173,151,185)`, identical on a
+  completed step and on the active one;
+- THE OPEN BLOCK IS LIGHTER THAN ITS TITLE — luminance 0.621 against 0.345 —
+  which is "dimmer" in the operator's sense of subdued, the reading that had
+  been wrong until he corrected it;
+- the header gradient resolves to `(40,31,54)` and the feature and task rows
+  inherit it as their band;
+- keyboard navigation resolves the feature row to `('main', '@4')`, the real
+  window, where it returned `None` before.
+
+TESTED: `python3 -m pytest tests/ -q` -> 452 passed, 6 subtests passed (416
+at the start of round 2, 436 mid-round). Plus live verification against the real bus, not
 fixtures — see the section above: the branch transport wrote the new identity
 shape and upgraded the live marker to schema 2 in place; `courier.py init`
 turned this session's zero-byte heartbeat into a persisted role and
@@ -513,6 +534,16 @@ turned this session's zero-byte heartbeat into a persisted role and
 rebuilt renderer was read back off the operator's own 32-column pane, with the
 open step's dimmed block confirmed spanning its agent and subagent lines by
 decoding the raw escape sequences.
+
+ONE ITEM OF LOWER CONFIDENCE, stated rather than buried. The operator's note
+that "the brighter side block is correct *if* it is the background of the
+preceing ine asit denotes delegation" was resolved as a best-effort reading:
+the open block's colour is now derived strictly FROM the step title's own
+colour, and a subagent row's background provably equals its parent agent's.
+But no element was found that was demonstrably the "brighter side block" he
+meant and demonstrably wrong; the one candidate with a real discrepancy is
+the sweep's brightened cell, and making that copy the preceding row would
+have made the sweep invisible. NOT CONFIRMED AGAINST HIS EYE.
 
 NOT SELF-APPROVED. Ruling 1's bar is rows AND hue on a live pane, judged by
 the operator. That judgement is his alone and has not been given.
