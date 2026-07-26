@@ -6,6 +6,24 @@ _base: `f65ad36`_
 
 ### ✨ New features
 
+- 🪟 **Tmux topology — the committed spec.** Added a committed specification
+  for the fleet's tmux layout (`docs/tmux-topology.md`): one tmux session per
+  repository, one window per active feature (the landscaper), and headless
+  workers (sowers) that are hidden by default but can be peeked into a
+  capped, stacked right-hand column. It writes down, for the first time, how
+  a feature window is closed and how the operator's focus returns to the
+  gardener afterwards (the Written-spec gate, Decision-090). Changed: the
+  gardener now stamps a stable `@gardener_id` marker on its own tmux window
+  at start-up, mirroring the `@landscaper_id` marker it already places on
+  each feature window, so the teardown tool can reliably find the gardener's
+  window to return focus to. And `tools/landscaper-teardown.sh` is now a
+  self-contained window-kill and focus-return primitive: it locates the
+  feature window and the gardener window by those stable markers, returns
+  the operator's focus to the gardener, then closes the feature window and
+  its sidebar. It no longer reads the retired `.return-window` marker file,
+  accepts an optional tmux socket so the close worker can invoke it from
+  outside the session, and refuses to run when a window cannot be resolved
+  or when closing would target the focus-return window itself.
 - 🚀 **Bus finishing — the orchard transport.** Finished the message-bus arc.
   The courier's broadcast fan-out — a courier telling every peer's inbox
   about every event, the measured token leak — is gone. Messaging now runs
