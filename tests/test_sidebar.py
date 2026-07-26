@@ -125,6 +125,29 @@ def _write_marker(projects_root, slug, feature_id, *, name=None, area=None,
     return path
 
 
+def _sole_task(feature: sidebar.Feature) -> sidebar.Task:
+    """The one task expected on a single-task Feature — most fixtures in
+    this file exercise exactly one live session/marker per feature, the
+    degenerate 1:1 case the DATA CONTRACT explicitly calls out (2026-07-26)."""
+    assert len(feature.tasks) == 1, f"expected exactly one task, got {feature.tasks!r}"
+    return feature.tasks[0]
+
+
+def _agents_of(task: sidebar.Task) -> list[sidebar.Agent]:
+    """Every live agent on a task, whatever step (or none) it's on — the
+    six-level tree nests a mapped-role agent under `task.steps[*].agents`
+    and an unmapped/missing-role one directly under `task.
+    unstepped_agents` (fails open, 2026-07-26); this flattens both back
+    into one list for tests that don't care which."""
+    return [a for step in task.steps for a in step.agents] + task.unstepped_agents
+
+
+def _sole_agent(task: sidebar.Task) -> sidebar.Agent:
+    agents = _agents_of(task)
+    assert len(agents) == 1, f"expected exactly one agent, got {agents!r}"
+    return agents[0]
+
+
 class _FixtureTestCase(unittest.TestCase):
     """One private projects-root temp dir per test — passed straight to
     build_model(root=...), bypassing $XDG_RUNTIME_DIR entirely."""
@@ -138,11 +161,15 @@ class _FixtureTestCase(unittest.TestCase):
     def _event(self, slug, sid, subject, **kw):
         return _write_event(self.projects_root, slug, sid, subject, **kw)
 
-    def _model(self, now=None) -> sidebar.Fleet:
-        return sidebar.build_model(self.projects_root, now=now)
+    def _model(self, now=None, role_step_map=None) -> sidebar.Fleet:
+        # An explicit (default empty) role_step_map keeps these tests
+        # hermetic against this repo's own agents/*.md charters — a role
+        # that needs to resolve to a step says so explicitly per test.
+        return sidebar.build_model(self.projects_root, now=now,
+                                    role_step_map=role_step_map or {})
 
-    def _repo(self, slug="own.repo", now=None) -> sidebar.Repo:
-        fleet = self._model(now=now)
+    def _repo(self, slug="own.repo", now=None, role_step_map=None) -> sidebar.Repo:
+        fleet = self._model(now=now, role_step_map=role_step_map)
         self.assertEqual(len(fleet.repos), 1)
         return fleet.repos[0]
 
@@ -194,7 +221,8 @@ class StatusDerivationTests(_FixtureTestCase):
                      body="verifying")
         features = {f.name: f for f in self._repo().features}
         self.assertEqual(features["feat-b"].status, "working")
-        self.assertEqual(features["feat-b"].activity, "verifying")
+        agent = _sole_agent(_sole_task(features["feat-b"]))
+        self.assertEqual(agent.activity, "verifying")
 
     def test_outcome_success_is_done(self):
         self._event("own.repo", "s1", "orchard:agent:outcome:success",
@@ -255,8 +283,8 @@ class StatusDerivationTests(_FixtureTestCase):
                      identity={"agent": "landscaper", "feature": "feat-a"},
                      body="reading files", mtime=2)
         feature = self._repo().features[0]
-        self.assertEqual(feature.activity, "reading files")
-        self.assertEqual(feature.status_word, "reading files")
+        agent = _sole_agent(_sole_task(feature))
+        self.assertEqual(agent.activity, "reading files")
 
 
 # --------------------------------------------------------------------------
@@ -267,15 +295,22 @@ class StatusDerivationTests(_FixtureTestCase):
 # --------------------------------------------------------------------------
 
 class SubagentDelegationTests(_FixtureTestCase):
-    def test_begin_without_end_is_present(self):
+    @staticmethod
+    def _subagents(feature):
+        return _sole_agent(_sole_task(feature)).subagents
+
+    def test_begin_without_end_is_doing(self):
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
         self._event("own.repo", "s1", "orchard:agent:delegation:begin",
                      identity={"agent": "landscaper", "feature": "feat-a"},
                      body={"subagent": "sub-a"}, mtime=2)
-        feature = self._repo().features[0]
-        self.assertEqual([s.label for s in feature.subagents], ["sub-a"])
+        subs = self._subagents(self._repo().features[0])
+        self.assertEqual([(s.label, s.state) for s in subs], [("sub-a", "doing")])
 
-    def test_begin_then_end_is_absent(self):
+    def test_begin_then_end_shows_done_not_absent(self):
+        # rule 6 (2026-07-26): a subagent's own "end" is a real, visible
+        # state ("done") — it does NOT vanish; only its owning task's own
+        # fold removes the row (superseded "vanishes on end" behaviour).
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
         self._event("own.repo", "s1", "orchard:agent:delegation:begin",
                      identity={"agent": "landscaper", "feature": "feat-a"},
@@ -283,24 +318,21 @@ class SubagentDelegationTests(_FixtureTestCase):
         self._event("own.repo", "s1", "orchard:agent:delegation:end",
                      identity={"agent": "landscaper", "feature": "feat-a"},
                      body={"subagent": "sub-a"}, mtime=3)
-        feature = self._repo().features[0]
-        self.assertEqual(feature.subagents, [])
+        subs = self._subagents(self._repo().features[0])
+        self.assertEqual([(s.label, s.state) for s in subs], [("sub-a", "done")])
 
-    def test_schedule_increments_queued_without_a_subagent_row(self):
-        """`schedule` (restored per operator ruling, 2026-07-25) sets
-        subagents_queued but does NOT add a Subagent row — only `begin`
-        promotes a subagent to an active, rendered row (EXACT subject, no
-        appended id: the subagent id rides the body)."""
+    def test_schedule_alone_shows_a_scheduled_subagent_row(self):
+        """`schedule` (restored per operator ruling, 2026-07-25) is one of
+        the subagent's own three visible states — rule 6 (2026-07-26)
+        supersedes the earlier "queued count only, no row" behaviour."""
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
         self._event("own.repo", "s1", "orchard:agent:delegation:schedule",
                      identity={"agent": "landscaper", "feature": "feat-a"},
                      body={"subagent": "sub-a"}, mtime=2)
-        feature = self._repo().features[0]
-        self.assertEqual(feature.subagents, [])
-        self.assertEqual(feature.subagents_queued, 1)
-        self.assertEqual(feature.subagents_running, 0)
+        subs = self._subagents(self._repo().features[0])
+        self.assertEqual([(s.label, s.state) for s in subs], [("sub-a", "scheduled")])
 
-    def test_schedule_then_begin_moves_from_queued_to_running(self):
+    def test_schedule_then_begin_moves_from_scheduled_to_doing(self):
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
         self._event("own.repo", "s1", "orchard:agent:delegation:schedule",
                      identity={"agent": "landscaper", "feature": "feat-a"},
@@ -308,23 +340,18 @@ class SubagentDelegationTests(_FixtureTestCase):
         self._event("own.repo", "s1", "orchard:agent:delegation:begin",
                      identity={"agent": "landscaper", "feature": "feat-a"},
                      body={"subagent": "sub-a"}, mtime=3)
-        feature = self._repo().features[0]
-        self.assertEqual([s.label for s in feature.subagents], ["sub-a"])
-        self.assertEqual(feature.subagents_queued, 0)
-        self.assertEqual(feature.subagents_running, 1)
+        subs = self._subagents(self._repo().features[0])
+        self.assertEqual([(s.label, s.state) for s in subs], [("sub-a", "doing")])
 
     def test_stray_schedule_with_appended_subagent_id_is_not_matched(self):
         """The old family/prefix shape (`delegation:schedule:sub-a`, id
         appended to the subject) is not the restored subject — EXACT
-        comparison only, so a stray event in that old shape still does not
-        contribute to the queued count."""
+        comparison only, so a stray event in that old shape contributes no
+        subagent row at all."""
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
         self._event("own.repo", "s1", "orchard:agent:delegation:schedule:sub-a",
                      identity={"agent": "landscaper", "feature": "feat-a"}, mtime=2)
-        feature = self._repo().features[0]
-        self.assertEqual(feature.subagents, [])
-        self.assertEqual(feature.subagents_queued, 0)
-        self.assertEqual(feature.subagents_running, 0)
+        self.assertEqual(self._subagents(self._repo().features[0]), [])
 
     def test_multiple_active_subagents_sorted_by_label(self):
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
@@ -337,8 +364,8 @@ class SubagentDelegationTests(_FixtureTestCase):
         self._event("own.repo", "s1", "orchard:agent:delegation:begin",
                      identity={"agent": "landscaper", "feature": "feat-a"},
                      body={"subagent": "sub-b"}, mtime=4)
-        feature = self._repo().features[0]
-        self.assertEqual([s.label for s in feature.subagents], ["sub-a", "sub-b", "sub-c"])
+        subs = self._subagents(self._repo().features[0])
+        self.assertEqual([s.label for s in subs], ["sub-a", "sub-b", "sub-c"])
 
 
 # --------------------------------------------------------------------------
@@ -364,10 +391,15 @@ class IdentityDerivedTests(_FixtureTestCase):
         feature = self._repo().features[0]
         self.assertEqual(feature.name, "not-a-uuid-session")
 
-    def test_bare_uuid_session_with_no_name_or_feature_is_hidden(self):
+    def test_bare_uuid_session_with_no_name_or_feature_still_renders(self):
+        # REVERSED, operator ruling 2026-07-26: "a session with events
+        # ALWAYS renders something" — dropping this row used to also drop
+        # any subagent registered under it, so the degraded label (the
+        # bare session id itself) now renders rather than the row vanishing.
         self._event("own.repo", "3fa85f64-5717-4562-b3fc-2c963f66afa6",
                      "orchard:agent:lifecycle:starting", identity={"agent": "landscaper"})
-        self.assertEqual(self._repo().features, [])
+        feature = self._repo().features[0]
+        self.assertEqual(feature.name, "3fa85f64-5717-4562-b3fc-2c963f66afa6")
 
     def test_bare_uuid_session_with_an_announced_name_is_shown(self):
         self._event("own.repo", "3fa85f64-5717-4562-b3fc-2c963f66afa6",
@@ -376,24 +408,27 @@ class IdentityDerivedTests(_FixtureTestCase):
         feature = self._repo().features[0]
         self.assertEqual(feature.name, "named session")
 
-    def test_feature_role_is_the_announced_agent(self):
+    def test_agent_role_is_the_announced_agent(self):
         self._event("own.repo", "s1", "orchard:agent:lifecycle:starting",
                      identity={"agent": "landscaper", "feature": "feat-a"})
         feature = self._repo().features[0]
-        self.assertEqual(feature.role, "landscaper")
+        agent = _sole_agent(_sole_task(feature))
+        self.assertEqual(agent.role, "landscaper")
 
-    def test_feature_model_is_none_when_status_omits_it(self):
+    def test_agent_model_is_none_when_status_omits_it(self):
         self._event("own.repo", "s1", "orchard:agent:lifecycle:starting",
                      identity={"agent": "landscaper", "feature": "feat-a"})
         feature = self._repo().features[0]
-        self.assertIsNone(feature.model)
+        agent = _sole_agent(_sole_task(feature))
+        self.assertIsNone(agent.model)
 
-    def test_feature_model_is_exposed_when_status_carries_one(self):
+    def test_agent_model_is_exposed_when_status_carries_one(self):
         self._event("own.repo", "s1", "orchard:agent:lifecycle:starting",
                      identity={"agent": "landscaper", "feature": "feat-a"},
                      status={"model": "claude-sonnet-5-20260101"})
         feature = self._repo().features[0]
-        self.assertEqual(feature.model, "claude-sonnet-5-20260101")
+        agent = _sole_agent(_sole_task(feature))
+        self.assertEqual(agent.model, "claude-sonnet-5-20260101")
 
     def test_repo_role_is_the_announced_gardener(self):
         self._event("own.repo", "g1", "orchard:agent:lifecycle:starting",
@@ -442,8 +477,10 @@ class RepoAssemblyTests(_FixtureTestCase):
                      body={"subagent": "sub-2"}, mtime=2)
 
         features = {f.name: f for f in self._repo().features}
-        self.assertEqual([s.label for s in features["feat-a"].subagents], ["sub-1"])
-        self.assertEqual([s.label for s in features["feat-b"].subagents], ["sub-2"])
+        subs_a = _sole_agent(_sole_task(features["feat-a"])).subagents
+        subs_b = _sole_agent(_sole_task(features["feat-b"])).subagents
+        self.assertEqual([s.label for s in subs_a], ["sub-1"])
+        self.assertEqual([s.label for s in subs_b], ["sub-2"])
 
     def test_has_session_false_when_project_dir_has_no_recognisable_session(self):
         project_dir = self.projects_root / "own.repo"
@@ -557,7 +594,7 @@ class MarkerModelTests(_FixtureTestCase):
                      identity={"agent": "architect", "feature": "feat-a"})
         feature = self._repo().features[0]
         self.assertEqual(feature.name, "feat-a")
-        self.assertEqual(feature.role, "architect")
+        self.assertEqual(_sole_agent(_sole_task(feature)).role, "architect")
         self.assertEqual(feature.status, "working")
 
     def test_marker_only_task_renders_one_row_with_terminal_state_and_nothing_else(self):
@@ -569,9 +606,9 @@ class MarkerModelTests(_FixtureTestCase):
         feature = features[0]
         self.assertEqual(feature.name, "Feature A")
         self.assertEqual(feature.status, "done")
-        self.assertIsNone(feature.role)
-        self.assertIsNone(feature.model)
-        self.assertEqual(feature.subagents, [])
+        task = _sole_task(feature)
+        self.assertEqual(task.steps, [])
+        self.assertEqual(task.unstepped_agents, [])
 
     def test_marker_only_task_falls_back_to_the_feature_id_without_a_name(self):
         _write_marker(self.projects_root, "own.repo", "feat-a", state="failed")
@@ -624,8 +661,7 @@ class MarkerModelTests(_FixtureTestCase):
         _write_marker(self.projects_root, "own.repo", "feat-a", state="done",
                        extra={"sessions": {"s1": {"agent": "architect", "state": "done"}}})
         feature = self._repo().features[0]
-        self.assertIsNone(feature.role)
-        self.assertIsNone(feature.model)
+        self.assertEqual(_agents_of(_sole_task(feature)), [])
 
     def test_task_row_survives_after_its_events_are_archived(self):
         self._event("own.repo", "s1", "orchard:agent:outcome:success",
@@ -655,16 +691,16 @@ class MarkerModelTests(_FixtureTestCase):
         _write_marker(self.projects_root, "own.repo", "feat-a", name="Feature A", state="done")
 
         feature = self._repo().features[0]
-        self.assertEqual(feature.role, "landscaper")
-        self.assertEqual(feature.model, "claude-sonnet-5")
-        self.assertEqual([s.label for s in feature.subagents], ["sub-a"])
+        agent = _sole_agent(_sole_task(feature))
+        self.assertEqual(agent.role, "landscaper")
+        self.assertEqual(agent.model, "claude-sonnet-5")
+        self.assertEqual([s.label for s in agent.subagents], ["sub-a"])
 
         for f in (self.projects_root / "own.repo").glob("*.json"):
             f.unlink()
         feature = self._repo().features[0]
-        self.assertIsNone(feature.role)
-        self.assertIsNone(feature.model)
-        self.assertEqual(feature.subagents, [])
+        task = _sole_task(feature)
+        self.assertEqual(_agents_of(task), [])
         self.assertEqual(feature.status, "done")
 
     def test_archived_marker_subdirectory_is_ignored(self):
@@ -707,7 +743,8 @@ class MarkerModelTests(_FixtureTestCase):
         features = self._repo().features
         self.assertEqual(len(features), 1)
         self.assertEqual(features[0].status, "working")
-        self.assertEqual(features[0].role, "landscaper")
+        agent = _sole_agent(_sole_task(features[0]))
+        self.assertEqual(agent.role, "landscaper")
 
 
 # --------------------------------------------------------------------------
@@ -726,13 +763,16 @@ class MarkerTaskPersistenceTests(_FixtureTestCase):
         for f in (self.projects_root / "own.repo").glob("*.json"):
             f.unlink()
         feature = self._repo().features[0]
-        self.assertEqual(feature.subagents, [])
+        # the agent itself is gone too (marker-only, live-only agents) —
+        # so there is no agent left to carry a subagent list at all.
+        self.assertEqual(_agents_of(_sole_task(feature)), [])
 
     def test_marker_is_never_consulted_for_subagent_rows_even_while_the_agent_is_live(self):
         self._landscaper("own.repo", "s1", "feat-a", mtime=1)
         _write_marker(self.projects_root, "own.repo", "feat-a", name="Feature A", state="working")
         feature = self._repo().features[0]
-        self.assertEqual(feature.subagents, [])
+        agent = _sole_agent(_sole_task(feature))
+        self.assertEqual(agent.subagents, [])
 
 
 # --------------------------------------------------------------------------
@@ -965,59 +1005,57 @@ class WatchSupervisorTests(unittest.TestCase):
 # Pure presentation layer — flatten()/render_lines(), no model dependency.
 # --------------------------------------------------------------------------
 
+def _agent(session_id="s1", role="landscaper", model=None, activity="doing work",
+           status="working", step="building", subagents=None):
+    return sidebar.Agent(session_id=session_id, role=role, model=model, activity=activity,
+                          status=status, step=step, subagents=subagents or [])
+
+
 def _fleet():
+    """One repo, one feature, one task, one active "building" step carrying
+    one agent with one subagent — the full six-level chain, used by both
+    FlattenTests and RenderLinesTests as the shared minimal fixture."""
+    agent = _agent(subagents=[sidebar.Subagent(label="sub-a", state="doing")])
+    step = sidebar.Step(name="building", state="active", agents=[agent])
+    task = sidebar.Task(task_id="feat-one", name="feat one", status="working", steps=[step])
+    feature = sidebar.Feature(feature_id="feat-one", name="feat one", status="working",
+                               tasks=[task])
     return sidebar.Fleet(repos=[
-        sidebar.Repo(
-            name="repoA", activity="", status="working", waiting_on_operator=False,
-            features=[
-                sidebar.Feature(
-                    name="feat one", activity="doing work",
-                    status="working", waiting_on_operator=False,
-                    subagents=[sidebar.Subagent(label="sub-a")],
-                ),
-            ],
-        ),
+        sidebar.Repo(name="repoA", activity="", status="working", waiting_on_operator=False,
+                     features=[feature]),
     ])
 
 
 class FlattenTests(unittest.TestCase):
     def test_depth_kind_and_target_per_row(self):
         rows = sidebar.flatten(_fleet())
-        self.assertEqual(len(rows), 3)
+        self.assertEqual(
+            [(r.depth, r.kind) for r in rows],
+            [(0, "repo"), (1, "feature"), (2, "task"), (3, "accordion"), (4, "agent"), (4, "subagent")],
+        )
 
-        repo_row, feature_row, sub_row = rows
-        self.assertEqual((repo_row.depth, repo_row.kind, repo_row.target),
-                         (0, "repo", "repoA"))
-        self.assertEqual((feature_row.depth, feature_row.kind, feature_row.target),
-                         (1, "feature", "repoA/feat one"))
+        repo_row, feature_row, task_row, accordion_row, agent_row, sub_row = rows
+        self.assertEqual(repo_row.target, "repoA")
+        self.assertEqual(feature_row.target, "repoA/feat one")
         self.assertEqual(feature_row.repo_name, "repoA")
-        # a subagent row's target is its OWNING feature's target, not its own
-        # label -- navigation from a subagent row targets the feature window.
-        self.assertEqual((sub_row.depth, sub_row.kind, sub_row.target),
-                         (2, "subagent", "repoA/feat one"))
-        self.assertTrue(sub_row.is_subagent)
-        self.assertFalse(feature_row.is_subagent)
-        self.assertFalse(repo_row.is_subagent)
+        # task/accordion/agent/subagent rows all target the OWNING feature's
+        # window, not anything of their own — navigation from any of them
+        # goes to the same place.
+        for row in (task_row, accordion_row, agent_row, sub_row):
+            self.assertEqual(row.target, "repoA/feat one")
+        # the accordion is one line for all five steps, always small caps
+        # (operator ruling, 2026-07-26) — "building" is the active one.
+        self.assertIn("ʙᴜɪʟᴅɪɴɢ", accordion_row.label)
+        self.assertEqual(agent_row.role, "landscaper")
+        self.assertEqual(sub_row.label, "sub-a")
 
-    def test_feature_row_carries_display_grammar_fields(self):
-        # flatten() copies the wire-grammar fields onto the Row so the
-        # curses draw path never reaches back into the model, plus a
-        # `source` pointer for optional fields.
-        fleet = _fleet()
-        feature = fleet.repos[0].features[0]
-        feature.phase = "building"
-        feature.progress_pct = 62
-        feature.subagents_running = 3
-        feature.subagents_queued = 2
-        feature.status_word = "writing"
-
-        feature_row = next(r for r in sidebar.flatten(fleet) if r.kind == "feature")
-        self.assertEqual(feature_row.phase, "building")
-        self.assertEqual(feature_row.progress_pct, 62)
-        self.assertEqual(feature_row.subagents_running, 3)
-        self.assertEqual(feature_row.subagents_queued, 2)
-        self.assertEqual(feature_row.status_word, "writing")
-        self.assertIs(feature_row.source, feature)
+    def test_feature_row_carries_no_owning_repo_progress_pct(self):
+        # progress_pct has no source in this grammar and stays None — the
+        # field is still carried on Row (kind == "feature" only) so the
+        # curses draw path never has to reach back into the model.
+        feature_row = next(r for r in sidebar.flatten(_fleet()) if r.kind == "feature")
+        self.assertIsNone(feature_row.progress_pct)
+        self.assertEqual(feature_row.repo_name, "repoA")
 
     def test_repo_without_session_is_skipped_entirely(self):
         # sidebar-titling item 3: an empty project (no live session) has
@@ -1044,14 +1082,10 @@ class FlattenTests(unittest.TestCase):
         fleet = sidebar.Fleet(repos=[
             sidebar.Repo(name="r", activity="", status="idle",
                          waiting_on_operator=False, features=[
-                sidebar.Feature(name="a-working", activity="", status="working",
-                                 waiting_on_operator=False),
-                sidebar.Feature(name="b-done", activity="", status="done",
-                                 waiting_on_operator=False),
-                sidebar.Feature(name="c-idle", activity="", status="idle",
-                                 waiting_on_operator=False),
-                sidebar.Feature(name="d-done", activity="", status="done",
-                                 waiting_on_operator=False),
+                sidebar.Feature(feature_id="a-working", name="a-working", status="working"),
+                sidebar.Feature(feature_id="b-done", name="b-done", status="done"),
+                sidebar.Feature(feature_id="c-idle", name="c-idle", status="idle"),
+                sidebar.Feature(feature_id="d-done", name="d-done", status="done"),
             ]),
         ])
         feature_rows = [r for r in sidebar.flatten(fleet) if r.kind == "feature"]
@@ -1071,7 +1105,7 @@ class RenderLinesTests(unittest.TestCase):
         fleet = sidebar.Fleet(repos=[
             sidebar.Repo(name="r", activity="", status="idle",
                          waiting_on_operator=False, features=[
-                sidebar.Feature(name=s, activity="", status=s, waiting_on_operator=False)
+                sidebar.Feature(feature_id=s, name=s, status=s)
                 for s in statuses
             ]),
         ])
@@ -1094,12 +1128,16 @@ class RenderLinesTests(unittest.TestCase):
         self.assertNotIn("repoA/feat one", lines[1])
 
     def test_done_feature_row_shows_check_and_percentage(self):
-        fleet = _fleet()
-        fleet.repos[0].features[0].status = "done"
-        fleet.repos[0].features[0].progress_pct = 100
+        # progress_pct has no source in this grammar (see module docstring)
+        # and always renders "0%" — an acknowledged, in-docstring gap, not
+        # something this test pretends is otherwise.
+        fleet = sidebar.Fleet(repos=[
+            sidebar.Repo(name="r", activity="", status="idle", waiting_on_operator=False,
+                         features=[sidebar.Feature(feature_id="f", name="f", status="done")]),
+        ])
         lines = sidebar.render_lines(fleet, width=64)
         self.assertIn(sidebar.STATUS_EMOJI["done"], lines[1])
-        self.assertIn("100%", lines[1])
+        self.assertIn("0%", lines[1])
 
     def test_done_and_failed_glyphs_are_distinct(self):
         # explicit operator correction: never the same encoding for done vs
@@ -1138,22 +1176,27 @@ class RenderLinesTests(unittest.TestCase):
         self.assertEqual(second, third)
 
     def test_subagent_row_shows_presence_glyph(self):
-        # sidebar-titling item 4: presence in the model is the only
-        # verifiable subagent state -- a filled circle, never the "working"
-        # glyph (an unverifiable claim) and never an "idle" counterpart.
+        # rule 6 (2026-07-26): "doing" is the SUBAGENT_GLYPH; presence in
+        # the model is the only verifiable state -- never the "working"
+        # glyph (an unverifiable claim about the subagent itself).
         lines = sidebar.render_lines(_fleet(), width=64)
-        self.assertIn(sidebar.SUBAGENT_GLYPH, lines[2])
-        self.assertNotIn(sidebar.STATUS_EMOJI["working"], lines[2])
+        sub_line = next(l for l in lines if "sub-a" in l)
+        self.assertIn(sidebar.SUBAGENT_GLYPH, sub_line)
+        self.assertNotIn(sidebar.STATUS_EMOJI["working"], sub_line)
         # identical on a second call -- no spinner advance in the pure path
         lines_again = sidebar.render_lines(_fleet(), width=64)
-        self.assertEqual(lines[2], lines_again[2])
+        self.assertEqual(lines, lines_again)
 
     def test_indentation_increases_with_depth(self):
+        # repo, feature, task, accordion, agent (tight — quote and role
+        # share one line by default, "very compact form", 2026-07-26),
+        # subagent — 2 columns per depth level.
         lines = sidebar.render_lines(_fleet(), width=64)
+        self.assertEqual(len(lines), 6)
         # strip the leading selection-marker column (always ' ' or '>')
         bodies = [line[1:] for line in lines]
         indents = [len(b) - len(b.lstrip(" ")) for b in bodies]
-        self.assertEqual(indents, [0, 2, 4])
+        self.assertEqual(indents, [0, 2, 4, 6, 8, 8])
 
     def test_selected_row_has_leading_marker(self):
         lines = sidebar.render_lines(_fleet(), selected=1, width=64)
@@ -1417,8 +1460,7 @@ class FooterLinesTests(unittest.TestCase):
     with synthetic sources rather than anything build_model() produces."""
 
     def test_footer_omitted_entirely_when_no_data_is_available(self):
-        feature = sidebar.Feature(name="f", activity="", status="working",
-                                   waiting_on_operator=False)
+        feature = sidebar.Feature(feature_id="f", name="f", status="working")
         self.assertEqual(sidebar.footer_lines(feature), [])
 
     def test_footer_omitted_when_source_is_none(self):
@@ -1458,8 +1500,7 @@ class DoneFooterLineTests(unittest.TestCase):
         self.assertIsNone(sidebar.done_footer_line(None))
 
     def test_omitted_when_no_value_is_available(self):
-        feature = sidebar.Feature(name="f", activity="", status="done",
-                                   waiting_on_operator=False)
+        feature = sidebar.Feature(feature_id="f", name="f", status="done")
         self.assertIsNone(sidebar.done_footer_line(feature))
 
     def test_renders_with_only_age_when_tokens_and_dollars_are_absent(self):
@@ -1678,10 +1719,7 @@ class _StubStdscr:
 
 
 def _subagent_row(status, label="sub-a"):
-    return sidebar.Row(
-        depth=2, kind="subagent", target="feat", label=label,
-        status=status, waiting_on_operator=False, is_subagent=True,
-    )
+    return sidebar.Row(depth=4, kind="subagent", target="feat", label=label, status=status)
 
 
 class TaskGlyphTests(unittest.TestCase):

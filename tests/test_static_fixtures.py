@@ -93,9 +93,10 @@ class MarkerFixtureTests(unittest.TestCase):
         fleet = sidebar.build_model(root=self.projects_root, now=marker_ts + 300)
         rows = sidebar.flatten(fleet)
         feature_rows = [r for r in rows if r.kind == "feature"]
+        agent_rows = [r for r in rows if r.kind == "agent"]
         subagent_rows = [r for r in rows if r.kind == "subagent"]
 
-        self.assertEqual(len(feature_rows), 1, f"expected exactly one task row, got {feature_rows!r}")
+        self.assertEqual(len(feature_rows), 1, f"expected exactly one feature row, got {feature_rows!r}")
         row = feature_rows[0]
         self.assertEqual(
             row.label,
@@ -103,8 +104,9 @@ class MarkerFixtureTests(unittest.TestCase):
             "live orchard tree — check (a) failing",
         )
         self.assertEqual(row.status, "working")
-        self.assertIsNone(getattr(row.source, "role", None))
-        self.assertIsNone(getattr(row.source, "model", None))
+        # a marker-only task has no live agent at all — no identity line,
+        # no role, no model, no subagents (operator ruling, 2026-07-26).
+        self.assertEqual(agent_rows, [])
         self.assertEqual(subagent_rows, [])
 
     def test_valid_marker_task_outside_the_active_window_reads_stale_not_working(self) -> None:
@@ -128,7 +130,12 @@ class MarkerFixtureTests(unittest.TestCase):
         # FIXTURE 2 — a rejected legacy marker shape: a `sessions` block
         # (subagent-shaped) and a `tasks[]` entry with only a `label` (no
         # `feature`), alongside one valid task entry. Neither must resurrect
-        # a row.
+        # a row. This marker carries its OWN top-level feature `name`
+        # ("Sidebar empty rows: header renders, zero session rows"),
+        # distinct from its sole task's own `name` ("Sidebar empty rows") —
+        # under the six-level hierarchy the FEATURE row honestly shows the
+        # feature's own name and the nested TASK row shows the task's own,
+        # rather than collapsing the two (2026-07-26).
         self._install_marker(
             "marker_legacy_rejected_sessions.json", "kaukea.orchids", "sidebar-empty-rows",
         )
@@ -136,14 +143,17 @@ class MarkerFixtureTests(unittest.TestCase):
         fleet = sidebar.build_model(root=self.projects_root)
         rows = sidebar.flatten(fleet)
         feature_rows = [r for r in rows if r.kind == "feature"]
+        task_rows = [r for r in rows if r.kind == "task"]
+        agent_rows = [r for r in rows if r.kind == "agent"]
         subagent_rows = [r for r in rows if r.kind == "subagent"]
 
-        self.assertEqual(len(feature_rows), 1, f"expected exactly one row, got {feature_rows!r}")
-        row = feature_rows[0]
-        self.assertEqual(row.label, "Sidebar empty rows")
-        self.assertNotEqual(row.label, "verify-task-persist")
-        self.assertIsNone(getattr(row.source, "role", None))
-        self.assertIsNone(getattr(row.source, "model", None))
+        self.assertEqual(len(feature_rows), 1, f"expected exactly one feature row, got {feature_rows!r}")
+        self.assertEqual(len(task_rows), 1, f"expected exactly one task row, got {task_rows!r}")
+        self.assertEqual(feature_rows[0].label, "Sidebar empty rows: header renders, zero session rows")
+        self.assertEqual(task_rows[0].label, "Sidebar empty rows")
+        self.assertNotEqual(feature_rows[0].label, "verify-task-persist")
+        self.assertNotEqual(task_rows[0].label, "verify-task-persist")
+        self.assertEqual(agent_rows, [])
         self.assertEqual(subagent_rows, [])
 
 

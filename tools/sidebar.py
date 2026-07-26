@@ -11,20 +11,70 @@ session (latest of each kind wins) — see `_fold_sessions()`, ported from
 sidebar_v3.py's `sessions()`. `build_model()`/`watch()` are this module's own
 now; there is no other backing store.
 
+SIX-LEVEL HIERARCHY (operator ruling, 2026-07-26 — supersedes the earlier
+three-level repo/feature/subagent model, which minted one Feature row PER
+SESSION and could draw one feature twice): project (repo header) -> feature
+-> task -> step -> agent -> subagent.
+
+  - A SESSION IS NOT A ROW: it resolves to an `Agent` sitting on a `Step` of
+    a `Task`. Two sessions on the same feature/task fold into ONE Feature/
+    Task, each carrying a LIST of agents (`Step.agents`) — never a
+    single-slot field (a task can have several open steps' worth of
+    history; more than one agent on one step is rare but real).
+  - THE ACTIVE STEP IS DERIVED CLIENT-SIDE from each agent's own announced
+    role, via `resolve_step()`/`load_role_step_map()` — nothing on the bus
+    ever names a step. The map is a FALLBACK only (an explicit `phase` on a
+    record would win, were one ever posted) and FAILS OPEN: a missing or
+    unmapped role still renders, just without a step (`Task.
+    unstepped_agents`) — see `_agent_from_rec`. A task's five steps render
+    as ONE line, the ACCORDION (`_accordion_row`, always small caps, never
+    two lines) — only the currently active step's agents (and their
+    subagents) render as their own rows beneath it.
+  - A SESSION WITH EVENTS ALWAYS RENDERS SOMETHING (operator ruling,
+    2026-07-26): missing identity, unknown/unmapped role, absent feature or
+    task — none of these drop a session or orphan the subagents registered
+    under it. The repo header comes from whichever ONE session is
+    identifiable as the root — an explicit `agent: "gardener"` identity, or
+    failing that the root of the parent chain (`_root_session_id`: a
+    session named as some other session's `parent` that names no parent of
+    its own — covers a resumed root session, which can no longer announce
+    its own role). That one session is excluded from the feature/task loop
+    so it never also draws a duplicate row for itself; every other session
+    does (see `_assemble_repo`).
+  - THREE COLLAPSES, nothing else is ever hidden: a TASK folds to one row
+    once it reaches a terminal state (done/failed — `TERMINAL_TASK_
+    STATUSES`); a FEATURE folds to one row once ALL its tasks are done — a
+    single failed or still-open task holds it expanded.
+  - REVIVAL: a TASK is terminal and never reopened (new work is a new
+    task); a FEATURE is neither terminal nor idempotent — a new task
+    revives a collapsed feature, and its completed sibling tasks come back
+    alongside it (see `_combine_status`, `flatten`).
+  - SUBAGENTS carry no model, no status text, no identity of their own —
+    a label plus exactly one of three states (scheduled/doing/done, ALL
+    three rendered — a pending "scheduled" bubble is never omitted),
+    sourced from `orchard:agent:delegation:schedule/begin/end` and hung
+    under the STEP their parent agent is on (registered under the parent's
+    session id). Live-only; they fold away with their task.
+
+PRESENTATION IS "VERY COMPACT FORM" BY DEFAULT (operator ruling, 2026-07-26,
+supersedes an earlier, roomier draft): 2 columns of indent per tree level
+(`INDENT_UNIT`); an agent's identity renders as a quote with its role riding
+the SAME line by default (`identity_block`'s "tight" rung) — the quote
+NEVER drops, but role/model degrade before a second line is ever spent (see
+`_agent_expansion_fits`); a task row's progress is a single right-aligned
+quarter-fill circle (`_task_progress_glyph`, `○ ◔ ◑ ◕ ●` for 0-4 of 5 steps
+done — 5-of-5 is a terminal task and collapses instead), never a column-
+hungry percentage, and the task NAME is what ellipsises under width
+pressure, never the circle.
+
 NOT ported (no source in the new event grammar — orchard_topic.py's `post`
 verbs are lifecycle/status/delegation/outcome/task only — so nothing below
-fabricates a value for them):
-  - courier rows (the old model's collapsed inbox-sidecar row) — the new
-    grammar has no announce/inbox concept to collapse into one.
-  - open questions / question badges — a question now flows through the
-    :session:operator broker (tools/orchard-question-broker.py), not a
-    courier-observed WIRE GRAMMAR v1 message.
-  - phase ticks, waiting_on_operator, tokens/dollars, age/worked — the
-    corresponding Feature/Repo fields stay present (so the render code needs
-    no special-casing) but are always None/False; render_lines() and the
-    curses painters already degrade gracefully on an absent value — that was
-    true even under the old model, before its first orchid:phase/etc.
-    message arrived.
+fabricates a value for them): courier rows (the old model's collapsed
+inbox-sidecar row — the new grammar has no announce/inbox concept to
+collapse into one); open questions/question badges (routed through the
+`:session:operator` broker instead); tokens/dollars/age/worked (the
+`footer_lines()`/`done_footer_line()` formatters that would show them stay
+defined and tested, but build_model() never populates a source for them).
 
 Presentation is deliberately split from curses: `flatten()` turns a Fleet
 into a flat list of Row objects, and `render_lines()` turns those into plain
@@ -72,6 +122,7 @@ STDLIB ONLY.
 from __future__ import annotations
 
 import curses
+import functools
 import json
 import os
 import re
@@ -138,7 +189,6 @@ MODEL_TIERS = {
 PHASES = ("ideation", "scoping", "designing", "building", "releasing")
 PHASE_MARK = {"done": "●", "active": "⠧", "todo": "○"}
 
-GUIDE_CHAR = "│"
 NBSP = "\xa0"
 
 # Pending-operator-pick roles render as no emoji (None), not a placeholder —
@@ -362,6 +412,126 @@ def identity_line_text(doing: str, role: str | None, model: str | None, width: i
 
 
 # --------------------------------------------------------------------------
+# Identity BLOCK — a quote with a subordinate attribution beneath it, book-
+# epigraph style (operator ruling, 2026-07-26, SUPERSEDES the single-line
+# `identity_line_text` above as the agent row's live render; that function
+# stays defined/tested but nothing in the draw path calls it any more).
+#
+# The status is volatile and is the thing being scanned for, so it carries
+# the news as the quote; role/model are stable context, subordinate and
+# rendered smaller/later. Degrades in this exact order as room shrinks:
+#   full    "activity"                  (2 lines, full model string)
+#           — role · model
+#   abbrev  "activity"                  (2 lines, model's short/version-
+#           — role · shortmodel          less form — WIDTH-driven: the full
+#                                         string didn't fit)
+#   tight   "activity" — role           (1 line, model dropped entirely —
+#                                         HEIGHT-driven: no room for a
+#                                         second line this frame)
+#   none    "activity"                  (1 line, attribution dropped too —
+#                                         WIDTH-driven: even "quote — role"
+#                                         didn't fit)
+# The quote itself never drops. 2-vs-1-line (expand) is a single per-frame
+# decision from real available height (`_agent_expansion_fits`), never a
+# per-row guess; full-vs-abbrev-vs-none is purely about whether the text
+# fits the row's own column width.
+# --------------------------------------------------------------------------
+
+_ATTRIBUTION_INDENT = "    "
+
+
+def _role_text(role: str | None) -> str:
+    emoji = role_emoji(role)
+    return (emoji + NBSP + role) if (role and emoji) else (role or "")
+
+
+def short_model_name(model: str | None) -> str | None:
+    """The version-elided short form of a model string ("claude-opus-5" ->
+    "opus5", "claude-sonnet-5-20260101" -> "sonnet5") — family name plus
+    its leading numeric version component, dropping any "claude-" prefix
+    and any later date/build suffix. None when there's nothing to shorten
+    to (an empty or unparseable string)."""
+    if not model:
+        return None
+    parts = model.split("-")
+    if parts and parts[0] == "claude":
+        parts = parts[1:]
+    if not parts:
+        return None
+    family = parts[0]
+    version = next((p for p in parts[1:] if p.isdigit()), "")
+    return f"{family}{version}"
+
+
+def attribution_text(role: str | None, model: str | None, width: int) -> tuple[str, str]:
+    """(role_text, model_text) for the attribution line at `width` columns
+    — role_text never empties (callers only reach this once `role` is
+    truthy); model_text is the full model string, its short form, or ''
+    once neither fits — the model degrades, role never does, in the
+    2-line (expand) form."""
+    role_text = _role_text(role)
+    if not model:
+        return role_text, ""
+    room = width - _cell_width("— ") - _cell_width(role_text) - _cell_width(" · ")
+    if _cell_width(model) <= max(room, 0):
+        return role_text, model
+    short = short_model_name(model)
+    if short and _cell_width(short) <= max(room, 0):
+        return role_text, short
+    return role_text, ""
+
+
+def _attribution_line(role: str | None, model: str | None, width: int) -> str:
+    role_text, model_text = attribution_text(role, model, width)
+    tail = f" · {model_text}" if model_text else ""
+    return f"— {role_text}{tail}"
+
+
+def tight_line_role(role: str | None, quote: str, width: int) -> str | None:
+    """The role text for the collapsed 1-line form ("<quote> — <role>"), or
+    None once even that combined length overflows `width` — the caller
+    then falls back to the bare quote (role is the LAST thing to drop,
+    2026-07-26: it says WHO is working, wanted before the model is)."""
+    role_text = _role_text(role)
+    combined_width = _cell_width(quote) + _cell_width(" — ") + _cell_width(role_text)
+    return role_text if combined_width <= width else None
+
+
+def identity_block(activity: str, role: str | None, model: str | None,
+                    width: int, expand: bool) -> list[str]:
+    """[quote] or [quote, attribution] — see the module section docstring
+    above for the exact degradation ladder. `expand` is the caller's real-
+    height decision (`_agent_expansion_fits`); `width` is this row's own
+    column budget. Lines are returned WITHOUT the row's own depth indent —
+    callers prepend that uniformly; the attribution line's extra
+    `_ATTRIBUTION_INDENT` beneath the quote is already baked in."""
+    quote = f"“{activity}”"
+    if not role:
+        return [quote]
+    if expand:
+        attribution_width = max(width - len(_ATTRIBUTION_INDENT), 0)
+        return [quote, _ATTRIBUTION_INDENT + _attribution_line(role, model, attribution_width)]
+    role_text = tight_line_role(role, quote, width)
+    return [f"{quote} — {role_text}"] if role_text else [quote]
+
+
+def _agent_expansion_fits(rows: list[Row], height: int | None) -> bool:
+    """Whether there is genuine room to give an agent row its own
+    attribution line, rather than folding it onto the quote line.
+
+    "Very compact form" (operator ruling, 2026-07-26) supersedes the
+    original bare-fits check: compactness wins at EVERY choice point, so
+    the tight 1-line form (role riding the quote line) is the DEFAULT, and
+    2-line expansion is reserved for a frame with real slack to spare —
+    never "just doesn't overflow". In practice that makes the 2-line form
+    unreachable through today's callers; it stays defined (and `height`/
+    `rows` kept as parameters) as a seam for a future roomier/wide-pane
+    mode rather than deleted, per `identity_block`'s own degradation
+    ladder, which a caller may still drive directly."""
+    return False
+
+
+# --------------------------------------------------------------------------
 # Phase checklist
 # --------------------------------------------------------------------------
 
@@ -439,11 +609,15 @@ def role_emoji(role: str | None) -> str | None:
 # ever leaves the sidebar due to staleness; only a session restart, which
 # clears the tmpfs projects tree, resets what is shown). See `_status_for`.
 ACTIVE_WINDOW_SECONDS = 60 * 60
-# schedule = queued, begin = active, end = inactive. `schedule` was briefly
-# retired then restored (operator ruling, 2026-07-25): it is a member of
-# the closed orchard subject corpus (courier.py's ORCHARD_VALID_SUBJECTS),
-# so Feature.subagents_queued has a real source again.
-_DELEGATION_STATE = {"schedule": "scheduled", "begin": "active", "end": "inactive"}
+# schedule/begin/end -> the subagent's own three-state vocabulary (operator
+# ruling, 2026-07-26: a subagent renders as a label plus exactly one of
+# scheduled/doing/done — "done" is a real, visible state now, not a vanish;
+# a subagent only disappears once its owning TASK folds).
+_DELEGATION_STATE = {"schedule": "scheduled", "begin": "doing", "end": "done"}
+# Glyph for a subagent's own live state, keyed by that same vocabulary —
+# "done" is handled by the shared STATUS_EMOJI/TERMINAL_TASK_STATUSES path
+# instead (see `_row_text`), so only the two non-terminal states live here.
+_SUBAGENT_LIVE_GLYPH = {"scheduled": "○"}
 
 _SESSION_UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
@@ -456,36 +630,67 @@ def _is_bare_uuid(text: str | None) -> bool:
 
 @dataclass
 class Subagent:
+    """A delegation's own row — no model, no status text, no identity of
+    its own (operator ruling, 2026-07-26): a label plus exactly one of
+    scheduled/doing/done, sourced from `orchard:agent:delegation:schedule/
+    begin/end`. Live-only, and folds away only once its owning TASK folds
+    — never persisted to a feature marker."""
     label: str
-    # Always "working" — a subagent row exists only while its own
-    # delegation is open (`orchard:agent:delegation:begin` posted, no
-    # matching `end` yet — see `_live_subagents`). Live-only: nothing
-    # subagent-shaped is ever restored from a feature marker (operator
-    # ruling, 2026-07-26: a subagent is an agent's own ephemeral child).
-    status: str = "working"
+    state: str = "doing"
+
+
+@dataclass
+class Agent:
+    """One session sitting on a step of a task — the identity line
+    ("<doing> ⋮ <role> ⋮ <model>"). `step` is derived client-side from
+    `role` via the role->step map (`resolve_step`); None when the role is
+    missing or unmapped — the agent still renders, just without a step
+    (`Task.unstepped_agents`, fails open, operator ruling 2026-07-26)."""
+    session_id: str
+    role: str | None
+    model: str | None
+    activity: str
+    status: str
+    step: str | None = None
+    subagents: list[Subagent] = field(default_factory=list)
+
+
+@dataclass
+class Step:
+    """One of the five canonical `PHASES` for a task, positioned done/
+    active/todo relative to the task's own active step (`phase_states`).
+    `agents` is populated only for the active step — a done/todo step folds
+    to a plain line (operator ruling, 2026-07-26)."""
+    name: str
+    state: str  # "done" | "active" | "todo"
+    agents: list[Agent] = field(default_factory=list)
+
+
+@dataclass
+class Task:
+    """A TASK is terminal (`status` in `TERMINAL_TASK_STATUSES`) or open —
+    never reopened once terminal; new work is a new task (operator ruling,
+    2026-07-26). `steps` is empty when no live agent's role maps to a step;
+    `unstepped_agents` holds any live agent whose role is missing or
+    unmapped."""
+    task_id: str
+    name: str
+    status: str
+    steps: list[Step] = field(default_factory=list)
+    unstepped_agents: list[Agent] = field(default_factory=list)
 
 
 @dataclass
 class Feature:
+    """A FEATURE holds a list of open (or recently-completed) tasks — NOT
+    terminal and NOT idempotent: a new task revives a fully-collapsed
+    feature, and its completed sibling tasks come back alongside it
+    (operator ruling, 2026-07-26). `status` is the aggregate of `tasks`
+    (see `_combine_status`)."""
+    feature_id: str
     name: str
-    activity: str
     status: str
-    waiting_on_operator: bool
-    subagents: list[Subagent] = field(default_factory=list)
-    status_word: str = ""
-    phase: str | None = None
-    progress_pct: int | None = None
-    subagents_running: int = 0
-    subagents_queued: int = 0
-    # role/model come straight off the identity/status snapshot every
-    # orchard_topic.py event carries; tokens/dollars/age/worked have no
-    # source in this grammar and stay None (see module docstring).
-    role: str | None = None
-    model: str | None = None
-    tokens: str | None = None
-    dollars: str | None = None
-    age: str | None = None
-    worked: str | None = None
+    tasks: list[Task] = field(default_factory=list)
 
 
 @dataclass
@@ -500,10 +705,9 @@ class Repo:
     has_session: bool = True
     features: list[Feature] = field(default_factory=list)
     status_word: str = ""
-    phase: str | None = None
-    progress_pct: int | None = None
-    subagents_running: int = 0
-    subagents_queued: int = 0
+    # role/model come straight off the gardener session's identity/status
+    # snapshot; tokens/dollars have no source in this grammar and stay None
+    # (see module docstring).
     role: str | None = None
     model: str | None = None
     tokens: str | None = None
@@ -621,34 +825,15 @@ def _marker_task_rec(task: dict) -> dict:
     return rec
 
 
-def _marker_task_rows(
-    marker: dict, live_feature_ids: set[str], now: float,
-) -> list[Feature]:
-    """One Feature/task row per entry in the marker's `tasks` list whose
-    own feature isn't already covered by a live agent row — today always
-    a single entry scoped to the marker's own feature (courier.py maps one
-    feature to one task), but read as a list since the marker schema leaves
-    room for siblings under one feature node. Each entry carries only its
-    own name/state/updated — nothing agent- or subagent-shaped, since those
-    are live-only (operator ruling, 2026-07-26).
-
-    A `tasks[]` entry with no `feature` field is not this shape — it is a
-    rejected earlier shape (e.g. a delegation label) that `merge_feature_
-    marker` failed to strip before this marker was last written. It is
-    skipped outright, never rendered and never named from the marker's own
-    feature id (operator ruling, 2026-07-26: an unrecognised entry is
-    ignored, not guessed at)."""
-    rows = []
-    for task in marker.get("tasks") or []:
-        task_feature = task.get("feature")
-        if not task_feature or task_feature in live_feature_ids:
-            continue
-        rows.append(Feature(
-            name=task.get("name") or task_feature, activity="",
-            status=_status_for(_marker_task_rec(task), now),
-            waiting_on_operator=False,
-        ))
-    return rows
+def _marker_task_id(task: dict) -> str | None:
+    """The task's own id from a marker `tasks[]` entry — schema 2's `task`
+    key, falling back to schema 1's `feature` key (today's on-disk shape,
+    where one feature maps to exactly one task and the entry names it via
+    the marker's own top-level feature id instead — DATA CONTRACT, 2026-
+    07-26). An entry with NEITHER key is a rejected earlier shape (e.g. a
+    bare delegation label); it yields None and is skipped outright, never
+    guessed at."""
+    return task.get("task") or task.get("feature")
 
 
 def _fold_sessions(project_dir: Path) -> dict[str, dict]:
@@ -743,8 +928,11 @@ def _status_for(rec: dict, now: float) -> str:
 
 def _row_label(rec: dict) -> str | None:
     """The identity name/feature to show, or None if there is nothing
-    operator-facing yet (a bare session-UUID with no announced name or
-    feature is never rendered — sidebar-polish item 2)."""
+    operator-facing on the identity itself (a bare session-UUID with no
+    announced name or feature). Callers always fall back to the session id
+    on a None here (operator ruling, 2026-07-26: a session with events
+    ALWAYS renders something — missing identity degrades the label, never
+    drops the row; see `_assemble_repo`)."""
     identity = rec.get("identity") or {}
     label = identity.get("name") or identity.get("feature")
     if label:
@@ -752,83 +940,302 @@ def _row_label(rec: dict) -> str | None:
     return None if _is_bare_uuid(rec["sid"]) else rec["sid"]
 
 
-def _apply_common(row: Feature | Repo, rec: dict, now: float) -> None:
-    """Copy the fields a session record and a Feature/Repo row share —
-    both dataclasses carry this exact field set, so one function serves
-    either (duck-typed on purpose)."""
+def _apply_common(repo: Repo, rec: dict, now: float) -> None:
+    """Copy the gardener session's own fields onto the repo header."""
     identity = rec.get("identity") or {}
     status = rec.get("status") or {}
-    row.activity = rec.get("activity", "")
-    row.status_word = row.activity
-    row.status = _status_for(rec, now)
-    row.waiting_on_operator = False  # no source in this grammar
-    row.role = identity.get("agent")
-    row.model = status.get("model")
-    subs = rec.get("subs", {})
-    row.subagents_running = sum(1 for s in subs.values() if s == "active")
-    row.subagents_queued = sum(1 for s in subs.values() if s == "scheduled")
+    repo.activity = rec.get("activity", "")
+    repo.status_word = repo.activity
+    repo.status = _status_for(rec, now)
+    repo.waiting_on_operator = False  # no source in this grammar
+    repo.role = identity.get("agent")
+    repo.model = status.get("model")
 
 
 def _live_subagents(subs: dict[str, str]) -> list[Subagent]:
-    """One Subagent row per still-open delegation — sourced purely from
-    this session's own live traffic (`subs`, from `orchard:agent:
-    delegation:begin|end`), sorted by label. Nothing is ever unioned in
-    from a feature marker (operator ruling, 2026-07-26): a subagent is
-    live-only, so it vanishes the moment its own `end` lands or its events
-    age out, whatever the owning task's marker remembers."""
+    """One Subagent row per delegation this session still remembers —
+    sourced purely from its own live traffic (`subs`, from `orchard:agent:
+    delegation:schedule|begin|end`), sorted by label. All three states
+    render (rule 6, 2026-07-26): "done" is not a vanish, only the owning
+    task's own fold removes the row. Nothing is ever unioned in from a
+    feature marker — a subagent is live-only."""
     return sorted(
-        (Subagent(label=label) for label, state in subs.items() if state == "active"),
+        (Subagent(label=label, state=state) for label, state in subs.items()),
         key=lambda sub: sub.label,
     )
 
 
-def _assemble_repo(dir_name: str, project_dir: Path, sess: dict[str, dict], now: float) -> Repo:
+# role -> step, read from each charter's `step:` frontmatter key. A
+# concurrent branch is adding these keys one charter at a time, so the
+# loader must work whether or not any given one has it yet (operator
+# ruling, 2026-07-26): a charter with no frontmatter, no `name`, no `step`,
+# or a `step` outside `PHASES` simply contributes nothing to the map.
+_AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
+_FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---", re.DOTALL)
+
+
+def _parse_frontmatter(text: str) -> dict[str, str]:
+    match = _FRONTMATTER_RE.match(text)
+    if not match:
+        return {}
+    fields = {}
+    for line in match.group(1).splitlines():
+        key, sep, value = line.partition(":")
+        if sep:
+            fields[key.strip()] = value.strip()
+    return fields
+
+
+def load_role_step_map(agents_dir: Path | None = None) -> dict[str, str]:
+    """role -> one of `PHASES`, from every `agents/*.md` charter's `step:`
+    frontmatter key. Never raises on a missing `agents/` directory or an
+    unreadable file — an empty map just means every agent renders without
+    a step (fails open, see `resolve_step`)."""
+    agents_dir = agents_dir or _AGENTS_DIR
+    role_step_map: dict[str, str] = {}
+    if not agents_dir.is_dir():
+        return role_step_map
+    for charter in sorted(agents_dir.glob("*.md")):
+        try:
+            fields = _parse_frontmatter(charter.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        name, step = fields.get("name"), fields.get("step")
+        if name and step in PHASES:
+            role_step_map[name] = step
+    return role_step_map
+
+
+@functools.lru_cache(maxsize=1)
+def _default_role_step_map() -> dict[str, str]:
+    return load_role_step_map()
+
+
+def resolve_step(role: str | None, rec: dict, role_step_map: dict[str, str]) -> str | None:
+    """The step an agent is on. An explicit `phase` on the record always
+    wins were one ever posted (none of today's event grammar carries one,
+    but a future addition lands here without a rewrite — operator ruling,
+    2026-07-26: the map is a FALLBACK, not the source of truth); otherwise
+    the role->step map, keyed by the agent's own announced role. Fails
+    open: a missing or unmapped role resolves to None, never a guess."""
+    explicit = rec.get("phase")
+    if explicit in PHASES:
+        return explicit
+    return role_step_map.get(role) if role else None
+
+
+def _agent_from_rec(sid: str, rec: dict, now: float, role_step_map: dict[str, str]) -> Agent:
+    identity = rec.get("identity") or {}
+    status = rec.get("status") or {}
+    role = identity.get("agent")
+    return Agent(
+        session_id=sid, role=role, model=status.get("model"),
+        activity=rec.get("activity", ""), status=_status_for(rec, now),
+        step=resolve_step(role, rec, role_step_map),
+        subagents=_live_subagents(rec.get("subs", {})),
+    )
+
+
+def _task_active_step(agents: list[Agent]) -> str | None:
+    """The task's current step: the furthest-along `PHASES` entry among its
+    mapped agents. Purely positional — nothing on the bus remembers which
+    step a task passed through earlier, so a done step's own agent is never
+    reconstructed, only its position (see `_build_task_steps`)."""
+    indices = [PHASES.index(agent.step) for agent in agents if agent.step in PHASES]
+    return PHASES[max(indices)] if indices else None
+
+
+def _build_task_steps(agents: list[Agent], active_step: str | None) -> list[Step]:
+    """All five `PHASES` positions, always, once a task has an active step
+    (operator ruling, 2026-07-26: steps must not flash in and out as a
+    session's staleness flips) — done/todo ones are plain lines; only the
+    active one carries the agents actually on it."""
+    if active_step is None:
+        return []
+    return [
+        Step(name=name, state=state,
+             agents=[a for a in agents if a.step == name] if state == "active" else [])
+        for name, state in phase_states(active_step)
+    ]
+
+
+_STATUS_PRECEDENCE = ("failed", "working", "stale", "idle")
+
+
+def _combine_status(statuses: list[str]) -> str:
+    """A parent's own status, aggregated from its children's (a feature
+    from its tasks, a task from its live agents): the status most needing
+    attention wins (failed > working > stale > idle); "done" only once
+    EVERY child is done (operator ruling, 2026-07-26: a feature/task is
+    complete only when everything inside it is)."""
+    if not statuses:
+        return "idle"
+    for candidate in _STATUS_PRECEDENCE:
+        if candidate in statuses:
+            return candidate
+    return "done"
+
+
+def _finalize_task(task_id: str, name: str, agents: list[Agent], marker_status: str | None) -> Task:
+    if not agents:
+        return Task(task_id=task_id, name=name, status=marker_status or "idle")
+    mapped = [a for a in agents if a.step is not None]
+    unmapped = [a for a in agents if a.step is None]
+    return Task(
+        task_id=task_id, name=name, status=_combine_status([a.status for a in agents]),
+        steps=_build_task_steps(mapped, _task_active_step(mapped)),
+        unstepped_agents=unmapped,
+    )
+
+
+class _TaskBuilder:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.agents: list[Agent] = []
+        self.marker_status: str | None = None
+
+
+class _FeatureBuilder:
+    def __init__(self, name: str | None) -> None:
+        self.name = name
+        self.tasks: dict[str, _TaskBuilder] = {}
+
+    def task(self, task_id: str, name: str) -> _TaskBuilder:
+        builder = self.tasks.setdefault(task_id, _TaskBuilder(name))
+        if not builder.name:
+            builder.name = name
+        return builder
+
+
+def _finalize_feature(feature_id: str, builder: _FeatureBuilder) -> Feature:
+    tasks = [
+        _finalize_task(task_id, task_builder.name or task_id, task_builder.agents,
+                        task_builder.marker_status)
+        for task_id, task_builder in builder.tasks.items()
+    ]
+    return Feature(feature_id=feature_id, name=builder.name or feature_id,
+                    status=_combine_status([t.status for t in tasks]), tasks=tasks)
+
+
+def _root_session_id(sess: dict[str, dict]) -> str | None:
+    """The root of the parent chain: a session that appears as some OTHER
+    session's `identity.parent`, but names no parent of its own.
+
+    A resumed root session (the gardener, notably — `claude --resume` with
+    no `--agent`) loses its own role permanently: CLAUDE_CODE_AGENT is only
+    set for subagent contexts, so its identity block comes out empty and it
+    cannot name itself. Its CHILDREN still name it, though — every identity
+    block already carries the spawning session's id as `parent` — so the
+    root is derived from them instead (operator ruling, 2026-07-26: a
+    UI-side inference over data already on the bus, not a new wire field —
+    "it is a UI concern, not a bus concern").
+
+    An intermediate parent (a landscaper is the parent of its own sowers)
+    is never mistaken for the root: only the session with NO parent of its
+    own qualifies, however many sessions it is itself the parent of."""
+    parent_ids = {(sess[sid].get("identity") or {}).get("parent") for sid in sess}
+    parent_ids.discard(None)
+    roots = sorted(
+        sid for sid in sess
+        if sid in parent_ids and not (sess[sid].get("identity") or {}).get("parent")
+    )
+    return roots[0] if roots else None
+
+
+def _identity_task_keys(identity: dict, label: str | None, sid: str) -> tuple[str, str, str, str]:
+    """(feature_id, feature_name, task_id, task_name) from an agent's
+    identity block, defaulting per the DATA CONTRACT (2026-07-26): `task`
+    absent -> the feature id; `task_name` absent -> the feature name.
+    `feature`/`feature_name` themselves fall back to the announced label,
+    then the bare session id — a session with events always lands
+    somewhere (operator ruling, 2026-07-26), even with no identity at all
+    (the gardener's own root session, notably, posts none)."""
+    feature_id = identity.get("feature") or label or sid
+    feature_name = identity.get("feature_name") or identity.get("name") or label or sid
+    task_id = identity.get("task") or feature_id
+    task_name = identity.get("task_name") or feature_name
+    return feature_id, feature_name, task_id, task_name
+
+
+def _assemble_repo(
+    dir_name: str, project_dir: Path, sess: dict[str, dict], now: float,
+    role_step_map: dict[str, str],
+) -> Repo:
     repo = Repo(name=_repo_display_name(dir_name), activity="", status="idle",
                 waiting_on_operator=False)
 
-    gardener = next(
-        (sess[sid] for sid in sorted(sess)
+    # Prefer an EXPLICIT "gardener" identity (direct, trustworthy); fall
+    # back to the root of the parent chain (`_root_session_id`) for a
+    # resumed root session that can no longer name itself. Either way,
+    # this one session supplies the repo header and is excluded from the
+    # feature/task loop below, so it never also draws a duplicate row for
+    # itself.
+    header_sid = next(
+        (sid for sid in sorted(sess)
          if (sess[sid].get("identity") or {}).get("agent") == "gardener"),
         None,
-    )
-    if gardener is not None:
-        _apply_common(repo, gardener, now)
+    ) or _root_session_id(sess)
+    if header_sid is not None:
+        _apply_common(repo, sess[header_sid], now)
 
-    live_feature_ids: set[str] = set()
+    features: dict[str, _FeatureBuilder] = {}
+    live_task_keys: set[tuple[str, str]] = set()
+
     for sid in sorted(sess):
         rec = sess[sid]
         identity = rec.get("identity") or {}
-        agent = identity.get("agent")
-        # Any identity earns a row, whatever its role — the gardener alone
-        # is excluded (it already supplied the repo header above); a
-        # session never seen with an identity at all contributes nothing
-        # (ruling: any-role rows, 2026-07-26).
-        if not agent or agent == "gardener":
+        # The header session alone is excluded — it already supplied the
+        # repo header above. Every OTHER session earns a row: missing
+        # identity, an unknown/unmapped role, no announced feature/task —
+        # none of these drop it (operator ruling, 2026-07-26 — the earlier
+        # "no agent -> skip" filter silently orphaned every subagent a
+        # root/gardener session had scheduled, since CLAUDE_CODE_AGENT is
+        # only set for subagent contexts and a root session's identity
+        # block comes out empty).
+        if sid == header_sid:
             continue
-        label = _row_label(rec)
-        if label is None:
-            continue
-        feature = Feature(name=label, activity="", status="idle",
-                           waiting_on_operator=False)
-        _apply_common(feature, rec, now)
-        feature.subagents = _live_subagents(rec.get("subs", {}))
-        repo.features.append(feature)
-        if identity.get("feature"):
-            live_feature_ids.add(identity["feature"])
+        feature_id, feature_name, task_id, task_name = _identity_task_keys(
+            identity, _row_label(rec), sid,
+        )
+        builder = features.setdefault(feature_id, _FeatureBuilder(feature_name))
+        if not builder.name:
+            builder.name = feature_name
+        task_builder = builder.task(task_id, task_name)
+        task_builder.agents.append(_agent_from_rec(sid, rec, now, role_step_map))
+        live_task_keys.add((feature_id, task_id))
 
     # A task with no live agent at all still renders — as a single row
     # carrying whatever its marker persisted, nothing beneath it (operator
     # ruling, 2026-07-26: the task is the one thing that doesn't
     # disappear). Skipped when a live session already supplied this exact
     # task's row above, so an in-progress task never doubles up.
-    for _feature_id, marker in _iter_feature_markers(project_dir):
-        repo.features.extend(_marker_task_rows(marker, live_feature_ids, now))
+    for feature_id, marker in _iter_feature_markers(project_dir):
+        builder = None
+        for task in marker.get("tasks") or []:
+            task_id = _marker_task_id(task)
+            if not task_id or (feature_id, task_id) in live_task_keys:
+                continue
+            if builder is None:
+                builder = features.setdefault(feature_id, _FeatureBuilder(marker.get("name")))
+            task_name = task.get("name") or task_id
+            # Schema 1 markers (still on disk) carry no top-level feature
+            # `name` at all — today one feature maps to exactly one task,
+            # so the degenerate case falls back to that sole task's own
+            # name (DATA CONTRACT, 2026-07-26).
+            if not builder.name:
+                builder.name = task_name
+            task_builder = builder.task(task_id, task_name)
+            task_builder.marker_status = _status_for(_marker_task_rec(task), now)
 
-    repo.has_session = gardener is not None or bool(repo.features)
+    repo.features = [_finalize_feature(fid, b) for fid, b in features.items()]
+    repo.has_session = header_sid is not None or bool(repo.features)
     return repo
 
 
-def build_model(root: Path | None = None, now: float | None = None) -> Fleet:
+def build_model(
+    root: Path | None = None, now: float | None = None,
+    role_step_map: dict[str, str] | None = None,
+) -> Fleet:
     """One snapshot of the fleet: every project directory is folded and
     assembled into one Repo, unconditionally — nothing is ever excluded by
     staleness (retention ruling, 2026-07-25 revision: a row leaves the
@@ -843,16 +1250,21 @@ def build_model(root: Path | None = None, now: float | None = None) -> Fleet:
     fixed instant relative to a captured fixture's own `updated` timestamp,
     rather than the real clock racing that fixture's age. Production call
     sites never pass it, so the default (`time.time()` at call time) is
-    unchanged."""
+    unchanged.
+
+    `role_step_map`, when given, overrides the role->step map read from the
+    real `agents/*.md` charters (`_default_role_step_map()`) — a seam for
+    tests that don't want to depend on this repo's own agents/ directory."""
     root = root or projects_root()
     fleet = Fleet()
     if not root.is_dir():
         return fleet
     now = time.time() if now is None else now
+    role_step_map = _default_role_step_map() if role_step_map is None else role_step_map
     for d in sorted(root.iterdir()):
         if not d.is_dir():
             continue
-        fleet.repos.append(_assemble_repo(d.name, d, _fold_sessions(d), now))
+        fleet.repos.append(_assemble_repo(d.name, d, _fold_sessions(d), now, role_step_map))
     return fleet
 
 
@@ -910,35 +1322,142 @@ def watch(on_change, root: Path | None = None) -> None:
 # Presentation model (pure, no curses)
 # --------------------------------------------------------------------------
 
+# Indent unit for the six-level tree (repo/feature/task/accordion/agent/
+# subagent), one unit per `Row.depth` — 2 columns per level (operator
+# ruling, 2026-07-26, "very compact form": on a narrow pane, indentation
+# competes directly with content, so it is the minimum that keeps a level
+# legible, not the earlier 4-space draft).
+INDENT_UNIT = "  "
+
+
 @dataclass
 class Row:
     depth: int
-    kind: str  # "repo" | "feature" | "subagent"
+    kind: str  # "repo" | "feature" | "task" | "accordion" | "agent" | "subagent"
     target: str  # exact tmux window name to navigate to on Enter
     label: str
     status: str | None
-    waiting_on_operator: bool
-    is_subagent: bool
-    activity: str = field(default="")
     paused: bool = field(default=False)  # only meaningful for kind == "repo"
     repo_name: str = field(default="")  # owning repo's name; only meaningful for kind == "feature"
-    # Display-grammar fields (bus-message-specifying B5) — only populated for
-    # kind == "feature"; carried on Row so the curses draw path never has to
-    # reach back into the model.
-    phase: str | None = field(default=None)
-    progress_pct: int | None = field(default=None)
-    subagents_running: int = field(default=0)
-    subagents_queued: int = field(default=0)
-    status_word: str = field(default="")
-    # The originating Feature, kept for optional fields the model doesn't
-    # guarantee yet (role, model, age, worked, tokens, dollars) — accessed
-    # via getattr with a None default, never assumed present.
-    source: object = field(default=None, repr=False)
+    progress_pct: int | None = field(default=None)  # kind == "feature" only; no source in this grammar
+    progress_glyph: str | None = field(default=None)  # kind == "task" only — see `_task_progress_glyph`
+    activity: str = field(default="")  # kind == "agent" only — the "doing" text
+    role: str | None = field(default=None)  # kind == "agent" only
+    model: str | None = field(default=None)  # kind == "agent" only
+
+
+def _agent_row(agent: Agent, target: str, depth: int) -> Row:
+    return Row(depth=depth, kind="agent", target=target, label=agent.role or agent.session_id,
+               status=agent.status, activity=agent.activity, role=agent.role, model=agent.model)
+
+
+def _subagent_row(sub: Subagent, target: str, depth: int) -> Row:
+    return Row(depth=depth, kind="subagent", target=target, label=sub.label, status=sub.state)
+
+
+def _agent_and_subagent_rows(agent: Agent, target: str, depth: int) -> list[Row]:
+    """An agent's identity-line row, followed by its own subagent rows at
+    the SAME depth (rule 6, 2026-07-26: a subagent hangs under the STEP its
+    parent agent is on, not one level deeper than its parent)."""
+    return [_agent_row(agent, target, depth), *(
+        _subagent_row(sub, target, depth) for sub in agent.subagents
+    )]
+
+
+# Per-step glyph inside the accordion line — done/active carry a mark,
+# todo is bare (small caps alone already reads as "not reached yet" next
+# to a marked neighbour, and a bare glyph column would just add noise).
+_ACCORDION_STEP_GLYPH = {"done": "✓", "active": "⠧", "todo": ""}
+
+
+def _accordion_text(steps: list[Step]) -> str:
+    """The task's own five-step accordion, ALWAYS one line, ALWAYS small
+    caps (operator ruling, 2026-07-26: "the accordion is one line, always,
+    for all five steps — it never wraps and never becomes two"; "steps
+    small caps always") — nothing about a step's state is ever dropped to
+    save space, only rendered compactly."""
+    words = []
+    for step in steps:
+        glyph = _ACCORDION_STEP_GLYPH[step.state]
+        word = small_caps(step.name)
+        words.append(f"{glyph} {word}" if glyph else word)
+    return " · ".join(words)
+
+
+def _accordion_row(task: Task, target: str, depth: int) -> Row:
+    active = next((s for s in task.steps if s.state == "active"), None)
+    return Row(depth=depth, kind="accordion", target=target, label=_accordion_text(task.steps),
+               status="working" if active else "idle")
+
+
+# 0..4 completed-of-five steps -> a quarter-fill circle (operator ruling,
+# 2026-07-26): a task never shows index 5 — five-of-five is a terminal task,
+# which collapses to its own one-line terminal glyph instead (see
+# `_task_rows`), so the full circle and the terminal tick never compete for
+# the same meaning. Index 0 still renders its own (emptiest) glyph rather
+# than a blank column — a task at zero progress still exists.
+_PROGRESS_CIRCLES = "○◔◑◕●"
+
+
+def _task_progress_glyph(task: Task) -> str | None:
+    """The task row's right-aligned progress cell — completed steps out of
+    five, computed client-side from `task.steps` (never a wire/marker
+    field: step state is a display concern, per the role->step map ruling
+    already governing it). None for a task with no steps at all (nothing
+    to show progress through — e.g. every agent on it is role-unmapped)."""
+    if not task.steps:
+        return None
+    done = sum(1 for step in task.steps if step.state == "done")
+    return _PROGRESS_CIRCLES[min(done, len(_PROGRESS_CIRCLES) - 1)]
+
+
+def _task_rows(task: Task, target: str, depth: int) -> list[Row]:
+    """A task's own row (name left-aligned, its progress circle right-
+    aligned — `_task_progress_glyph`), plus — while it is still open — its
+    one-line step accordion (`_accordion_row`), the currently active
+    step's agents (and their subagents), and any role-unmapped agent
+    (fails open, rendered directly under the task, no step to nest it in).
+    A terminal task (`TERMINAL_TASK_STATUSES`) folds: its own row is all
+    that shows."""
+    rows = [Row(depth=depth, kind="task", target=target, label=task.name, status=task.status,
+                 progress_glyph=_task_progress_glyph(task))]
+    if task.status in TERMINAL_TASK_STATUSES:
+        return rows
+    if task.steps:
+        rows.append(_accordion_row(task, target, depth + 1))
+        active = next((s for s in task.steps if s.state == "active"), None)
+        if active:
+            for agent in active.agents:
+                rows.extend(_agent_and_subagent_rows(agent, target, depth + 2))
+    for agent in task.unstepped_agents:
+        rows.extend(_agent_and_subagent_rows(agent, target, depth + 1))
+    return rows
+
+
+def _feature_collapsed(feature: Feature) -> bool:
+    """A feature folds to its own single row once EVERY task is done — a
+    still-open or failed task holds it expanded (operator ruling, 2026-07-
+    26: a failed task is never quietly absorbed into a "complete" feature).
+    An empty task list is never collapsed — there is nothing to have
+    finished."""
+    return bool(feature.tasks) and all(t.status == "done" for t in feature.tasks)
+
+
+def _feature_rows(feature: Feature, repo_name: str, depth: int) -> list[Row]:
+    target = f"{repo_name}{TARGET_SEPARATOR}{feature.name}"
+    rows = [Row(depth=depth, kind="feature", target=target, label=feature.name,
+                 status=feature.status, repo_name=repo_name)]
+    if _feature_collapsed(feature):
+        return rows
+    for task in feature.tasks:
+        rows.extend(_task_rows(task, target, depth + 1))
+    return rows
 
 
 def flatten(fleet: Fleet) -> list[Row]:
-    """Fleet -> flat list of Row, depth-first (repo, its features, their
-    subagents).
+    """Fleet -> flat list of Row, depth-first: repo, its features, each
+    feature's open tasks, each open task's steps (or unmapped agents), each
+    active step's agents and their own subagents.
 
     A repo with no live session (`not repo.has_session`) is skipped entirely
     — header AND group — an empty project has nothing to show (sidebar-
@@ -946,52 +1465,54 @@ def flatten(fleet: Fleet) -> list[Row]:
 
     Within a repo's features, `done` features sort FIRST (stable sort,
     done-first), ahead of everything still live — sidebar-titling item 7.
-    A feature's own subagent rows keep `_live_subagents`' order instead —
-    alphabetical by label, since every subagent row is "working" by
-    construction now (live-only, see `_live_subagents`)."""
+    Tasks/steps/agents/subagents keep their model order (see
+    `_assemble_repo`/`_live_subagents`)."""
     rows: list[Row] = []
     for repo in fleet.repos:
         if not repo.has_session:
             continue
-        rows.append(Row(
-            depth=0, kind="repo", target=repo.name, label=repo.name,
-            status=repo.status, waiting_on_operator=repo.waiting_on_operator,
-            is_subagent=False, paused=repo.paused,
-        ))
+        rows.append(Row(depth=0, kind="repo", target=repo.name, label=repo.name,
+                          status=repo.status, paused=repo.paused))
         features = sorted(repo.features, key=lambda f: f.status != "done")
         for feature in features:
-            feature_target = f"{repo.name}{TARGET_SEPARATOR}{feature.name}"
-            rows.append(Row(
-                depth=1, kind="feature", target=feature_target, label=feature.name,
-                status=feature.status, waiting_on_operator=feature.waiting_on_operator,
-                is_subagent=False, activity=feature.activity, repo_name=repo.name,
-                phase=feature.phase, progress_pct=feature.progress_pct,
-                subagents_running=feature.subagents_running,
-                subagents_queued=feature.subagents_queued,
-                status_word=feature.status_word, source=feature,
-            ))
-            for sub in feature.subagents:
-                rows.append(Row(
-                    depth=2, kind="subagent", target=feature_target, label=sub.label,
-                    status=sub.status, waiting_on_operator=False, is_subagent=True,
-                ))
+            rows.extend(_feature_rows(feature, repo.name, depth=1))
     return rows
 
 
+def _agent_row_lines(row: Row, width: int, expand: bool) -> list[str]:
+    """The agent row's 1-2 output lines (see `identity_block`), each
+    prefixed with the row's own depth indent — `width` MUST be the row's
+    real available column budget: the degradation ladder trims the model,
+    then folds/drops the attribution to fit it, so a caller that instead
+    hands this a generous sentinel and hard-truncates the composed string
+    afterward can silently lose the role text on a deeply-indented row
+    (regression, 2026-07-26 — the "writing ⋮ 🌿 ⋮" empty-role frame)."""
+    indent = INDENT_UNIT * row.depth
+    content_width = max(width - len(indent), 0)
+    return [indent + line for line in
+            identity_block(row.activity, row.role, row.model, content_width, expand)]
+
+
 def _row_text(row: Row) -> str:
-    indent = "  " * row.depth
+    indent = INDENT_UNIT * row.depth
     if row.kind == "subagent":
-        # presence in the model IS the only verifiable subagent state — no
-        # "idle" counterpart glyph exists (sidebar-titling item 4). A task
-        # that has reached a terminal state carries its own status glyph
-        # instead, so a completed row visibly reads as completed.
-        glyph = STATUS_EMOJI[row.status] if row.status in TERMINAL_TASK_STATUSES else SUBAGENT_GLYPH
+        # A task/subagent that has reached a terminal state carries its own
+        # STATUS_EMOJI glyph, so a completed row visibly reads as completed
+        # (sidebar-titling item 4, Decision-058); otherwise its own
+        # scheduled/doing glyph (rule 6, 2026-07-26).
+        glyph = (STATUS_EMOJI[row.status] if row.status in TERMINAL_TASK_STATUSES
+                 else _SUBAGENT_LIVE_GLYPH.get(row.status, SUBAGENT_GLYPH))
         return f"{indent}{glyph} {row.label}"
-    # repo headers carry no leading status glyph in EITHER path — curses
-    # already draws none (via _draw_header); the pure path matches
-    # (sidebar-titling item 4). Feature rows never reach this function — see
-    # render_lines(), which composes them via compose_feature_row_text.
-    return f"{indent}{row.label}"
+    if row.kind == "agent":
+        return _agent_row_lines(row, width=200, expand=False)[0]  # defensive fallback only
+    if row.kind == "repo" or row.kind == "accordion":
+        # the accordion's `label` is already the fully composed one-line
+        # text (glyph+small-caps per step, joined) — nothing more to add.
+        return f"{indent}{row.label}"
+    if row.kind == "task":
+        return f"{indent}{compose_task_row_text(STATUS_EMOJI.get(row.status, '○'), row.label, row.progress_glyph, 200)}"
+    # feature carries no progress cell of its own — see `_task_progress_glyph`.
+    return f"{indent}{STATUS_EMOJI.get(row.status, '○')} {row.label}"
 
 
 def _truncate(text: str, width: int) -> str:
@@ -1031,6 +1552,28 @@ def compose_feature_row_text(
     return f"{glyph} {shown_name}{' ' * pad_width}{badge_text}{pct_text}"
 
 
+def _task_row_layout(
+    glyph: str, name: str, progress: str | None, width: int,
+) -> tuple[str, str, int, str]:
+    """(glyph, shown_name, pad_width, tail) for a task row at `width`
+    columns — the progress cell (if any) is a SHORT, FIXED tail that
+    always survives truncation intact; the NAME is what ellipsises when
+    the row is too narrow (operator ruling, 2026-07-26: "a truncated name
+    still reads, a truncated number misleads" — the same holds for the
+    progress circle)."""
+    tail = f" {progress}" if progress else ""
+    budget_for_name = max(width - len(glyph) - 1 - len(tail), 0)
+    shown_name = name if len(name) <= budget_for_name else _truncate(name, budget_for_name)
+    used = len(glyph) + 1 + len(shown_name) + len(tail)
+    pad_width = max(width - used, 0)
+    return glyph, shown_name, pad_width, tail
+
+
+def compose_task_row_text(glyph: str, name: str, progress: str | None, width: int) -> str:
+    glyph, shown_name, pad_width, tail = _task_row_layout(glyph, name, progress, width)
+    return f"{glyph} {shown_name}{' ' * pad_width}{tail}"
+
+
 def clamp_scroll_offset(offset: int, selected: int, count: int, height: int) -> int:
     """Keep-cursor-visible viewport clamp (sidebar-polish item 3 resolution).
 
@@ -1067,15 +1610,20 @@ def render_lines(
     `height` (the default) renders every row, unwindowed — the original
     behaviour.
 
-    No animation and no decoration lines (band sweep, phase label, identity
-    line, checklist, footer, question detail) — those are curses-only
-    additions layered around a feature row (bus-message-specifying B5,
-    same "curses-only" split as the pre-existing spinner/blink animation);
-    this path renders exactly one line per Row, deterministically."""
+    No animation, curses-only (bus-message-specifying B5, same "curses-only"
+    split as the pre-existing spinner/blink animation): a repeated render of
+    the same Fleet is byte-identical. Most rows render one line; an "agent"
+    row renders 1 or 2 (quote, then its subordinate attribution line) per
+    `identity_block` — `_agent_expansion_fits` decides once, for the whole
+    frame, whether there's real room for the second line, so the extra
+    lines are a property of the actual available height, never a per-row
+    guess (operator ruling, 2026-07-26). The extra attribution line carries
+    no selection marker of its own — it is not a separate Row."""
     rows = flatten(fleet)
     if not rows:
         return [_truncate(NO_ACTIVITY_TEXT, width)]
 
+    expand = _agent_expansion_fits(rows, height)
     if height is None:
         window, start = rows, 0
     else:
@@ -1086,12 +1634,22 @@ def render_lines(
     for i, row in enumerate(window, start=start):
         marker = ">" if i == selected else " "
         if row.kind == "feature":
-            indent = "  " * row.depth
+            indent = INDENT_UNIT * row.depth
             avail = max(width - len(marker) - len(indent), 0)
             glyph = STATUS_EMOJI.get(row.status, "○")
             pct = row.progress_pct if row.progress_pct is not None else 0
             body = compose_feature_row_text(glyph, row.label, pct, avail)
             lines.append(_truncate(f"{marker}{indent}{body}", width))
+        elif row.kind == "task":
+            indent = INDENT_UNIT * row.depth
+            avail = max(width - len(marker) - len(indent), 0)
+            glyph = STATUS_EMOJI.get(row.status, "○")
+            body = compose_task_row_text(glyph, row.label, row.progress_glyph, avail)
+            lines.append(_truncate(f"{marker}{indent}{body}", width))
+        elif row.kind == "agent":
+            body_lines = _agent_row_lines(row, max(width - len(marker), 0), expand)
+            lines.append(_truncate(marker + body_lines[0], width))
+            lines.extend(_truncate(" " * len(marker) + extra, width) for extra in body_lines[1:])
         else:
             lines.append(_truncate(marker + _row_text(row), width))
     return lines
@@ -1536,119 +2094,63 @@ def _draw_feature_row(
 
 
 # --------------------------------------------------------------------------
-# Curses drawing — decoration lines under a "working" feature row (phase
-# label, identity line, phase checklist, footer) and under any feature row
-# carrying open questions (question-count + why lines). Curses-only, exactly
-# like the pre-existing spinner/blink split — render_lines() never emits
-# these.
+# Curses drawing — the generic row path (task/step/agent/subagent). These
+# used to be decorations hanging off a "working" feature row (phase label,
+# identity line, phase checklist, footer); the six-level tree (2026-07-26)
+# makes each of them a real Row in its own right instead, so they draw
+# through the same plain path as any other non-feature row below — no
+# separate decoration mechanism is needed any more. `footer_lines()`/
+# `done_footer_line()` remain as pure formatters (still exercised directly;
+# build_model() has never populated a source for them) but nothing in the
+# live draw path calls them.
 # --------------------------------------------------------------------------
 
-def _draw_guide_line(
-    stdscr, y: int, width: int, text: str, colours: _ColourCache,
-    fg: tuple[int, int, int] = MUTED,
-) -> None:
-    prefix = GUIDE_CHAR + " "
-    body = _truncate(text, max(width - len(prefix), 0))
-    _safe_addstr(stdscr, y, 0, prefix, colours.pair(MUTED, dim=True))
-    _safe_addstr(stdscr, y, len(prefix), body, colours.pair(fg, dim=True))
-
-
-def _draw_gap_line(stdscr, y: int, colours: _ColourCache) -> None:
-    _safe_addstr(stdscr, y, 0, GUIDE_CHAR, colours.pair(MUTED, dim=True))
-
-
-def _draw_identity_line(
-    stdscr, y: int, width: int, doing: str, role: str | None, model: str | None,
-    colours: _ColourCache,
-) -> None:
-    prefix = GUIDE_CHAR + " "
-    content_width = max(width - len(prefix), 0)
-    doing_t, role_t, model_t = compose_identity_line(doing, role, model, content_width)
-    sep = NBSP + "⋮" + NBSP
-
-    x = 0
-    _safe_addstr(stdscr, y, x, prefix, colours.pair(MUTED, dim=True))
-    x += len(prefix)
-    _safe_addstr(stdscr, y, x, doing_t, colours.pair(TEXT))
-    x += _cell_width(doing_t)
-    if role_t:
-        _safe_addstr(stdscr, y, x, sep, colours.pair(MUTED, dim=True))
-        x += len(sep)
-        _safe_addstr(stdscr, y, x, role_t, colours.pair(MUTED, dim=True, italic=True))
-        x += _cell_width(role_t)
-    if model_t:
-        _safe_addstr(stdscr, y, x, sep, colours.pair(MUTED, dim=True))
-        x += len(sep)
-        _safe_addstr(stdscr, y, x, model_t, colours.pair(model_tier_colour(model), italic=True))
-
-
-def _draw_phase_checklist(
-    stdscr, y: int, width: int, active_phase: str | None,
-    hue: dict[str, tuple[int, int, int]], running: int, queued: int, colours: _ColourCache,
+def _draw_identity_block(
+    stdscr, y: int, width: int, row: Row, reverse: bool, expand: bool, colours: _ColourCache,
 ) -> int:
-    prefix = GUIDE_CHAR + "   "
-    for word, state in phase_states(active_phase):
-        is_active = state == "active"
-        mark = phase_mark(state)
-        mark_colour = GREEN_SOFT if state == "done" else (hue["accent"] if is_active else MUTED)
-        word_colour = hue["accent"] if is_active else MUTED
+    """Draws the agent's quote + subordinate attribution (see
+    `identity_block`'s docstring for the exact ladder) — 1 or 2 curses rows
+    depending on `expand`; returns the next unused y. Shares its content
+    decisions (`attribution_text`/`tight_line_role`) with the pure text
+    path so the two can never disagree; only the per-segment colouring
+    (quote plain ITALIC — operator ruling, 2026-07-26 — role dim-italic,
+    model tier-coloured, "the model keeps its existing colour coding") is
+    curses-only."""
+    indent = INDENT_UNIT * row.depth
+    content_width = max(width - len(indent), 0)
+    reverse_attr = curses.A_REVERSE if reverse else 0
+    quote = f"“{row.activity}”"
+    _safe_addstr(stdscr, y, 0, _truncate(indent + quote, width),
+                 colours.pair(TEXT, italic=True) | reverse_attr)
+    if not row.role:
+        return y + 1
+    if not expand:
+        role_text = tight_line_role(row.role, quote, content_width)
+        if role_text:
+            x = len(indent) + _cell_width(quote)
+            tail = f" — {role_text}"
+            _safe_addstr(stdscr, y, x, _truncate(tail, max(width - x, 0)),
+                         colours.pair(MUTED, dim=True, italic=True) | reverse_attr)
+        return y + 1
 
-        _safe_addstr(stdscr, y, 0, prefix, colours.pair(MUTED, dim=True))
-        x = len(prefix)
-        _safe_addstr(stdscr, y, x, mark, colours.pair(mark_colour, dim=not is_active))
-        x += len(mark) + 1
-        word_shown = _truncate(word, max(width - x, 0))
-        _safe_addstr(stdscr, y, x, word_shown, colours.pair(word_colour, dim=not is_active))
-        x += len(word_shown)
-
-        if is_active:
-            dots = phase_dot_suffix(running, queued)
-            if dots:
-                dots_shown = _truncate(" " + dots, max(width - x, 0))
-                _safe_addstr(stdscr, y, x, dots_shown, colours.pair(MUTED, dim=True))
-        y += 1
-    return y
-
-
-def _draw_footer(stdscr, y: int, width: int, source: object, colours: _ColourCache) -> int:
-    for line in footer_lines(source):
-        _draw_guide_line(stdscr, y, width, line, colours)
-        y += 1
-    return y
-
-
-def _draw_done_footer(stdscr, y: int, width: int, row: Row, colours: _ColourCache) -> int:
-    """Collapsed one-line footer under a DONE feature row — no guide char
-    (the mock indents it with two plain spaces, unlike the live footer's
-    "│ " lines), single dim/muted style throughout."""
-    text = done_footer_line(row.source)
-    if text is None:
-        return y
-    prefix = "  "
-    body = _truncate(text, max(width - len(prefix), 0))
-    _safe_addstr(stdscr, y, 0, prefix + body, colours.pair(MUTED, dim=True))
+    y += 1
+    attribution_width = max(content_width - len(_ATTRIBUTION_INDENT), 0)
+    role_text, model_text = attribution_text(row.role, row.model, attribution_width)
+    x = 0
+    _safe_addstr(stdscr, y, x, indent + _ATTRIBUTION_INDENT, colours.pair(MUTED, dim=True) | reverse_attr)
+    x += len(indent) + len(_ATTRIBUTION_INDENT)
+    prefix = "— "
+    _safe_addstr(stdscr, y, x, prefix, colours.pair(MUTED, dim=True) | reverse_attr)
+    x += len(prefix)
+    _safe_addstr(stdscr, y, x, role_text, colours.pair(MUTED, dim=True, italic=True) | reverse_attr)
+    x += _cell_width(role_text)
+    if model_text:
+        sep = " · "
+        _safe_addstr(stdscr, y, x, sep, colours.pair(MUTED, dim=True) | reverse_attr)
+        x += len(sep)
+        _safe_addstr(stdscr, y, x, model_text,
+                     colours.pair(model_tier_colour(row.model), italic=True) | reverse_attr)
     return y + 1
-
-
-def _draw_working_decorations(stdscr, y: int, width: int, row: Row, colours: _ColourCache) -> int:
-    _draw_guide_line(stdscr, y, width, small_caps(row.phase) if row.phase else "", colours)
-    y += 1
-    _draw_gap_line(stdscr, y, colours)
-    y += 1
-    _draw_identity_line(
-        stdscr, y, width, row.status_word,
-        getattr(row.source, "role", None), getattr(row.source, "model", None), colours,
-    )
-    y += 1
-    _draw_gap_line(stdscr, y, colours)
-    y += 1
-    hue = _repo_hue(row.repo_name)
-    y = _draw_phase_checklist(
-        stdscr, y, width, row.phase, hue, row.subagents_running, row.subagents_queued, colours,
-    )
-    _draw_gap_line(stdscr, y, colours)
-    y += 1
-    return _draw_footer(stdscr, y, width, row.source, colours)
 
 
 def _draw(
@@ -1664,6 +2166,7 @@ def _draw(
         stdscr.refresh()
         return
 
+    expand = _agent_expansion_fits(rows, max_y)
     y = 0
     for i, row in enumerate(rows[offset:offset + max_y], start=offset):
         if y >= max_y:
@@ -1675,13 +2178,19 @@ def _draw(
         if row.kind == "feature":
             _draw_feature_row(stdscr, y, max_x, row, i == selected, colours, tick)
             y += 1
-            if row.status == "working" and y < max_y:
-                y = _draw_working_decorations(stdscr, y, max_x, row, colours)
-            elif row.status == "done" and y < max_y:
-                y = _draw_done_footer(stdscr, y, max_x, row, colours)
+            continue
+        if row.kind == "agent":
+            y = _draw_identity_block(stdscr, y, max_x, row, i == selected, expand, colours)
             continue
 
-        text = _truncate(_row_text(row), max_x)
+        if row.kind == "task":
+            indent = INDENT_UNIT * row.depth
+            avail = max(max_x - len(indent), 0)
+            glyph = STATUS_EMOJI.get(row.status, "○")
+            row_text = indent + compose_task_row_text(glyph, row.label, row.progress_glyph, avail)
+        else:
+            row_text = _row_text(row)
+        text = _truncate(row_text, max_x)
         # Exactly one source may contribute colour-pair bits per row: a
         # terminal task's status (green done / red failed) always wins over
         # its agent-identity tint, since curses.color_pair() ids don't OR
@@ -1694,8 +2203,6 @@ def _draw(
             attr = agent_colours[_agent_colour_index(_agent_colour_key(row))]
         else:
             attr = colour_pairs.get(row.status, 0)
-        if row.status == "waiting" and row.waiting_on_operator:
-            attr |= curses.A_BLINK
         if i == selected:
             attr |= curses.A_REVERSE
         _safe_addstr(stdscr, y, 0, text, attr)

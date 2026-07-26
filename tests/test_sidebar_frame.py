@@ -139,7 +139,16 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
     with a working feature — rendered by the real curses app in a detached
     tmux pane and captured with SGR."""
 
-    PANE_WIDTH = 29
+    # Widened from 29 (2026-07-26): the six-level hierarchy (project ->
+    # feature -> task -> step -> agent -> subagent) puts an agent's identity
+    # line at depth 4 — 16 columns of indent before any text — where the
+    # old model drew it as a decoration with a fixed 2-column prefix
+    # regardless of depth. `compose_identity_line` never truncates the
+    # "doing"/role segments (only the model), so a pane too narrow for
+    # indent + doing + role just overflows past the visible column count
+    # rather than eliding the role — this pane needs to be wide enough for
+    # that not to matter.
+    PANE_WIDTH = 60
     PANE_HEIGHT = 50
 
     def setUp(self) -> None:
@@ -290,11 +299,16 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         self.assertLess(done_idx, working_idx)
         self.assertTrue(_has_any_bg(lines[working_idx]))
 
-        identity_idx = next(
+        # Identity BLOCK (operator ruling, 2026-07-26, "very compact form"):
+        # the agent's status is a quote ("writing") with its role riding
+        # the SAME line by default ("writing" — 🌿 landscaper) rather than
+        # the old one "⋮"-glued line or a separate attribution line — the
+        # 2-line form is reserved for a frame with real slack to spare.
+        quote_idx = next(
             i for i, l in enumerate(stripped)
-            if i > working_idx and "writing" in l and "⋮" in l
+            if i > working_idx and "“writing”" in l
         )
-        self.assertIn("landscaper", stripped[identity_idx])
+        self.assertIn("landscaper", stripped[quote_idx])
 
         signmc_header_idx = next(i for i, l in enumerate(stripped) if l.strip() == "signmc")
         signmc_feature_idx = next(
