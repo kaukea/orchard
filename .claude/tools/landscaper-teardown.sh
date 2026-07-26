@@ -1,0 +1,1 @@
+/home/sudoku/src/serialseb/orchids/.ai/repositories/serialseb/orchids/tools/landscaper-teardown.sh

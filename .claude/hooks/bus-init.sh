@@ -1,1 +1,0 @@
-/home/sudoku/src/serialseb/orchids/.ai/repositories/serialseb/orchids/hooks/bus-init.sh
