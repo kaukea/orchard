@@ -83,7 +83,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `bug · todo · critical · working · process · gh#215` [Window closing owning: agents close themselves — kill listener removed by Decision-081](TODO.md.d/window-closing-owning.md) ~sidebar-polish ~bus-singleton ~agent-closing
   - `feature · todo · · blocked-on-answers · process · gh#30` [Zombie delivery: scripts revive dead sessions before handing them messages](TODO.md.d/zombie-revival.md) ~bus-liveness ~message-bus
   - `bug · todo · · queued · process · gh#193` [Sidebar witnessing: ghost rows persist, silent live agents invisible — the ephemeral-courier observer gap](TODO.md.d/sidebar-witnessing.md) ~sidebar-polish ~bus-singleton ~message-bus
-- `feature · todo · · working · process · gh#273` [Valve 💧: the side agent — real-time decision enforcement, yes/no phase gates, forced rework](TODO.md.d/valve.md) ~close-family-fakes ~deviance-detection ~injection-integrity
+- `feature · todo · · plan-ready · process · gh#273` [Valve 💧: the side agent — real-time decision enforcement, yes/no phase gates, forced rework](TODO.md.d/valve.md) ~close-family-fakes ~deviance-detection ~injection-integrity
 - `bug · todo · nice-to-have · plan-ready · process · gh#205` [Skills cite decision numbers that mean something else in decisions.md](TODO.md.d/decision-collision-skills.md)
 - `housekeeping · todo · nice-to-have · blocked-on-answers · process · gh#26` [Rename the TODO vocabulary to task list](TODO.md.d/todo-to-task-list.md)
 - `housekeeping · done · · complete/interactive · process · gh#27` [Retire the ripen word family: rename the skill, the agent, and the verb](TODO.md.d/retire-groom-vocabulary.md) ~todo-to-task-list

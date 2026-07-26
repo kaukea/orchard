@@ -58,9 +58,30 @@ RULINGS (operator, 2026-07-26, continued):
   ledger-orchestration discussions (task ledger / progress ledger — the
   held "ledger v0" item); Valve is that idea made ephemeral.
 
-Still open (this design round): confidence criteria for the full gate;
-whether Valve absorbs [[deviance-detection]] (gh#32).
+- gh#32 FATE: decided AT VALVE'S BUILD (operator, 2026-07-26) —
+  [[deviance-detection]] stays untouched until Valve exists and its
+  coverage is observable.
+- MODEL: cheap by design — HAIKU is probably the one we go for (operator,
+  2026-07-26, side note). Direction, pinned at build; whether the full
+  end-of-piece gate warrants a higher tier than the per-commit pass is
+  checked at build (this note mine, not a ruling).
+
+## Voluntary deferrals (explicit, not blockers)
+
+- CONFIDENCE CRITERIA for the full gate (operator, 2026-07-26): deferred to
+  the build's plan gate — the build presents concrete criteria (intent
+  match, no unspecified features, goal respected, honest tests) for
+  operator approval before coding.
+- gh#32 absorption: decided at build (ruling above).
+- Model pin: Haiku direction confirmed at build (ruling above).
+
+Design round CLOSED 2026-07-26 — the WHAT is complete; readiness projected
+plan-ready.
 
 ## Testing
 
-Agreed at the design round.
+Method agreed at the plan gate together with the confidence criteria (the
+deferral above); known acceptance shape — a live piece of work judged by an
+ephemeral Valve: a compliant change passes, a planted out-of-spec change
+draws a no with reasons and forces the retry, a second no fails the task
+to the operator.
