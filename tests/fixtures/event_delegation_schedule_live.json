@@ -1,0 +1,24 @@
+{
+  "from": ":session:e3e3aabd-6578-47e1-898e-df36b3f7c9b7",
+  "to": ":topic:repository/orchids",
+  "subject": "orchard:agent:delegation:schedule",
+  "body": {
+    "subagent": "transport-identity"
+  },
+  "identity": {
+    "agent": "landscaper",
+    "feature": "sidebar-empty-rows",
+    "name": "Sidebar empty rows: header renders, zero session rows off the live orchard tree \u2014 check (a) failing",
+    "parent": "1e6b83cc-f7b1-4010-a66a-6be5951d21aa"
+  },
+  "status": {
+    "model": "claude-opus-5",
+    "context_tokens": 166892,
+    "spend": {
+      "input_tokens": 255,
+      "output_tokens": 196595,
+      "cache_read_input_tokens": 15718718,
+      "cache_creation_input_tokens": 399473
+    }
+  }
+}
