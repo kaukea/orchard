@@ -4,6 +4,18 @@ The module's only shell-out point is `_tmux()` — patched here to return
 canned `list-windows` output and record calls, so these tests never invoke a
 real tmux server (there may not even be one available).
 
+RESOLVER INPUT vs WINDOW-LIST FORMAT: resolve_window()/navigate_to() are
+always called with the target string tools/sidebar.py PRODUCES (repo and
+feature names joined with "/", TARGET_SEPARATOR) — never with a hand-picked
+name that happens to already match tmux's own display convention. The
+canned `list-windows` output below uses the separator REAL tmux windows are
+actually named with (" ▸ "). Before the separator-tolerant normalisation in
+resolve_window(), a "/"-joined target could never match a " ▸ "-named
+window, and every feature-row navigation silently failed — this file
+previously masked that by feeding "▸"-separated names straight into
+resolve_window(), which trivially match a "▸"-separated window list and
+never exercised the real mismatch.
+
 Runs under both `python3 -m unittest discover` and `pytest`; stdlib only
 (unittest.mock is stdlib).
 """
@@ -41,7 +53,20 @@ def _fake_tmux(canned_list_windows):
 
 
 class ResolveWindowTests(unittest.TestCase):
-    def test_exact_window_name_match(self):
+    def test_producer_format_matches_real_window_name(self):
+        """THE REGRESSION TEST: this is the producer's actual target string
+        (repo + "/" + feature, tools/sidebar.py TARGET_SEPARATOR) resolved
+        against the REAL window-list format (repo + " ▸ " + feature). Before
+        the separator-tolerant normalisation, this returned None for every
+        feature row on a live tmux server — confirmed by running this exact
+        assertion against the pre-fix resolve_window() (plain `==`
+        comparison) and observing the failure."""
+        with mock.patch.object(sidebar_nav, "_tmux", side_effect=_fake_tmux(LIST_WINDOWS_OUTPUT)):
+            self.assertEqual(
+                sidebar_nav.resolve_window("orchids/fleet sidebar"), ("sess-arch", "@2"),
+            )
+
+    def test_exact_window_name_match_still_works(self):
         with mock.patch.object(sidebar_nav, "_tmux", side_effect=_fake_tmux(LIST_WINDOWS_OUTPUT)):
             self.assertEqual(
                 sidebar_nav.resolve_window("orchids ▸ fleet sidebar"), ("sess-arch", "@2"),
@@ -49,7 +74,7 @@ class ResolveWindowTests(unittest.TestCase):
 
     def test_no_match_returns_none(self):
         with mock.patch.object(sidebar_nav, "_tmux", side_effect=_fake_tmux(LIST_WINDOWS_OUTPUT)):
-            self.assertIsNone(sidebar_nav.resolve_window("orchids ▸ missing"))
+            self.assertIsNone(sidebar_nav.resolve_window("orchids/missing"))
 
     def test_duplicate_name_prefers_live_window(self):
         duplicate_name_output = "\n".join([
@@ -58,7 +83,7 @@ class ResolveWindowTests(unittest.TestCase):
         ])
         with mock.patch.object(sidebar_nav, "_tmux", side_effect=_fake_tmux(duplicate_name_output)):
             self.assertEqual(
-                sidebar_nav.resolve_window("orchids ▸ fleet sidebar"), ("sess-arch", "@4"),
+                sidebar_nav.resolve_window("orchids/fleet sidebar"), ("sess-arch", "@4"),
             )
 
     def test_duplicate_name_all_shell_falls_back_to_first(self):
@@ -68,16 +93,19 @@ class ResolveWindowTests(unittest.TestCase):
         ])
         with mock.patch.object(sidebar_nav, "_tmux", side_effect=_fake_tmux(duplicate_name_output)):
             self.assertEqual(
-                sidebar_nav.resolve_window("orchids ▸ fleet sidebar"), ("sess-launcher", "@3"),
+                sidebar_nav.resolve_window("orchids/fleet sidebar"), ("sess-launcher", "@3"),
             )
 
 
 class NavigateToTests(unittest.TestCase):
     def test_navigate_to_matching_window(self):
+        """Called with the producer's own target format ("/"), against the
+        real ("▸") window-list format — see ResolveWindowTests for why that
+        distinction is the point."""
         with mock.patch.object(
             sidebar_nav, "_tmux", side_effect=_fake_tmux(LIST_WINDOWS_OUTPUT),
         ) as tmux:
-            self.assertTrue(sidebar_nav.navigate_to("orchids ▸ fleet sidebar"))
+            self.assertTrue(sidebar_nav.navigate_to("orchids/fleet sidebar"))
             calls = [c.args for c in tmux.call_args_list]
 
         self.assertIn(("list-windows", "-a", "-F", sidebar_nav.LIST_WINDOWS_FORMAT), calls)
@@ -96,7 +124,7 @@ class NavigateToTests(unittest.TestCase):
 
     def test_navigate_to_returns_false_when_window_missing(self):
         with mock.patch.object(sidebar_nav, "_tmux", side_effect=_fake_tmux(LIST_WINDOWS_OUTPUT)):
-            self.assertFalse(sidebar_nav.navigate_to("orchids ▸ nope"))
+            self.assertFalse(sidebar_nav.navigate_to("orchids/nope"))
 
 
 if __name__ == "__main__":

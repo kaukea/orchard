@@ -13,7 +13,15 @@ sidebar lives inside the same tmux server it navigates), so plain
 Window names are the session-naming display forms:
   - gardener window   -> the bare repo name, e.g. "orchids"
   - landscaper window -> "<repo>/<human name>", e.g. "orchids/fleet sidebar"
-    (separator is "/" U+002F)
+
+The producer (tools/sidebar.py, TARGET_SEPARATOR) composes targets with "/"
+U+002F as the separator, but the REAL windows this resolves against are
+named with " ▸ " (space, U+25B8, space) instead — a mismatch that made
+resolve_window() return None for every feature-row target (2026-07-26 live
+defect). resolve_window() normalises both sides (either separator, +
+collapsed whitespace) before comparing, so it matches regardless of which
+form either side used. Repo-level rows (bare name, no separator) are
+unaffected by this.
 
 `land:<id>` still exists as a PANE TITLE (used by teardown), but is no
 longer a window name and is not used for navigation here.
@@ -29,6 +37,24 @@ LIST_WINDOWS_FORMAT = "#{session_name}\t#{window_id}\t#{window_name}\t#{pane_cur
 LIST_PANES_FORMAT = "#{pane_id} #{pane_title}"
 
 _SHELL_COMMANDS = {"bash", "sh", "zsh", "fish", "dash", "-bash", "-sh", "-zsh", "login", "tmux"}
+
+# Both separators a "repo/feature"-shaped name might use: the producer's "/"
+# and the real tmux window name's " ▸ ". Order doesn't matter — _normalise()
+# folds either one to the same marker before comparing.
+_SEPARATOR_VARIANTS = ("/", " ▸ ")
+
+
+def _normalise(name: str) -> str:
+    """Canonical form for window-name comparison: either known separator
+    folds to the same marker, and whitespace within each segment collapses
+    -- so "repo/feature", "repo ▸ feature" and odd-whitespace variants of
+    either all compare equal. Segments containing a literal "/" that is NOT
+    acting as a separator (there is none in practice — repo and feature
+    names don't contain "/") are not a concern here."""
+    folded = name
+    for sep in _SEPARATOR_VARIANTS:
+        folded = folded.replace(sep, "\x00")
+    return "\x00".join(" ".join(segment.split()) for segment in folded.split("\x00"))
 
 
 def _tmux(*args: str) -> str | None:
@@ -76,9 +102,13 @@ def _prefer_live(matches: list[tuple[str, str, str, str]]) -> tuple[str, str]:
 
 
 def resolve_window(name: str) -> tuple[str, str] | None:
-    """Return (session_name, window_id) for the window_name match. When more
-    than one window shares the name, prefers the live one (see _prefer_live)."""
-    matches = [w for w in _list_windows() if w[2] == name]
+    """Return (session_name, window_id) for the window_name match. Matching
+    is separator- and whitespace-tolerant (see _normalise) so a caller
+    passing the producer's "repo/feature" form still finds a real window
+    named "repo ▸ feature". When more than one window shares the name,
+    prefers the live one (see _prefer_live)."""
+    target = _normalise(name)
+    matches = [w for w in _list_windows() if _normalise(w[2]) == target]
     if not matches:
         return None
     return _prefer_live(matches)
