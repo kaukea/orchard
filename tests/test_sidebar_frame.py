@@ -323,13 +323,17 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
             self.assertFalse(_has_basic_red(raw_line), raw_line)
 
     def test_active_step_kitt_sweep_animates_while_other_lines_stay_static(self) -> None:
-        # The animation moved off the feature row (operator correction,
-        # 2026-07-26): a feature row's own full-width band is now STATIC
-        # (see FeatureRowLayoutTests/the module docstring) -- the frame's
-        # one per-frame motion is the KITT sweep on the accordion's ACTIVE
-        # step line. "landscaper" (orch-arch's identity) maps to the
-        # "building" step (agents/landscaper.md's `step:` frontmatter), so
-        # that is the line expected to move here.
+        # Two lines carry the frame's per-frame motion (operator ruling,
+        # 2026-07-26/2026-07-27): the KITT sweep on the accordion's ACTIVE
+        # step line, and -- since the task-spinner defect fix -- the
+        # "working" TASK row's own cycling glyph (`_task_row_glyph`; it was
+        # previously frozen because `tick` was never threaded into
+        # `_draw_task_row`). The FEATURE row's own glyph stays STATIC (see
+        # FeatureRowLayoutTests/the module docstring) -- that non-cycling is
+        # specific to the feature row, not every "working" glyph. "landscaper"
+        # (orch-arch's identity) maps to the "building" step (agents/
+        # landscaper.md's `step:` frontmatter), so that is the accordion
+        # line expected to move here.
         self._launch()
         first = self._capture_when_ready()
         stripped_first = [_strip_sgr(line) for line in first]
@@ -341,9 +345,17 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         step_indices = [i for i, l in enumerate(stripped_first) if active_step_text in l]
         self.assertEqual(len(step_indices), 2, stripped_first)
         working_idx, idle_step_idx = step_indices
+        # The FEATURE row: "sidebar titling" with no task BAR cell
+        # (`sidebar._TASK_BAR_GLYPH`, "▎") -- distinguishes it from the task
+        # row below, which also names "sidebar titling" (same-name task/
+        # feature) and carries the now-cycling glyph instead.
         feature_idx = next(
             i for i, l in enumerate(stripped_first)
-            if "⠧" in l and "sidebar titling" in l
+            if "sidebar titling" in l and sidebar._TASK_BAR_GLYPH not in l
+        )
+        task_idx = next(
+            i for i, l in enumerate(stripped_first)
+            if "sidebar titling" in l and sidebar._TASK_BAR_GLYPH in l
         )
 
         # Poll for a change rather than compare a single fixed-delay
@@ -362,13 +374,18 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         self.assertEqual(len(first), len(second))
         self.assertNotEqual(first[working_idx], second[working_idx],
                              "active step row never changed within the poll window")
+        # The task row's own spinner also advances within the same window
+        # (item 3's fix) -- proven directly here rather than merely
+        # excluded from the "everything else static" sweep below.
+        self.assertNotEqual(first[task_idx], second[task_idx],
+                             "task row's own spinner never changed within the poll window")
         # The feature row itself, the idle repo's own "building" step, and
         # every other line stay static; only the live active step's own
-        # KITT sweep moves.
+        # KITT sweep and the working task's own spinner move.
         self.assertEqual(first[feature_idx], second[feature_idx])
         self.assertEqual(first[idle_step_idx], second[idle_step_idx])
         for i in range(len(first)):
-            if i == working_idx:
+            if i in (working_idx, task_idx):
                 continue
             self.assertEqual(first[i], second[i], f"unexpected change on line {i}")
 

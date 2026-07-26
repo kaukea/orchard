@@ -123,13 +123,18 @@ KITT core, beyond the 3-step bright/soft/muted banding implemented here.
 
 ANIMATION IS STATE-DRIVEN, curses-only: the pure text path (`render_lines`)
 never animates — a repeated render of the same Fleet is byte-identical. In
-curses, the accordion's ACTIVE step line carries the frame's ONE per-frame
-motion — the KITT sweep described above — driven by a tick counter from the
-main loop's getch cadence. A missing/impossible frame (no width for the
-strip) never costs the step line itself: it still renders its label
-statically and legibly, same as any other row (ANIMATION CAVEAT). The
-feature row's own status glyph is a STATIC accent-coloured member of the
-spinner family (`STATUS_EMOJI["working"]`), never cycled.
+curses, the accordion's ACTIVE step line carries the KITT sweep described
+above, and a "working" TASK row's own status glyph cycles through
+`SPINNER_FRAMES` (`_task_row_glyph`, operator ruling 2026-07-27: a frozen
+task spinner is a defect, not a styling choice — it was drawing a fixed
+frame because `tick` was never threaded into `_draw_task_row` to recompute
+it against) — both driven by the same tick counter from the main loop's
+getch cadence. A missing/impossible frame (no width for the strip) never
+costs the step line itself: it still renders its label statically and
+legibly, same as any other row (ANIMATION CAVEAT). The feature row's own
+status glyph remains a STATIC accent-coloured member of the spinner family
+(`STATUS_EMOJI["working"]`), never cycled — that non-cycling is specific to
+the feature row, not a blanket rule for every "working" glyph in the file.
 
 Every other row (repo header text, done/todo feature glyph, subagent,
 courier) stays a single fixed-width character, unconditionally the same on
@@ -367,7 +372,19 @@ def header_gradient_colour(
 # base (grade 1, the project's own hue) -> TASK colour base (grade 2, Ct —
 # each task its OWN colour, allocated within its feature's hue RANGE, never
 # the global palette) -> CONTENT colour base (grade 3, derived in turn from
-# the task's own colour — the step bands and the dimmed open-stage block).
+# the task's own colour — the step bands and the open-stage block a level
+# below them).
+#
+# "Dimmer" throughout this lineage NEVER means darker (operator correction,
+# 2026-07-27: "dimmer fr me meant lighter / more subdued / less of the
+# colour or a color that matches on the color wheel the container" — the
+# darker reading was an agent inference, not his). A CONTAINED grade is a
+# SUBDUED variant of its container — desaturated and/or lightened toward
+# it, never pushed toward black — so it visibly reads as belonging to its
+# container rather than as a different band: darkening breaks that
+# reading, lightening/desaturating/hue-harmonising preserve it. See
+# `content_colour_base`/`open_stage_colour`.
+#
 # Colour therefore encodes lineage: which feature a task belongs to, and
 # which task a block of content belongs to, readable without a word.
 #
@@ -573,21 +590,51 @@ def task_colour_base(
     return best_candidate
 
 
+# Grade 3/open-stage "subdued" tuning (operator ruling, 2026-07-27 — see
+# the lineage section docstring above for why this is desaturate+lighten,
+# never darken). Content keeps the task colour's own lightness and only
+# quiets its saturation; the open stage goes a further step lighter AND
+# quieter still, so it reads as visibly derived from — and lighter than —
+# the section title it sits under, never the plain background.
+_CONTENT_SATURATION_FACTOR = 0.4
+_OPEN_STAGE_LIGHTNESS_LIFT = 0.16
+_OPEN_STAGE_SATURATION_DROP = 0.12
+
+
 def content_colour_base(task_colour: tuple[int, int, int]) -> tuple[int, int, int]:
-    """Grade 3 — a step band's flat background (C), darkened from the
-    TASK's own colour (grade 2) rather than from the project hue directly
-    — content visibly belongs to its task the same way a task visibly
-    belongs to its feature."""
-    return lerp(task_colour, (0, 0, 0), 0.55)
+    """Grade 3 — a step title's own background (C), a SUBDUED variant of
+    the TASK's own colour (grade 2) — desaturated at the SAME lightness,
+    never darkened toward black (operator ruling, 2026-07-27: "dimmer"
+    meant lighter/less-saturated/harmonising, never darker — darkening
+    reads as a different band, not a quieter one). Content visibly
+    belongs to its task the same way a task visibly belongs to its
+    feature — through reduced saturation, not reduced lightness."""
+    h, l, s = colorsys.rgb_to_hls(*(c / 255 for c in task_colour))
+    r, g, b = colorsys.hls_to_rgb(h, l, s * _CONTENT_SATURATION_FACTOR)
+    return (round(r * 255), round(g * 255), round(b * 255))
 
 
 def open_stage_colour(content_colour: tuple[int, int, int]) -> tuple[int, int, int]:
-    """The OPEN step's own block background — a further, deliberately
-    LARGE darkening step past `content_colour_base` (operator ruling,
-    2026-07-26: "a dim so subtle it cannot be located defeats the entire
-    purpose" — the point is a findable bounding box, not a tasteful
-    gradation)."""
-    return lerp(content_colour, (0, 0, 0), 0.5)
+    """The OPEN step's own block background — LIGHTER than the section
+    title's own `content_colour_base` (operator ruling, 2026-07-27,
+    supersedes the earlier "dimmer means darker" reading: "inside the step
+    shuld be lighter or the color implicitness of inheritnce breaks" — a
+    child must read as visibly DERIVED from its parent; reverting to a
+    darker or plain background says the opposite). Computed straight FROM
+    `content_colour` — never an unrelated source, never independently
+    re-derived from the task colour or anywhere else — lightened and
+    desaturated a further step past it, so the block an agent/subagent
+    line sits in is always painted from the background of the section
+    title it is nested under (the same "parented FROM the line above"
+    relationship the operator separately named for the accent beside a
+    delegated line — the child's colour input is its parent's own
+    rendered colour, not an unrelated one), and the whole open region
+    still reads as one contiguous, findable block against that title."""
+    h, l, s = colorsys.rgb_to_hls(*(c / 255 for c in content_colour))
+    l = min(l + _OPEN_STAGE_LIGHTNESS_LIFT, 1.0)
+    s = max(s - _OPEN_STAGE_SATURATION_DROP, 0.0)
+    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    return (round(r * 255), round(g * 255), round(b * 255))
 
 
 # --------------------------------------------------------------------------
@@ -2533,11 +2580,13 @@ def _draw_feature_row(
 # agent/subagent line nested inside it) — is threaded down to these three
 # functions as `bg: tuple[int, int, int] | None`: None outside any open
 # step (task/feature/repo rows never get one), the step's own
-# `open_stage_colour(...)` otherwise (operator ruling, 2026-07-26: "the
-# agent and subagent lines do sit on the step's background... specifically
-# the dimmer variant, and specifically so that the block has visible
-# bounds" — the whole open region reads as ONE contiguous block). A
-# constant, small breathing indent replaces the old depth-scaled one here
+# `open_stage_colour(...)` otherwise (operator ruling, 2026-07-26, colour
+# direction corrected 2026-07-27: "the agent and subagent lines do sit on
+# the step's background... specifically the [subdued] variant, and
+# specifically so that the block has visible bounds" — the whole open
+# region reads as ONE contiguous block, LIGHTER than its own section
+# title, never darker or the plain background — see `open_stage_colour`).
+# A constant, small breathing indent replaces the old depth-scaled one here
 # (curses-only — depth is now colour, not columns; the plain-text path
 # still uses `INDENT_UNIT * row.depth`, see `render_lines`, since it has no
 # colour to carry structure with).
@@ -2655,9 +2704,26 @@ def _draw_subagent_row(
 _TASK_BAR_GLYPH = "▎"
 
 
+def _task_row_glyph(status: str | None, tick: int) -> str:
+    """The task row's own status glyph — a genuinely CYCLING spinner frame
+    while `status == "working"` (operator ruling, 2026-07-27: "the spinner
+    on the task doesn't spin" — a real defect, not styling; the row was
+    drawing a fixed `STATUS_EMOJI["working"]` frame with no `tick` ever
+    threaded into `_draw_task_row` to recompute it against, so it could
+    never advance regardless of how long the frame loop ran). Every other
+    status keeps its existing static glyph unchanged. This is curses-only,
+    same as every other per-frame motion in this file — the plain-text
+    path (`compose_task_row_text`/`_row_text`) still uses the static
+    `STATUS_EMOJI["working"]` frame, since a repeated `render_lines` call
+    must stay byte-identical."""
+    if status == "working":
+        return SPINNER_FRAMES[tick % len(SPINNER_FRAMES)]
+    return STATUS_EMOJI.get(status, "○")
+
+
 def _draw_task_row(
     stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache,
-    hue: dict[str, tuple[int, int, int]],
+    hue: dict[str, tuple[int, int, int]], tick: int,
 ) -> int:
     """A task's own row: a single accent BAR cell — background B
     (`hue["fill"]`, grade 1), foreground Ct (grade 2, `row.task_colour`,
@@ -2667,7 +2733,9 @@ def _draw_task_row(
     as PLAIN text, no background (operator spec, 2026-07-26: this is what
     keeps a task row visibly distinct from a feature row's own full solid
     band). A terminal task's own green/"failed" colour always wins over
-    its Ct tint, same exclusivity rule as before."""
+    its Ct tint, same exclusivity rule as before. The status glyph itself
+    is `_task_row_glyph` (operator ruling, 2026-07-27) — cycling while
+    working, static otherwise."""
     reverse = curses.A_REVERSE if selected else 0
     bg = hue["fill"]
     if row.status == "done":
@@ -2678,7 +2746,7 @@ def _draw_task_row(
         bar_fg = row.task_colour or feature_colour_base(hue)
     bar_fg = ensure_contrast(bar_fg, bg, _CONTRAST_MIN_MARK)
     _safe_addstr(stdscr, y, 0, _TASK_BAR_GLYPH, colours.pair(bar_fg, bg) | reverse)
-    glyph = STATUS_EMOJI.get(row.status, "○")
+    glyph = _task_row_glyph(row.status, tick)
     avail = max(width - 2, 0)
     body = _truncate(compose_task_row_text(glyph, row.label, row.progress_glyph, avail), avail)
     text_fg = GREEN if row.status == "done" else MUTED if row.status == "failed" else TEXT
@@ -2689,27 +2757,67 @@ def _draw_task_row(
 _STEP_LINE_COLOUR = {"done": GREEN_SOFT, "active": TEXT, "todo": MUTED}
 
 
+def _step_row_name_and_mark(row: Row) -> tuple[str, str]:
+    """(name_only, mark) split of an accordion Row's `label` — the model
+    layer (`_step_row`) still bakes "{glyph} {small_caps(name)}" into
+    `label` for the plain-text path (`_row_text`/`render_lines`, untouched
+    by this curses-only realignment); this recovers the mark so the curses
+    painter can pin it to a fixed column instead of leaving it embedded in
+    the centred name."""
+    mark = _ACCORDION_STEP_GLYPH.get(row.status, "")
+    prefix = f"{mark} "
+    if mark and row.label.startswith(prefix):
+        return row.label[len(prefix):], mark
+    return row.label, mark
+
+
+def _step_row_display_text(row: Row, width: int) -> str:
+    """The step row's full-width display text with its own mark pinned to
+    a FIXED right-hand column, rather than riding the centred name
+    (operator ruling, 2026-07-27: "the checkmarx or red markx next to the
+    step shoujld be right aligned... the mark must not float in the middle
+    next to a centred label of varying length" — a mark that drifts with
+    the label reads ragged; a fixed column doesn't). The window's own
+    literal last column is never safely writable (`_safe_addch`'s insch
+    trap drops any character landed there), so "right-aligned" lands one
+    column short of the true edge, at `width - 2`, with the true last
+    column left blank."""
+    name, mark = _step_row_name_and_mark(row)
+    if width < 2:
+        return render_header_line(row.label, width)
+    name_width = width - 2
+    centred = render_header_line(name, name_width)
+    mark_ch = mark if mark else " "
+    return (centred + mark_ch + " ")[:width]
+
+
 def _draw_step_row(
     stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache, tick: int,
 ) -> int:
     """One line of the task's five-step accordion (operator correction,
     2026-07-26: "collapse keeps the line" — every step gets its own row,
-    always), FULL WIDTH from cell 1, CENTRED, small caps — a collapsed
-    (done/todo) step on flat CONTENT colour (grade 3, `content_colour_
-    base(row.task_colour)`); the OPEN (active) step on the deliberately
-    DARKER `open_stage_colour(...)` instead, so the whole open region
-    reads as one block with a findable edge against its plain siblings.
-    If it is also LIVE (a genuinely "working" agent on it, not merely the
-    furthest-along position — `row.live`, see `_step_row`/the model-layer
-    function of the same name) the open block additionally carries the
+    always), FULL WIDTH from cell 1, CENTRED, small caps.
+
+    EVERY step title — done, active, or todo alike — carries the SAME flat
+    CONTENT colour (grade 3, `content_colour_base(row.task_colour)`,
+    operator ruling 2026-07-27: "every step title carries the same
+    section-title background... being active is expressed by its mark,
+    its sweep and by what appears beneath it, NOT by changing the title's
+    own background" — supersedes the earlier reading where the active
+    title itself sat on a separately-darkened `open_stage_colour`). If the
+    ACTIVE step is also LIVE (a genuinely "working" agent on it, not
+    merely the furthest-along position — `row.live`, see `_step_row`/the
+    model-layer function of the same name) it additionally carries the
     MOVING GRADIENT sweep — reusing the pre-existing lifted-band
     triangular-wave geometry (`band_position`/`band_span`/
-    `band_column_colour`) at the row's own full width. No room/no motion
-    just means a static (but still correctly coloured) block (ANIMATION
-    CAVEAT: a missing animation must never mean a missing step)."""
+    `band_column_colour`) at the row's own full width, brightening this
+    SAME content colour rather than a separately-darkened one. No room/no
+    motion just means a static (but still correctly coloured) block
+    (ANIMATION CAVEAT: a missing animation must never mean a missing
+    step)."""
     reverse = curses.A_REVERSE if selected else 0
     content = content_colour_base(row.task_colour or MUTED)
-    text = render_header_line(row.label, width)
+    text = _step_row_display_text(row, width)
 
     if row.status != "active":
         fg = ensure_contrast(_STEP_LINE_COLOUR.get(row.status, MUTED), content, _CONTRAST_MIN_TEXT)
@@ -2717,18 +2825,17 @@ def _draw_step_row(
             _safe_addch(stdscr, y, col, ch, colours.pair(fg, content) | reverse)
         return y + 1
 
-    open_bg = open_stage_colour(content)
     if row.live:
         span = band_span(max(width - 1, 1))
         pos = band_position(tick, span)
         for col, ch in enumerate(text):
-            bg = band_column_colour(col, pos, width, open_bg) or open_bg
+            bg = band_column_colour(col, pos, width, content) or content
             fg = ensure_contrast(TEXT, bg, _CONTRAST_MIN_TEXT)
             _safe_addch(stdscr, y, col, ch, colours.pair(fg, bg) | reverse)
     else:
-        fg = ensure_contrast(TEXT, open_bg, _CONTRAST_MIN_TEXT)
+        fg = ensure_contrast(TEXT, content, _CONTRAST_MIN_TEXT)
         for col, ch in enumerate(text):
-            _safe_addch(stdscr, y, col, ch, colours.pair(fg, open_bg) | reverse)
+            _safe_addch(stdscr, y, col, ch, colours.pair(fg, content) | reverse)
     return y + 1
 
 
@@ -2766,7 +2873,7 @@ def _draw(
             y += 1
             continue
         if row.kind == "task":
-            y = _draw_task_row(stdscr, y, max_x, row, i == selected, colours, hue)
+            y = _draw_task_row(stdscr, y, max_x, row, i == selected, colours, hue, tick)
             continue
         if row.kind == "accordion":
             y = _draw_step_row(stdscr, y, max_x, row, i == selected, colours, tick)

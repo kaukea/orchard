@@ -1783,6 +1783,78 @@ class TaskGlyphTests(unittest.TestCase):
         self.assertNotEqual(sidebar.STATUS_EMOJI["done"], sidebar.STATUS_EMOJI["failed"])
 
 
+class TaskSpinnerTests(unittest.TestCase):
+    """`_task_row_glyph` (operator ruling, 2026-07-27): the task row's own
+    "working" glyph must CYCLE with `tick` -- it was previously frozen on
+    a single static frame because `_draw_task_row` never received a tick
+    to recompute it against. Every other status keeps its plain, static
+    `STATUS_EMOJI` glyph, unchanged."""
+
+    def test_working_glyph_cycles_through_spinner_frames(self):
+        seen = {sidebar._task_row_glyph("working", tick) for tick in range(len(sidebar.SPINNER_FRAMES))}
+        self.assertEqual(seen, set(sidebar.SPINNER_FRAMES))
+
+    def test_working_glyph_changes_across_consecutive_ticks(self):
+        self.assertNotEqual(sidebar._task_row_glyph("working", 0), sidebar._task_row_glyph("working", 1))
+
+    def test_working_glyph_wraps_around(self):
+        n = len(sidebar.SPINNER_FRAMES)
+        self.assertEqual(sidebar._task_row_glyph("working", 0), sidebar._task_row_glyph("working", n))
+
+    def test_non_working_status_stays_static_across_ticks(self):
+        for status in ("done", "failed", "idle", "stale"):
+            glyph_a = sidebar._task_row_glyph(status, 0)
+            glyph_b = sidebar._task_row_glyph(status, 5)
+            self.assertEqual(glyph_a, glyph_b)
+            self.assertEqual(glyph_a, sidebar.STATUS_EMOJI.get(status, "○"))
+
+
+class StepRowMarkAlignmentTests(unittest.TestCase):
+    """`_step_row_name_and_mark`/`_step_row_display_text` (operator
+    ruling, 2026-07-27): the step's own done/active mark rides a FIXED
+    right-hand column instead of drifting with the centred, variable-
+    length step name -- "the mark must not float in the middle next to a
+    centred label of varying length, which is what makes the current
+    column ragged... right aligned is the better choice"."""
+
+    def _row(self, name, state):
+        glyph = sidebar._ACCORDION_STEP_GLYPH[state]
+        label = f"{glyph} {sidebar.small_caps(name)}" if glyph else sidebar.small_caps(name)
+        return sidebar.Row(depth=2, kind="accordion", target="t", label=label, status=state)
+
+    def test_done_mark_recovered_from_label(self):
+        name, mark = sidebar._step_row_name_and_mark(self._row("building", "done"))
+        self.assertEqual(mark, "✓")
+        self.assertEqual(name, sidebar.small_caps("building"))
+
+    def test_active_mark_recovered_from_label(self):
+        name, mark = sidebar._step_row_name_and_mark(self._row("building", "active"))
+        self.assertEqual(mark, "⠧")
+        self.assertEqual(name, sidebar.small_caps("building"))
+
+    def test_todo_has_no_mark(self):
+        name, mark = sidebar._step_row_name_and_mark(self._row("building", "todo"))
+        self.assertEqual(mark, "")
+        self.assertEqual(name, sidebar.small_caps("building"))
+
+    def test_mark_lands_on_the_same_column_regardless_of_name_length(self):
+        short = sidebar._step_row_display_text(self._row("ideation", "done"), 40)
+        long = sidebar._step_row_display_text(self._row("designing", "done"), 40)
+        self.assertEqual(short.index("✓"), long.index("✓"))
+
+    def test_mark_never_lands_on_the_literal_last_column(self):
+        # the window's own last column is never safely writable (see
+        # `_safe_addch`'s insch trap) -- the mark must land short of it.
+        width = 40
+        text = sidebar._step_row_display_text(self._row("building", "done"), width)
+        self.assertNotEqual(text.index("✓"), width - 1)
+
+    def test_todo_row_still_fills_the_full_width(self):
+        width = 30
+        text = sidebar._step_row_display_text(self._row("releasing", "todo"), width)
+        self.assertEqual(len(text), width)
+
+
 class TaskColourExclusivityTests(unittest.TestCase):
     """sidebar-empty-rows step 7 / operator colour-lineage spec, 2026-07-26:
     a terminal subagent's own done/failed colour always wins over the
@@ -1811,29 +1883,63 @@ class TaskColourExclusivityTests(unittest.TestCase):
 
 
 class OpenBlockColourTests(unittest.TestCase):
-    """`_open_block_bg` -- the dimmed background an agent/subagent row
+    """`_open_block_bg` -- the subdued background an agent/subagent row
     nested under an OPEN step shares with that step's own line (operator
-    ruling, 2026-07-26: "the whole open region... shares that dimmer
-    background... as one contiguous block")."""
+    ruling, 2026-07-26, colour direction corrected 2026-07-27: "the whole
+    open region... shares that [subdued] background... as one contiguous
+    block" -- LIGHTER than the section title it sits under, never darker;
+    "dimmer" throughout this feature's spec meant subdued (lighter, less
+    saturated, or a harmonising hue), never darker toward black -- the
+    darker reading was an earlier agent inference, not the operator's)."""
 
     def test_none_task_colour_yields_no_block_background(self):
         row = sidebar.Row(depth=4, kind="agent", target="t", label="x", status="working",
                            task_colour=None)
         self.assertIsNone(sidebar._open_block_bg(row))
 
-    def test_task_colour_yields_a_darkened_block_background(self):
+    def test_task_colour_yields_a_block_background_lighter_than_its_section_title(self):
         task_colour = (0xAC, 0x88, 0xD6)
         row = sidebar.Row(depth=4, kind="agent", target="t", label="x", status="working",
                            task_colour=task_colour)
         bg = sidebar._open_block_bg(row)
         self.assertIsNotNone(bg)
-        # darker than the task's own colour -- and distinct from the flat
-        # (non-open) content colour a collapsed step would use, so the
-        # open block has a findable edge (operator ruling, 2026-07-26: "a
-        # dim so subtle it cannot be located defeats the entire purpose").
-        self.assertLess(sidebar.relative_luminance(bg), sidebar.relative_luminance(task_colour))
+        # LIGHTER than the flat (non-open) content colour a collapsed step
+        # uses for its own title -- a child reads as visibly DERIVED from
+        # (lighter than) its parent, never reverting to a darker or plain
+        # background (operator ruling, 2026-07-27, supersedes the earlier
+        # "dimmer means darker" reading).
         content = sidebar.content_colour_base(task_colour)
-        self.assertLess(sidebar.relative_luminance(bg), sidebar.relative_luminance(content))
+        self.assertGreater(sidebar.relative_luminance(bg), sidebar.relative_luminance(content))
+        # still distinct from raw white/the plain background -- a findable
+        # bounding box, not a wash-out (operator ruling, 2026-07-26: "a dim
+        # so subtle it cannot be located defeats the entire purpose").
+        self.assertLess(sidebar.relative_luminance(bg), sidebar.relative_luminance(sidebar.WHITE))
+
+    def test_content_colour_is_a_subdued_not_darkened_task_colour(self):
+        # "dimmer" meant desaturated at the SAME lightness, never pushed
+        # toward black (operator ruling, 2026-07-27) -- content keeps
+        # roughly the task colour's own lightness rather than reading as a
+        # different, darker band.
+        task_colour = (0xAC, 0x88, 0xD6)
+        content = sidebar.content_colour_base(task_colour)
+        task_l = sidebar.colorsys.rgb_to_hls(*(c / 255 for c in task_colour))[1]
+        content_l = sidebar.colorsys.rgb_to_hls(*(c / 255 for c in content))[1]
+        self.assertAlmostEqual(task_l, content_l, delta=0.02)
+
+    def test_open_stage_colour_is_derived_from_its_own_content_colour(self):
+        # the open block's colour is computed FROM the section title's own
+        # rendered background, never an unrelated source -- the same
+        # "parented from the line above" relationship the operator named
+        # for a delegated line's own accent (a child's colour input is its
+        # parent's own colour, not an independent one).
+        for task_colour in ((0xAC, 0x88, 0xD6), (0x6E, 0xB4, 0xB0), (0x40, 0x40, 0x40)):
+            content = sidebar.content_colour_base(task_colour)
+            self.assertEqual(sidebar.open_stage_colour(content), sidebar.open_stage_colour(content))
+            other_content = sidebar.content_colour_base((0x10, 0x10, 0x10))
+            if content != other_content:
+                self.assertNotEqual(
+                    sidebar.open_stage_colour(content), sidebar.open_stage_colour(other_content),
+                )
 
 
 if __name__ == "__main__":
