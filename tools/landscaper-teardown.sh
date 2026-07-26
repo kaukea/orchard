@@ -1,65 +1,55 @@
 #!/usr/bin/env bash
-# Message-bus choreography teardown action.
-# Run by the LANDSCAPER ITSELF as its very last act (self-teardown, Decision-041):
-# returns the operator's tmux client to the gardener pane, then closes the
-# landscaper's OWN window — the caller's session ends with it. Nobody runs this
-# against another agent: supervision kills are removed (operator ruling, 2026-07-25).
-# Replaces the retired Stop hook — no transcript reading, no stdin, no scratch-file logging.
-# Best-effort: every tmux call is guarded, always exit 0.
-set -u
+# window-kill + focus-return primitive; resolves by @landscaper_id/@gardener_id
+# window user-options; callable by the groundskeeper (pass socket as $2) or
+# self-called from within the landscaper's tmux; no .return-window.
+#
+# Pane titles are clobbered live by claude (Decision-048), so every load-bearing
+# handle keys off a window user-option. The primitive returns the operator's tmux
+# client to the gardener window (spec §3), then kills the landscaper's window —
+# which also removes its sidebar pane. It refuses to kill an unresolved handle or
+# the focus-return target itself (spec §7).
+set -euo pipefail
 
 if [ -z "${1:-}" ]; then
-  echo "usage: landscaper-teardown.sh <feature-id>" >&2
-  exit 0
+  echo "usage: landscaper-teardown.sh <landscaper-id> [socket]" >&2
+  exit 2
 fi
 
 id="$1"
-wt=".claude/worktrees/$id"
-rw="$wt/.return-window"
+# Socket: explicit $2 wins; else the current tmux socket (self-call from inside the
+# landscaper). ${TMUX} is <socket>,<pid>,<session> — take the socket field.
+sock="${2:-${TMUX:-}}"
+sock="${sock%%,*}"
 
-if [ ! -f "$rw" ]; then
-  echo "landscaper-teardown: no .return-window for $id"
-  exit 0
-fi
+die(){ echo "landscaper-teardown: $*" >&2; exit 1; }
+[ -n "$sock" ] || die "no tmux socket available (pass as \$2 or run inside tmux)"
 
-ret=$(sed -n 1p "$rw")
-sock=$(sed -n 2p "$rw")
-[ -n "$sock" ] || sock="${TMUX%%,*}"
-if [ -z "$sock" ]; then
-  echo "landscaper-teardown: no tmux socket available for $id"
-  exit 0
-fi
+tx(){ tmux -S "$sock" "$@"; }
 
-tx(){ tmux -S "$sock" "$@" 2>/dev/null || true; }
+# LANDSCAPER window — matched on the stable @landscaper_id window user-option.
+# Fields are '|'-delimited so a session name containing spaces (the current
+# 'orchids ▸ <name>' form, pre-tmux-naming) cannot shift field positions.
+land_win=$(tx list-windows -a -F '#{window_id}|#{@landscaper_id}' \
+  | awk -F'|' -v id="$id" '$2==id{print $1; exit}')
 
-# landscaper window is found by the stable @landscaper_id window user-option —
-# pane titles get clobbered live by claude, so they cannot be used as a handle.
-arch_win=$(tx list-windows -a -F '#{window_id} #{@landscaper_id}' | awk -v id="$id" '$2==id{print $1; exit}')
+# GARDENER window — the one carrying a non-empty @gardener_id. One gardener per
+# session (Decision-032), so the first non-empty match is correct. @gardener_id is
+# placed FIRST so an unset value is an empty leading field (skipped), never a
+# shifted one; window id and session name follow, '|'-delimited for space-safety.
+gard=$(tx list-windows -a -F '#{@gardener_id}|#{window_id}|#{session_name}' \
+  | awk -F'|' '$1!=""{print $2"|"$3; exit}')
+gard_win=${gard%%|*}
+gard_sess=${gard#*|}
 
-# focus return — line 1 is a pane id %N (Decision-006) or legacy window id @N
-case "$ret" in
-  %*) ret_win=$(tx display-message -p -t "$ret" '#{window_id}'); tx switch-client -t "$ret"; [ -n "$ret_win" ] && tx select-window -t "$ret_win"; tx select-pane -t "$ret" ;;
-  *)  ret_win="$ret"; tx switch-client -t "$ret" || tx select-window -t "$ret" ;;
-esac
+# Refuse: never act on an unresolved handle, and never kill the focus-return target.
+[ -n "$land_win" ] || die "no landscaper window found for @landscaper_id=$id"
+[ -n "$gard_win" ] || die "no gardener window found (@gardener_id unset)"
+[ "$land_win" != "$gard_win" ] || \
+  die "landscaper window $land_win is the gardener window; refusing to kill the focus-return target"
 
-# SAFETY: never kill the return target. The landscaper's window mounts both the
-# landscaper pane and its sidebar pane, so a window-level kill closes the whole
-# handle in one shot. Refuse only when no window resolved, or when that window
-# is (or contains) the return target — comparing against both the resolved
-# return window and the raw return-target string (legacy @window match).
-if [ -z "$arch_win" ]; then
-  echo "landscaper-teardown: no landscaper window found for $id, not closing"
-  exit 0
-fi
-if [ "$arch_win" = "$ret_win" ]; then
-  echo "landscaper-teardown: landscaper window is the return target's window, not closing"
-  exit 0
-fi
-if [ "$arch_win" = "$ret" ]; then
-  echo "landscaper-teardown: landscaper window equals return target, not closing"
-  exit 0
-fi
+# Return focus to the gardener window, then release the landscaper window.
+tx switch-client -t "$gard_sess"
+tx select-window -t "$gard_win"
+tx kill-window -t "$land_win"
 
-tx kill-window -t "$arch_win"
-echo "landscaper-teardown: returned to $ret, closed $arch_win"
-exit 0
+echo "landscaper-teardown: returned focus to gardener $gard_sess:$gard_win, closed landscaper window $land_win"

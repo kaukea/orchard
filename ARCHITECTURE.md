@@ -218,11 +218,19 @@ $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
   grammar transform — falling back to the mechanical hyphen-to-space form only
   pre-intake (`tools/feature_name.py`, one helper, every title call site).
   Switching the client happens on Enter. Windows carry the human-readable
-  identity. Teardown and reaping key off a stable `@landscaper_id` tmux **window**
-  user-option, set on the landscaper window at launch — immune to the live
+  identity. Teardown, reaping, and focus return key off stable tmux **window**
+  user-options — `@landscaper_id` (set on each landscaper window at launch) and
+  `@gardener_id` (set on the gardener's own window at boot) — immune to the live
   status-glyph indicator that clobbers pane titles. `land:<id>` survives only as
   a non-load-bearing human hint on the pane title. `@landscaper_id` is the small stable
-  handle contract the sidebar mount also consumes.
+  handle contract the sidebar mount also consumes. At close the landscaper window
+  is released by the window-kill primitive (`tools/landscaper-teardown.sh`), which
+  resolves the window by `@landscaper_id`, returns focus by selecting the
+  `@gardener_id` window, and kills the landscaper window — invoked by the gardener's
+  groundskeeper as part of the reverse-order release of window, branch, and worktree
+  (Decision-090); the former `.return-window` marker is retired. The full tmux
+  layout, naming, pane-stacking, and close contract is the committed spec in
+  `docs/tmux-topology.md`.
 - **Mounted automatically** at the gardener's own boot, in addition to the
   existing per-landscaper-spawn mount — no manual step either way
   (`tools/sidebar-mount.sh`, idempotent).
