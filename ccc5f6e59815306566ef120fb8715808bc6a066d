@@ -1,0 +1,23 @@
+Exit interview — gardener, post-restart arc 2026-07-26 (cutover + check-a + Decision-096)
+
+Deviations:
+- Proposed killing the old sidebar pane + remounting in one stroke;
+  operator rejected the tool call, then resolved it himself with a full
+  restart. Lesson: when the operator announces a restart, the restart IS
+  the fix path — don't race it with surgical pane work.
+- Bloomer round ran without an operator channel of its own (no
+  AskUserQuestion in subagent toolset); questions relayed verbatim
+  through the gardener, one per window. Worked; is now also the
+  Decision-096-correct shape (subagents own no surfaces).
+- Direct orchard_topic.py posts were charter-compliant until the
+  operator's courier-only ruling landed mid-session; switched to
+  courier-routed asks the same turn. Charters amended in the same stroke
+  so the rule is written, not remembered.
+
+Friction:
+- A courier sidecar per in-session subagent (~35k tokens each) surfaced
+  as a cost + identity smell the operator escalated into Decision-096 —
+  the design review came from watching the task list, not from any
+  monitoring. Cheap observability pays.
+- board_lint carries 7 pre-existing decision-* taxonomy reds; bloomer
+  green-gate unsatisfiable this round; debt offered to operator, parked.
