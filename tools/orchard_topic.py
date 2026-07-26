@@ -33,11 +33,9 @@ bounced straight back to the calling session over the courier. Nothing is writte
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import NoReturn
 
@@ -80,10 +78,6 @@ def session_id() -> str:
     return sid
 
 
-def _stamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S.%f")
-
-
 def _bump_chain(leaf: Path, root: Path) -> None:
     """Advance mtime on the leaf and every ancestor up to (and including) root.
 
@@ -103,17 +97,13 @@ def _bump_chain(leaf: Path, root: Path) -> None:
 
 
 def write_message(topic_dir: Path, sid: str, envelope: dict) -> Path:
-    """Write one event atomically: temp `.<sid>.<ts>` then rename to `<sid>.<ts>`.
-
-    The leading dot marks the file in-progress (a monitor skips dotfiles); the
-    rename drops it, publishing the event and advancing the directory mtime.
+    """Write one event through courier.py's shared orchard writer — the same
+    validated, atomically-renamed `<sid>.<ts>.json` name orchard_deliver()
+    uses, so this call can no longer drop the `.json` extension the way its
+    old ad hoc `f"{sid}.{ts}"` name did — then bump the mtime chain up to
+    topics_root() so a nested watcher sees the activity propagate.
     """
-    topic_dir.mkdir(parents=True, exist_ok=True)
-    ts = _stamp()
-    final = topic_dir / f"{sid}.{ts}"
-    tmp = topic_dir / f".{sid}.{ts}"
-    tmp.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
-    os.replace(tmp, final)
+    final = courier.write_orchard_file(topic_dir, courier.orchard_message_name(sid), envelope)
     _bump_chain(topic_dir, topics_root())
     return final
 

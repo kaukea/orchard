@@ -402,6 +402,80 @@ class FeatureMarkerTests(_OrchardTestCase):
         self.assertEqual(other["name"], "Other Feature")
 
 
+class SignalPrefixTests(_OrchardTestCase):
+    """`signal --to` is documented as a bare session id, but every other
+    `--to` in this script takes a full `:session:<id>` address — a caller
+    that follows that habit here used to double the prefix
+    (`:session::session:<id>`) once cmd_signal wrapped it again, leaking a
+    `:` into the delivered marker filename (Decision-091 forbids that
+    outright). Both the bare-id (documented) and already-prefixed shape
+    must land on the same, single-prefixed result."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = make_repo(str(Path(self._tmp.name)))
+
+    def _signal(self, to_value: str):
+        return self._courier(
+            self.repo, "sessSignaller",
+            "signal", "--state", "finished", "--to", to_value,
+        )
+
+    def _project_dir(self):
+        return self.runtime_dir / "orchard" / "projects" / self._slug(self.repo)
+
+    def test_bare_to_is_not_doubled(self):
+        proc = self._signal("parentSess")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        project_dir = self._project_dir()
+        self.assertTrue((project_dir / "parentSess.marker").exists())
+        self.assertEqual(list(project_dir.glob("*:*")), [])
+
+    def test_already_prefixed_to_is_not_doubled(self):
+        proc = self._signal(":session:parentSess")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        project_dir = self._project_dir()
+        self.assertTrue((project_dir / "parentSess.marker").exists())
+        self.assertEqual(list(project_dir.glob("*:*")), [])
+
+        files = list(project_dir.glob("parentSess.*.json"))
+        self.assertEqual(len(files), 1)
+        envelope = json.loads(files[0].read_text(encoding="utf-8"))
+        self.assertEqual(envelope["to"], ":session:parentSess")
+
+
+class OrchardFilenameValidationTests(unittest.TestCase):
+    """Decision-091's closed set of orchard filename shapes —
+    `<sessionid>.<ts>.json`, `<sessionid>.marker`, `<feature-id>.marker` —
+    enforced by validate_orchard_filename(), the single gate write_orchard_file()
+    calls before anything touches disk. No coercion, no silent repair:
+    anything outside the closed set raises."""
+
+    def test_valid_shapes_are_accepted(self):
+        courier.validate_orchard_filename("sess1.2026-07-26T14-04-13.469488.json")
+        courier.validate_orchard_filename("sess1.marker")
+        courier.validate_orchard_filename("feat-x.marker")
+
+    def test_routing_prefix_in_any_component_is_rejected(self):
+        with self.assertRaises(ValueError):
+            courier.validate_orchard_filename(":session:sess1.marker")
+        with self.assertRaises(ValueError):
+            courier.validate_orchard_filename(":session:sess1.2026-07-26T14-04-13.469488.json")
+
+    def test_missing_json_extension_is_rejected(self):
+        with self.assertRaises(ValueError):
+            courier.validate_orchard_filename("sess1.2026-07-26T14-04-13.469488")
+
+    def test_write_orchard_file_rejects_rather_than_repairs_a_malformed_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            dir_path = Path(d)
+            with self.assertRaises(ValueError):
+                courier.write_orchard_file(dir_path, "sess1.2026-07-26T14-04-13.469488", {"x": 1})
+            self.assertEqual(list(dir_path.iterdir()), [])
+
+
 class RequestReplyTests(_OrchardTestCase):
     """`request` blocks until a matching `reply` (matched on in_reply_to)
     arrives, then prints the reply body. The reply is sent from a second

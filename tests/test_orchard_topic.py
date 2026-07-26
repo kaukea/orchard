@@ -24,10 +24,13 @@ Accepted events (lifecycle/status/delegation/outcome/task) now land through
 `$XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sid>.<ts>.json`, with a
 sibling `<sid>.marker` and a parent-project-dir mtime bump — matching
 tests/test_orchard_transport.py's `project_slug()`-driven idiom exactly, so
-the slug is asked of courier rather than re-derived here. The reject path is
-unchanged: it still writes telemetry into the OLD
-`topics/telemetry/<repo>/` directory via orchard_topic.py's own local
-`write_message()`, which the script never migrated.
+the slug is asked of courier rather than re-derived here. The reject path's
+location is unchanged: telemetry still lands under the OLD
+`topics/telemetry/<repo>/` directory. Its NAMING is no longer local, though —
+orchard_topic.py's `write_message()` now builds the filename via
+`courier.orchard_message_name()`/`courier.write_orchard_file()`, the same
+validated constructor orchard_deliver() uses, closing the gap where the old
+ad hoc `f"{sid}.{ts}"` name silently dropped the `.json` extension.
 """
 import json
 import os
@@ -396,6 +399,21 @@ def test_marker_created_and_project_dir_mtime_bumped_on_post(repo, runtime_dir):
     assert second.returncode == 0, second.stderr
 
     assert project_dir.stat().st_mtime > stale + 5000, "project dir mtime was not bumped"
+
+
+def test_telemetry_rejection_filename_ends_in_json(repo, runtime_dir):
+    """orchard_topic.py's reject() telemetry write goes through
+    courier.write_orchard_file() via write_message()'s
+    courier.orchard_message_name() — the same canonical namer every other
+    orchard write uses. It used to build `f"{sid}.{ts}"` locally and
+    silently drop the `.json` extension."""
+    result = _run(repo, runtime_dir, ["lifecycle", "bogus"])
+    assert result.returncode != 0
+
+    repo_name = Path(repo).name
+    tfiles = list(_telemetry_dir(runtime_dir, repo_name).glob(f"{SID}.*"))
+    assert len(tfiles) == 1
+    assert tfiles[0].name.endswith(".json")
 
 
 # --- repo naming ---------------------------------------------------------

@@ -590,6 +590,13 @@ def cmd_signal(args) -> None:
     if not to:
         print(f"signal {args.state} — no parent known, not delivered")
         return
+    # --to is documented as a bare session id, but every other --to in this
+    # script takes a full `:session:<id>` address — a caller that copies that
+    # habit here would otherwise double the prefix (`:session::session:<id>`)
+    # once wrapped below, which leaked a `:` into a delivered filename
+    # (Decision-091 rejects that outright). Idempotent: a no-op on the
+    # documented bare-id case.
+    to = to.removeprefix(":session:")
 
     parent_project = os.environ.get("ORCHID_PARENT_PROJECT") or project_slug()
     ns = argparse.Namespace(
@@ -919,6 +926,8 @@ def parse_orchard_address(addr: str) -> tuple[str, str]:
 def _check_path_component(value: str, label: str, *, dot_free: bool = False) -> None:
     if not value or "/" in value or value in (".", ".."):
         sys.exit(f"courier: invalid {label} {value!r}")
+    if ":" in value:
+        sys.exit(f"courier: invalid {label} {value!r} — must not carry a routing prefix")
     if dot_free and "." in value:
         sys.exit(f"courier: invalid {label} {value!r} — must be dot-free")
 
@@ -960,8 +969,57 @@ def project_slug() -> str:
     return slug or repo_root.name
 
 
-def _stamp_filename(sid: str) -> str:
+ORCHARD_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{6}$")
+
+
+def _valid_orchard_id(component: str) -> bool:
+    return bool(component) and "/" not in component and ":" not in component and component not in (".", "..")
+
+
+def validate_orchard_filename(name: str) -> None:
+    """The single gate every name entering the orchard tree passes through
+    (operator ruling, Decision-091): exactly `<sessionid>.<ts>.json`,
+    `<sessionid>.marker`, or `<feature-id>.marker` — no coercion, no silent
+    repair. Anything else, including a leaked `:` routing prefix in any
+    component, raises."""
+    if name.endswith(".marker"):
+        id_ = name[: -len(".marker")]
+        if not _valid_orchard_id(id_) or "." in id_:
+            raise ValueError(f"invalid orchard filename {name!r} — expected <id>.marker")
+        return
+    if name.endswith(".json"):
+        sid, sep, ts = name[: -len(".json")].partition(".")
+        if not sep or not _valid_orchard_id(sid) or not ORCHARD_TIMESTAMP_RE.match(ts):
+            raise ValueError(f"invalid orchard filename {name!r} — expected <sessionid>.<ts>.json")
+        return
+    raise ValueError(f"invalid orchard filename {name!r} — must be <sessionid>.<ts>.json or <id>.marker")
+
+
+def orchard_message_name(sid: str) -> str:
     return f"{sid}.{stamp()}.json"
+
+
+def orchard_marker_name(id_: str) -> str:
+    return f"{id_}.marker"
+
+
+def write_orchard_file(dir_path: Path, name: str, payload: dict | None = None) -> Path:
+    """The ONE writer for the orchard tree: every filename is constructed by
+    a caller of orchard_message_name/orchard_marker_name (never assembled
+    inline) and validated here before anything touches disk. `payload=None`
+    touches an empty heartbeat marker (mtime IS the liveness signal, per
+    Decision-091); otherwise `payload` is written as pretty JSON, atomically
+    (temp file + rename, so a watcher never observes a half-written file)."""
+    validate_orchard_filename(name)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    final = dir_path / name
+    if payload is None:
+        final.touch(exist_ok=True)
+    else:
+        tmp = dir_path / f".{name}.partial"
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        os.replace(tmp, final)
+    return final
 
 
 # The durable feature-node marker (`<feature-id>.marker`, distinct from the
@@ -1044,22 +1102,17 @@ def write_feature_marker(dir_path: Path, project: str, envelope: dict) -> None:
     path = _feature_marker_path(dir_path, feature)
     now = datetime.now(timezone.utc).isoformat()
     marker = merge_feature_marker(path, project, feature, envelope, now)
-    tmp = path.with_name(f".{path.name}.partial")
-    tmp.write_text(json.dumps(marker, indent=2), encoding="utf-8")
-    os.replace(tmp, path)
+    write_orchard_file(dir_path, orchard_marker_name(feature), marker)
 
 
 def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
     """Atomically write the message, touch/create the marker heartbeat, merge
     the feature-node marker when the envelope carries one, bump the parent
     dir's mtime (nested writes don't bubble automatically), then give the
-    compaction pass a chance to run."""
-    dir_path.mkdir(parents=True, exist_ok=True)
-    final = dir_path / _stamp_filename(sid)
-    tmp = dir_path / f".{final.name}.partial"
-    tmp.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
-    os.replace(tmp, final)
-    (dir_path / f"{sid}.marker").touch(exist_ok=True)
+    compaction pass a chance to run. Both writes go through write_orchard_file
+    — the one place a name is built and validated (Decision-091)."""
+    final = write_orchard_file(dir_path, orchard_message_name(sid), envelope)
+    write_orchard_file(dir_path, orchard_marker_name(sid))
     if dir_path.parent.name == "projects":
         write_feature_marker(dir_path, dir_path.name, envelope)
     os.utime(dir_path, None)
