@@ -46,7 +46,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `feature · todo · · blocked-on-answers · process · gh#39` [Gardener emits the orchard summary file, parseable from outside](TODO.md.d/orchard-summary.md)
   - `feature · todo · · queued · process · gh#40` [Orchard view: consolidate the fleet, show priorities and cross-repo edges](TODO.md.d/orchard-view.md) ⊘orchard-summary
   - `feature · todo · · queued · process · gh#41` [Orchard launch: session per repo, gardener told the pick and double-checks](TODO.md.d/orchard-launch.md) ⊘orchard-view
-  - `feature · todo · critical · plan-ready · process · gh#42` [Tmux topology: window per landscaper, stacked pane per coder — written spec this time](TODO.md.d/tmux-topology.md) ~bus-finishing ~hook-choreography ~fleet-sidebar ~close-family-fakes
+  - `feature · done · critical · process · gh#42` [Tmux topology: window per landscaper, stacked pane per coder — written spec this time](TODO.md.d/tmux-topology.md) ~bus-finishing ~hook-choreography ~fleet-sidebar ~close-family-fakes
   - `feature · done · · complete/interactive · · gh#23` [Fleet sidebar: always-visible navigable job states with phase emojis](TODO.md.d/fleet-sidebar.md) ~bus-liveness ~agent-metadata
     - `feature · todo · · blocked-on-answers · process · gh#189` [Cloud event feed: GitHub Actions events land as sidebar files](TODO.md.d/cloud-event-feed.md) ~cloud-architect
     - `bug · done · · complete/interactive · process ·` [Fleet sidebar fixes: correct the defects the first build shipped](TODO.md.d/sidebar-fixes.md)

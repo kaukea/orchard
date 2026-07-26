@@ -1628,3 +1628,52 @@ single writer for its session, full stop. Charters amended accordingly
 nothing — delegated reference only). The courier's OWN direct
 `orchard_topic.py`/`courier.py` invocations are the sanctioned mechanism,
 unchanged.
+
+## [2026-07-26] Decision-097: The tmux topology is a committed spec; the window-kill primitive and the @gardener_id handle land the window side of Decision-090
+#tmux #topology #window #close #teardown #landscaper #gardener #spec #decision-090
+
+**Context:** Decision-090 declared the close re-homes to the gardener's
+groundskeeper; the landscaper becomes pure scope with no self-teardown. This
+decision lands the WINDOW half — the specification and the teardown primitive
+that make close orchestration work.
+
+**Decision:**
+
+- `docs/tmux-topology.md` is now the committed authority for the fleet's tmux
+  layout (session per repository, window per landscaper, headless-but-peekable
+  sowers in a capped right column, closing and focus return). Chat convention
+  and skill prose no longer govern — the Written-spec gate of Decision-090.
+- The gardener stamps `@gardener_id` on its own window at boot (value = its
+  session id), the mirror of `@landscaper_id`. Both are tmux window
+  user-options and the only load-bearing handles; pane titles are clobbered
+  live by the running program (Decision-048).
+- `tools/landscaper-teardown.sh` is a pure window-kill + focus-return
+  primitive keyed on those handles, callable by the gardener's groundskeeper
+  (optional socket argument) or self-called from within the landscaper's tmux.
+  It retires the `.return-window` marker and refuses on an unresolved handle or
+  when the landscaper window is the focus-return target. This lands the WINDOW
+  side of Decision-090's reverse-order release; the close firing and
+  orchestration, and the landscaper's "pure scope / no self-teardown" edit,
+  land with [[close-family-fakes]].
+- Formally supersedes Decision-006 (architect beside the orchestrator in a
+  pane) at landing — already superseded in principle by Decision-036.
+- The window-name separator alignment (the creator writes `▸`, the sidebar
+  navigator resolves `/`) and the pane-title persistence mechanism are the
+  coordinated rework of [[tmux-naming]]; this spec declares the naming
+  contract only.
+
+**Open & Follow-ups:**
+
+- [[tmux-naming]] owns: aligning the window-name separator (`▸` vs the
+  navigator's `/` — a live navigation mismatch found in discovery) and the
+  pane-title persistence mechanism. This spec declares the contract and defers
+  the mechanism, per the 2026-07-26 ruling.
+- [[close-family-fakes]] owns (co-designed, seam agreed): the supervising
+  controller, the groundskeeper's close firing and reverse-order orchestration,
+  and the landscaper.md edit making it a pure scope that runs no self-teardown.
+  The window-kill primitive stays backwards-compatible (self-callable) until
+  that lands.
+- Full real-fleet live confirmation (an actual gardener spawning an actual
+  landscaper and closing it against the operator's own client) rides the next
+  real landscaper spawn — the standing voluntary deferral; the private-server
+  test covers the mechanics.
