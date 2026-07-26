@@ -25,7 +25,18 @@ resolve to its PARENT's inbox.
 
 Usage:
   courier.py whoami                                this session's id
-  courier.py init [id]                             create an inbox
+  courier.py init [id] [--agent ROLE]              create an inbox; also
+                                                resolves and persists this
+                                                session's role (for identity_of()
+                                                to recover across a resume, when
+                                                the harness sets no
+                                                CLAUDE_CODE_AGENT): harness env
+                                                wins, else --agent ROLE if given,
+                                                else a best-effort walk of the
+                                                launching `claude` process's own
+                                                command line for its --agent
+                                                flag. Never overwrites an
+                                                already-persisted role.
   courier.py teardown [id]                         remove it (session end)
   courier.py list                                  registry: one agent id per line
   courier.py send --from A --to B [--body X] [--notify-user] [--in-reply-to ID]
@@ -404,6 +415,55 @@ def _task_identity(feature_id: str | None, feature_name: str | None) -> tuple[st
     return task_id, task_name
 
 
+def _proc_cmdline(pid: int) -> list[str]:
+    raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    return [part.decode(errors="replace") for part in raw.split(b"\0") if part]
+
+
+def _proc_ppid(pid: int) -> int:
+    stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    fields = stat.rsplit(")", 1)[1].split()
+    return int(fields[1])
+
+
+def _agent_flag_value(cmdline: list[str]) -> str | None:
+    for index, token in enumerate(cmdline):
+        if token == "--agent" and index + 1 < len(cmdline):
+            return cmdline[index + 1]
+        if token.startswith("--agent="):
+            return token.split("=", 1)[1]
+    return None
+
+
+def _nearest_claude_cmdline(pid: int, max_hops: int = 32) -> list[str] | None:
+    for _ in range(max_hops):
+        cmdline = _proc_cmdline(pid)
+        if cmdline and Path(cmdline[0]).name == "claude":
+            return cmdline
+        pid = _proc_ppid(pid)
+        if pid <= 1:
+            return None
+    return None
+
+
+def _role_from_launching_claude() -> str | None:
+    try:
+        cmdline = _nearest_claude_cmdline(os.getpid())
+        return _agent_flag_value(cmdline) if cmdline else None
+    except Exception:
+        return None
+
+
+def resolve_session_role(declared: str | None = None) -> str | None:
+    """This session's role, harness first: CLAUDE_CODE_AGENT (set by the
+    harness, so never guessed) beats a self-declaration (`init --agent`,
+    for a session naming itself when the harness gives nothing — e.g. a
+    resumed session that already knows its own charter) beats a best-effort
+    walk up to the launching `claude` process's own `--agent` flag (the last
+    resort — a resumed process typically has none)."""
+    return os.environ.get("CLAUDE_CODE_AGENT") or declared or _role_from_launching_claude()
+
+
 def identity_of() -> dict:
     """Immutable facts, fixed for this session's whole life.
 
@@ -413,9 +473,11 @@ def identity_of() -> dict:
     top = git("rev-parse", "--show-toplevel")
     worktree, feature_id, feature_name = _feature_identity(top)
     task_id, task_name = _task_identity(feature_id, feature_name)
+    session_id = whoami()
+    agent_type = os.environ.get("CLAUDE_CODE_AGENT") or persisted_session_role(session_id) or None
     return {
-        "session_id": whoami(),
-        "agent_type": os.environ.get("CLAUDE_CODE_AGENT") or None,
+        "session_id": session_id,
+        "agent_type": agent_type,
         "worktree": worktree,
         "feature_id": feature_id,
         "name": feature_name,
@@ -560,7 +622,16 @@ def cmd_receive(args) -> None:
 def cmd_init(args) -> None:
     box = inbox(args.agent_id)
     box.mkdir(parents=True, exist_ok=True)
+    _persist_role_for_this_session(getattr(args, "declared_role", None))
     print(box)
+
+
+def _persist_role_for_this_session(declared_role: str | None) -> None:
+    try:
+        session_id = whoami()
+    except SystemExit:
+        return
+    persist_session_role(session_id, resolve_session_role(declared_role))
 
 
 def cmd_teardown(args) -> None:
@@ -1039,6 +1110,47 @@ def orchard_marker_name(id_: str) -> str:
     return f"{id_}.marker"
 
 
+def _session_role_marker(session_id: str) -> Path | None:
+    """This session's own heartbeat marker, keyed by session id and already
+    owned by courier.py — reused as the resume-durable home for its role
+    rather than inventing a new tree. `None` whenever the orchard root can't
+    be resolved (no XDG_RUNTIME_DIR, no git repo): the caller treats that as
+    "role unavailable", never an error."""
+    try:
+        return project_dir(project_slug()) / orchard_marker_name(session_id)
+    except SystemExit:
+        return None
+
+
+def _read_session_role(path: Path) -> str | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    role = payload.get("role") if isinstance(payload, dict) else None
+    return role if isinstance(role, str) and role else None
+
+
+def persisted_session_role(session_id: str) -> str | None:
+    path = _session_role_marker(session_id)
+    return _read_session_role(path) if path else None
+
+
+def persist_session_role(session_id: str, role: str | None) -> None:
+    """Write-once: a role already on record is never touched again, so a
+    resume with nothing to offer (empty environment, no launching-process
+    flag) can never clobber what an earlier launch established."""
+    if not role:
+        return
+    path = _session_role_marker(session_id)
+    if path is None or _read_session_role(path):
+        return
+    try:
+        write_orchard_file(path.parent, path.name, {"role": role})
+    except Exception:
+        pass
+
+
 def write_orchard_file(dir_path: Path, name: str, payload: dict | None = None) -> Path:
     """The ONE writer for the orchard tree: every filename is constructed by
     a caller of orchard_message_name/orchard_marker_name (never assembled
@@ -1420,11 +1532,18 @@ def main() -> None:
     p = argparse.ArgumentParser(description="repo-scoped agent message courier")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    for name, fn in (("init", cmd_init), ("teardown", cmd_teardown),
-                     ("receive", cmd_receive)):
+    for name, fn in (("teardown", cmd_teardown), ("receive", cmd_receive)):
         s = sub.add_parser(name)
         s.add_argument("agent_id", nargs="?", default=None)
         s.set_defaults(func=fn)
+
+    s = sub.add_parser("init")
+    s.add_argument("agent_id", nargs="?", default=None)
+    s.add_argument("--agent", dest="declared_role", default=None,
+                   help="self-declared role, used only when the harness sets "
+                        "no CLAUDE_CODE_AGENT — e.g. a resumed session naming "
+                        "itself so identity_of() recovers it")
+    s.set_defaults(func=cmd_init)
 
     sub.add_parser("whoami").set_defaults(func=lambda a: print(whoami()))
     sub.add_parser("list").set_defaults(func=cmd_list)
