@@ -20,6 +20,12 @@
   designed here.
 - Branch `f/sidebar-titling` (9752aed) stays parked as this task's
   inheritance — its worktree stands untouched.
+- From [[tmux-topology]]'s close (2026-07-26, follow-up returned): this task
+  ALSO owns the window-name separator alignment — the creator writes `▸`
+  while the sidebar navigator resolves `/`, a live navigation mismatch
+  found in that discovery — alongside the pane-title persistence mechanism.
+  The committed spec (docs/tmux-topology.md) declares the naming contract
+  only; the mechanism lands here.
 
 ## Proposal
 
