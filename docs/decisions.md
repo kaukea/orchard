@@ -1616,3 +1616,15 @@ trigger: a bloom round's own courier sidecar appearing beside the gardener's
 in the same session, and the transport already carrying mystery session ids.
 Refines Decision-095 (singleton): the "per-agent" unit is the
 SESSION-BEARING agent.
+
+## [2026-07-26, addendum to Decision-096] Courier-only covers the session's own posts — no exceptions
+#courier #identity #messaging #architecture
+
+Boundary ruling (operator, 2026-07-26): "nothing writes without a courier"
+has NO carve-out for a session-bearing agent's own mechanical posts — even
+the gardener's status ticks route through its courier. The courier is the
+single writer for its session, full stop. Charters amended accordingly
+(gardener status posts via courier; bloomer loads no courier and writes
+nothing — delegated reference only). The courier's OWN direct
+`orchard_topic.py`/`courier.py` invocations are the sanctioned mechanism,
+unchanged.

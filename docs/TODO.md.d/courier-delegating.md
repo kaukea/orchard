@@ -24,10 +24,13 @@
 
 ## Questions
 
-- Boundary: does the courier-only write rule cover a session-bearing
-  agent's OWN mechanical posts (the gardener charter currently instructs
-  `orchard_topic.py post status` directly)? Asked by the gardener
-  2026-07-26; answer shapes charters and enforcement.
+- ~~Boundary: does the courier-only write rule cover a session-bearing
+  agent's OWN mechanical posts?~~ RULED (operator, 2026-07-26, addendum to
+  Decision-096): courier-only, NO exceptions — even the gardener's own
+  status ticks route through its courier. Gardener + bloomer charters
+  amended same day (workflow component, gardener-authored); the remaining
+  scope of this task is the delegated-reference mechanism and courier-side
+  ENFORCEMENT (refusing identity-less/direct writers) — product code.
 
 ## Proposal
 
