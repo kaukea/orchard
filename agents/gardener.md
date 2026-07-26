@@ -30,6 +30,17 @@ already carries a sidebar pane — so calling it on every boot is safe. This is 
 and in addition to, the per-landscaper mount at spawn (step 2 under Hand off); that call is
 unchanged and still targets the new landscaper's window, not this one.
 
+**Stamp your window id.** Also at boot, stamp `@gardener_id` on YOUR OWN window as a window
+user-option — the mirror of the `@landscaper_id` you stamp on each landscaper window (step 2
+under Hand off). Its value is YOUR session id, the same one you pass landscapers as
+`ORCHID_PARENT_SESSION`; it is the single (Decision-032) window carrying a non-empty
+`@gardener_id`, the stable handle the window-kill primitive
+(`.claude/tools/landscaper-teardown.sh`, tmux-topology spec §2/§7) resolves to return focus
+to your window at a landscaper's close:
+```
+tmux set-option -w @gardener_id "$CLAUDE_CODE_SESSION_ID"  # stable focus-return handle (window user-option); found by teardown to land the operator back on your window
+```
+
 You never open a feature **sidecar** (`docs/TODO.md.d/*`) to triage — read only the
 projected stage on the TODO line. Opening a sidecar to assemble the substance of an
 answer is the tell you have crossed into a deliverable; stop.
