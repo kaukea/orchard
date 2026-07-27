@@ -1,0 +1,35 @@
+close-family-fakes — successor-2 exit interview
+
+DEVIATIONS
+- Third session on this feature; two predecessors died in machine restarts. Handover
+  by stream log only, as designed. No work lost.
+- Asked the operator via the native popup instead of courier ask: the question broker
+  is built (60 tests) but not running, so the sanctioned path could not deliver.
+- Spawned a SECOND courier while already holding one — the exact singleton violation
+  Decision-096 was written about. Caught by the operator, not by me. On release it
+  tore down the shared mailbox, which is what motivated deleting the git-dir box.
+- Edited the MAIN checkout instead of the worktree once (read main for reference, then
+  edited the path in hand). Moved to the branch; main left clean.
+- Reported green three times from unittest discover (312 tests) instead of pytest
+  (338-345). It hid a test this branch itself broke.
+
+JUDGEMENT FAILURES WORTH KEEPING
+- Trusted charter prose as evidence repeatedly; the code disagreed every time. Charters
+  were mid-migration and several clauses were agent-invented, not operator-ruled.
+- Gave three successive wrong explanations for one sidebar observation because I hunted
+  a defect without first establishing intended behaviour. Retention of task outcomes is
+  the design. Live evidence without a specification produces confident nonsense.
+- Grouped on a display name, violating a known rule (stable identifiers only).
+- Dropped the sidebar mount when moving window creation off the gardener, having just
+  claimed I had carried the mechanics across carefully.
+- Fan-out was too low: 6 explorers, 3 sowers, most steps inline. Operator said so.
+
+DELIVERED
+- Supervisor charter, corrected repeatedly by the operator toward: session-bearing and
+  stateful, concurrent tasks, routing exclusive but subscription open, creates the
+  worktree it destroys, rework spawns fresh, acts on structure not language.
+- Transport repairs: per-worktree project dirs, git mailboxes removed, filtered monitor
+  carrying the parsed message, operator-origin wired, session-end self-wake fixed,
+  monitor/reply race closed.
+- docs/orchard-bus.md — the bus written down, each claim tagged spec/code/gap.
+- Three of four fakes ruled and closed on evidence; the fourth returned, unruled.
