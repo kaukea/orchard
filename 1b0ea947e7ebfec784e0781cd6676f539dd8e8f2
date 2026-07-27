@@ -1,0 +1,5 @@
+session: release-cut-bloom · agent: bloomer · date: 2026-07-27 · feature: release-cut
+deviations:
+  - rule: bloomer charter board_lint-must-pass gate · what: committed with 8 pre-existing lint errors unrelated to the delta · why: errors exist on main before the edit; operator approved committing anyway
+    change: gate should compare error sets before/after the delta instead of requiring a globally clean board
+token_saver: a machine-readable operator-hold flag on the sidecar would let a bloom round skip engine init when the task is already held
