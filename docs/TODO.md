@@ -15,6 +15,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 ## Process machinery
 
 - `bug · todo · critical · queued · process ·` [Transport tests: reconcile main's 36 old-model tests with the merged orchard transport](TODO.md.d/transport-test-reconciling.md) ~close-family-fakes ~bus-message-specifying
+- `bug · todo · · blocked-on-answers · process ·` [Groundskeeper verify hardening: post-merge suite run against a pre-merge baseline](TODO.md.d/groundskeeper-verify-hardening.md) ~close-family-fakes ~transport-test-reconciling
 - `feature · done · · complete · process ·` [Tool split: package manager moved to kauk; orchids data-only](TODO.md.d/tool-split-to-kauk.md)
 - `feature · done · · complete/interactive · process · gh#2` [Bus-driven close choreography: retire the finishing hooks](TODO.md.d/hook-choreography.md) ~bus-liveness ~agent-metadata ~tmux-topology
 - `feature · todo · nice-to-have · blocked-on-answers · process · gh#3` [Decide the SessionStart self-heal hook](TODO.md.d/session-start-hook.md)
@@ -56,7 +57,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
     - `completion · todo · · plan-ready · process · gh#190` [Popup finishing: the operator's round-2 requests, finished and live-proven](TODO.md.d/popup-finishing.md) ~sidebar-polish ~operator-interacting
     - `bug · todo · · queued · process · gh#191` [Sidebar spacing and glyphs: gaps found on the first live pass after sidebar-polish merged](TODO.md.d/sidebar-spacing-and-glyphs.md) ~sidebar-polish
     - `feature · todo · nice-to-have · queued · process · gh#192` [Install detecting: richer orchids-install state beyond .ai.toml presence (upstream kauk)](TODO.md.d/install-detecting.md) ~sidebar-polish ~orchard
-    - `bug · functional · · complete/interactive · process ·` [Sidebar titling: renderer items shipped in main; pane-title tail folds into the naming rework](TODO.md.d/sidebar-titling.md) ~sidebar-polish ~sidebar-spacing-and-glyphs ~orchestrator-identity
+    - `bug · done · · complete · process ·` [Sidebar titling: renderer items shipped in main; pane-title tail folds into the naming rework](TODO.md.d/sidebar-titling.md) ~sidebar-polish ~sidebar-spacing-and-glyphs ~orchestrator-identity
     - `bug · done · critical · process · gh#275` [Sidebar empty rows: header renders, zero session rows off the live orchard tree — check (a) passing](TODO.md.d/sidebar-empty-rows.md) ~bus-finishing ~fleet-sidebar ~pretty-sidebar
     - `bug · todo · · queued · process · gh#194` [Popup adopting: agents bypass the built choice questions and do-not-interrupt](TODO.md.d/popup-adopting.md) ~popup-finishing ~operator-interacting
     - `feature · todo · · blocked-on-answers · process · gh#195` [Pretty sidebar: accordion phases, outcome colours, collapse — on the topic data](TODO.md.d/pretty-sidebar.md) ~bus-transport-v2 ~sidebar-polish ~sidebar-spacing-and-glyphs
