@@ -14,6 +14,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 
 ## Process machinery
 
+- `bug · todo · critical · queued · process ·` [Transport tests: reconcile main's 36 old-model tests with the merged orchard transport](TODO.md.d/transport-test-reconciling.md) ~close-family-fakes ~bus-message-specifying
 - `feature · done · · complete · process ·` [Tool split: package manager moved to kauk; orchids data-only](TODO.md.d/tool-split-to-kauk.md)
 - `feature · done · · complete/interactive · process · gh#2` [Bus-driven close choreography: retire the finishing hooks](TODO.md.d/hook-choreography.md) ~bus-liveness ~agent-metadata ~tmux-topology
 - `feature · todo · nice-to-have · blocked-on-answers · process · gh#3` [Decide the SessionStart self-heal hook](TODO.md.d/session-start-hook.md)
