@@ -418,7 +418,18 @@ def test_telemetry_rejection_filename_ends_in_json(repo, runtime_dir):
 
 # --- repo naming ---------------------------------------------------------
 
-def test_repo_name_from_worktree_resolves_to_main_repo_slug(tmp_path, runtime_dir):
+def test_each_worktree_gets_its_own_project_dir_under_a_shared_repo_name(
+    tmp_path, runtime_dir,
+):
+    """A worktree posts into ITS OWN project directory, not the main repo's.
+
+    `--git-common-dir` folds every worktree of a repo to one path, so a slug
+    built from that alone was identical in all of them and every concurrent
+    feature shared a directory — which meant every agent's monitor woke on
+    every other agent's traffic. The branch half is what separates them. The
+    repo half stays common, which is what lets the sidebar fold the worktrees
+    back into one row for display.
+    """
     main_repo = make_repo(str(tmp_path))
 
     subprocess.run(
@@ -433,12 +444,16 @@ def test_repo_name_from_worktree_resolves_to_main_repo_slug(tmp_path, runtime_di
 
     main_repo_slug = _slug(main_repo)
     worktree_slug = _slug(str(worktree_path))
-    assert main_repo_slug == worktree_slug  # --git-common-dir folds both to one project
+
+    assert main_repo_slug != worktree_slug
+    assert worktree_slug.endswith("@wt-branch")
+    assert main_repo_slug.partition("@")[0] == worktree_slug.partition("@")[0]
 
     result = _run(str(worktree_path), runtime_dir, ["lifecycle", "starting"])
     assert result.returncode == 0, result.stderr
 
-    assert _project_dir(runtime_dir, main_repo_slug).exists()
+    assert _project_dir(runtime_dir, worktree_slug).exists()
+    assert not _project_dir(runtime_dir, main_repo_slug).exists()
     assert not _project_dir(runtime_dir, worktree_path.name).exists()
 
 

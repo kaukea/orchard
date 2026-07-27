@@ -498,6 +498,58 @@ class RepoAssemblyTests(_FixtureTestCase):
         self._landscaper("own.repo", "s1", "feat-a")
         self.assertTrue(self._repo().has_session)
 
+    def test_worktree_dirs_of_one_repo_fold_into_a_single_repo_row(self):
+        # Each worktree of a repo gets its own `<owner>.<repo>@<branch>`
+        # project directory (courier.project_slug()) -- the sidebar must
+        # still show one row per repo, not one per worktree.
+        self._landscaper("kaukea.orchids@f-a", "s1", "feat-a")
+        self._landscaper("kaukea.orchids@f-b", "s2", "feat-b")
+        self._landscaper("kaukea.orchids@main", "s3", "feat-c")
+        fleet = self._model()
+        self.assertEqual([r.name for r in fleet.repos], ["orchids"])
+        repo = fleet.repos[0]
+        self.assertEqual(sorted(f.name for f in repo.features),
+                          ["feat-a", "feat-b", "feat-c"])
+
+    def test_two_different_repos_still_produce_two_rows(self):
+        self._landscaper("kaukea.orchids@f-a", "s1", "feat-a")
+        self._landscaper("kaukea.other@f-x", "s2", "feat-x")
+        fleet = self._model()
+        self.assertEqual(sorted(r.name for r in fleet.repos), ["orchids", "other"])
+
+    def test_same_repo_name_under_different_owners_does_not_fold_together(self):
+        # Grouping keys off repo IDENTITY (`<owner>.<repo>`), never off the
+        # display name -- two unrelated repos can share a bare name, and
+        # folding them would merge one repo's features into the other's row.
+        self._landscaper("kaukea.orchids@main", "s1", "ours")
+        self._landscaper("someoneelse.orchids@main", "s2", "theirs")
+        fleet = self._model()
+
+        self.assertEqual(len(fleet.repos), 2)
+        features = sorted(sorted(f.name for f in r.features) for r in fleet.repos)
+        self.assertEqual(features, [["ours"], ["theirs"]])
+
+    def test_worktrees_still_fold_when_another_owner_shares_the_repo_name(self):
+        self._landscaper("kaukea.orchids@main", "s1", "ours-main")
+        self._landscaper("kaukea.orchids@f-a", "s2", "ours-branch")
+        self._landscaper("someoneelse.orchids@main", "s3", "theirs")
+        fleet = self._model()
+
+        by_features = sorted(sorted(f.name for f in r.features) for r in fleet.repos)
+        self.assertEqual(by_features, [["ours-branch", "ours-main"], ["theirs"]])
+
+    def test_same_session_id_across_worktrees_prefers_the_newer_record(self):
+        # Not expected in practice (session ids are unique per session) but
+        # guards the merge tie-break: the record with the newer _seen_ts
+        # wins rather than whichever directory happened to fold last.
+        self._event("kaukea.orchids@f-a", "s1", "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=1)
+        self._event("kaukea.orchids@f-b", "s1", "orchard:agent:outcome:success",
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=2)
+        fleet = self._model()
+        feature = fleet.repos[0].features[0]
+        self.assertEqual(feature.status, "done")
+
 
 # --------------------------------------------------------------------------
 # Staleness — the ~1h ACTIVE_WINDOW is purely a colour signal now (retention
@@ -1720,6 +1772,25 @@ class PrivateHelperTests(unittest.TestCase):
 
     def test_repo_display_name_splits_on_first_dot(self):
         self.assertEqual(sidebar._repo_display_name("owner.repo"), "repo")
+
+    def test_repo_display_name_strips_the_branch_suffix(self):
+        # The orchard project directory is one-per-worktree, so a slug carries
+        # `@<branch>`. The gardener-window match is on the repo, which every
+        # worktree of that repo shares.
+        self.assertEqual(
+            sidebar._repo_display_name("kaukea.orchids@f-close-family-fakes"),
+            "orchids",
+        )
+
+    def test_repo_display_name_strips_branch_when_there_is_no_owner(self):
+        self.assertEqual(sidebar._repo_display_name("orchids@main"), "orchids")
+
+    def test_repo_display_name_matches_couriers_separator(self):
+        # sidebar.py stays stdlib-only, so it duplicates the separator rather
+        # than importing it. Assert the copy has not drifted from the source.
+        import courier
+
+        self.assertEqual(sidebar.BRANCH_SEPARATOR, courier.BRANCH_SEPARATOR)
 
     def test_repo_display_name_without_dot_is_unchanged(self):
         self.assertEqual(sidebar._repo_display_name("bare-slug"), "bare-slug")

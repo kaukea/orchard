@@ -2005,3 +2005,89 @@ to collect the operator's verdict, it must run the code under judgement,
 mounted at present time and torn down with the verdict. Showing out-of-date
 code to gather feedback produces a verdict about the wrong artifact.
 
+## [2026-07-27] Decision-113: A durable finding carries the SHA and paths it was written against; waking re-derives only what moved
+#handover #workstream #staleness #agents #rework
+
+Operator design (2026-07-27): when a session is woken, it must compare the SHA at
+the moment things were written against the SHA it is now on, and invalidate,
+re-ingest or rewrite accordingly.
+
+Refinement agreed in the same exchange: a bare global SHA comparison invalidates
+everything on every wake, because `main` moves constantly and almost none of it is
+relevant to a given finding. A durable note therefore records BOTH the SHA it was
+written against AND the paths it depends on. On wake, `git diff --name-only
+<written-at>..HEAD` intersected with those paths yields exactly the findings to
+re-derive; everything else stays trusted, preserving TRUST YOUR BRANCH.
+
+Evidence this exists (all from one session, 2026-07-27): a predecessor recorded
+`@gardener_id` as unstamped on main and a successor built a scope argument on it —
+true at `2fbc3cc`, fixed at `2260f35` before the argument was made. A sower step-spec
+described `_assemble_repo` as taking a `project_dir` and calling
+`_iter_feature_markers`; neither existed, that refactor having already landed. Three
+of a predecessor's [HIGH] findings were overturned when checked against code rather
+than charter prose. Each was a note written against one SHA and acted on at another.
+
+Applies to workstream logs, sidecar findings, and step-specs handed to sowers —
+anywhere a conclusion outlives the moment it was reached.
+
+## [2026-07-27] Decision-114: Logical placement is four words; a plugin subagent realises it and owns the UI element
+#placement #tmux #seams #agents #ui #protocol
+
+Operator ruling (2026-07-27). Naming, protocols and seams are the operator's sole
+responsibility; this is recorded as ruled, not proposed.
+
+**The flow does not deal in windowing.** An agent that launches another states only
+LOGICAL placement, from a closed vocabulary of four:
+
+    none · sibling · child · background
+
+It never names a window, pane, tab or handle, and never learns which of those exist.
+
+**A subagent within the launcher's context does the windowing.** Depending on which
+PLUGIN is installed it makes the environment-specific call, waits for `starting`, and
+goes to sleep. Same script signature for every plugin, so the environments differ only
+by which one is present: plain ssh ships by DEFAULT (largely `none`), tmux is added if
+you want tmux, Ghostty likewise.
+
+**The same component closes the UI element, once `stopped` has happened.** Creation
+and destruction sit in one place, driven by the two lifecycle events rather than by
+anyone remembering to call a teardown. Symmetric by construction.
+
+Consequences, all of which contradict text currently on this branch:
+- `tools/landscaper-teardown.sh` as a SELF-teardown dies. An agent never touches a UI
+  element and is never handed a handle for one. This is stronger than "the launcher
+  closes it" — not even the launcher does; the placement component does.
+- `.return-window` dies with it, same reason.
+- `agents/supervisor.md` must request placement by word, not "invoke the
+  window-creation primitive".
+- Plain ssh is the case that proves the vocabulary: it can offer no second surface, so
+  `sibling`/`child` degrade, and the flow must be written against the CAPABILITY
+  without knowing why it is absent.
+- The same component is where `notify_user` and `ask` belong — "show the operator
+  something" is the identical capability question with the identical degradation.
+
+## [2026-07-27] Decision-115: A decision carries TWO dates — ruled, and last confirmed
+#decisions #staleness #format #agents #rework
+
+Operator ruling (2026-07-27), and it is a FILE FORMAT decision, which is the
+operator's sole responsibility: a `docs/decisions.md` entry records both the date it
+was DECIDED and the date it was last CONFIRMED. The older an entry gets, the more
+likely it is no longer valid — an agent reading a stale one should ask for
+confirmation rather than apply it. Two dates exist so posterity does not get stuck on
+very old material.
+
+Why one date cannot do the job: `date` alone cannot distinguish "old and still true"
+from "old and nobody has looked since". Those call for opposite behaviour — apply, or
+ask. The GAP between the two dates is the actual signal, and confirming an entry is a
+cheap edit that resets it without rewriting the ruling.
+
+Companion to the SHA-ageing rule staged above, deliberately not the same mechanism.
+Ageing covers a FINDING, which depends on code and is invalidated by the code moving,
+so it is checked mechanically against a diff. A DECISION depends on intent, which no
+diff can measure, so its staleness is measured in time and resolved by asking the
+operator. Findings die with their session; decisions outlive everyone and are cited
+long after the conditions that produced them changed — which is the failure this
+prevents.
+
+Format canon lives in `AGENTS.files.md` §Decisions and must be updated there.
+

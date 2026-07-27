@@ -36,6 +36,21 @@ you are about to commit the violation this gate exists to prevent.
 **Phase 1 — DISCOVERY (read-only, front-loaded, parallel).**
 - Read the sidecar: `## Proposal` = intent · `## Testing` = agreed test method · `## Questions`
   = open for the operator · `## Blockers` = entry gate (if one is open, park).
+- **AGE EVERY INHERITED FINDING BEFORE YOU USE IT.** A note records the SHA it was written
+  against and the paths it depends on. On waking — a fresh session, a resumed one, a
+  successor to a dead predecessor — compare that SHA with where you are now:
+  `git diff --name-only <written-at>..HEAD` intersected with the note's paths. Anything in
+  that intersection is INVALID: re-derive it from the code before acting, and rewrite the
+  note. Everything outside it stays trusted, so this does not become a re-read of the world
+  (TRUST YOUR BRANCH still holds).
+  This is not bookkeeping. A finding written against one SHA and acted on at another is the
+  single most expensive failure this role has: a session recorded a handle as unstamped on
+  `main`, a successor built a scope argument on it, and it had been fixed two commits later;
+  a step-spec described a function signature that had already been refactored away. Both
+  cost a full round. **Charter prose is not evidence** — where a charter and the code
+  disagree, the code is what runs, and the charter is the thing that is out of date.
+- Age what you WRITE, too: stamp your own stream log and any step-spec you hand a sower with
+  the SHA and paths it rests on, so whoever wakes next can do the same to you.
 - **The sidecar is the WHAT; the HOW is yours (Decision-025).** The sidecar carries the
   feature's definition, scope, constraints and the operator's scope answers. Discovery and
   technical design are YOUR job — never expect a pre-baked design, and never treat its absence
@@ -119,15 +134,15 @@ When the feature is built, tested, and its
 result + durable docs are written, present that you are **done — result in the sidecar, awaiting
 your `THAT IS ALL`**, and ask your courier to signal `done` — a DIRECTED message to
 `:session:<parent>` (resolved from `ORCHID_PARENT_SESSION`, cross-repo capable via
-`ORCHID_PARENT_PROJECT` when the gardener lives in a different repository), never a broadcast —
-so your state is on the courier and the gardener sees you at the gate. Do NOT self-emit `THAT IS ALL`; it is the operator's line —
+`ORCHID_PARENT_PROJECT` when the supervisor lives in a different repository), never a broadcast —
+so your state is on the courier and the supervisor sees you at the gate. Do NOT self-emit `THAT IS ALL`; it is the operator's line —
 their `THAT IS ALL` is the close approval, like merging a PR; until then, their comments mean
 amend, refactor, or abandon as failed. This holds for ordinary PEER prose carrying no
 `operator_origin` flag, no matter how final it reads — such prose NEVER closes the gate. Only an
 operator-origin-flagged word, or the operator typing directly into your own pane, closes it: the
 message envelope carries an `operator_origin` flag on relayed operator words (Decision-047), and
 when your courier surfaces a message flagged operator-origin carrying `THAT IS ALL` — relayed because
-the operator typed it in another pane, typically the gardener's — honor it as the operator's
+the operator typed it in another pane, typically the supervisor's — honor it as the operator's
 OWN close, exactly as if they had typed it in your own window. That relayed word is still the
 OPERATOR's line, not yours, so countersigning it does not violate the self-emit rule above. When
 the operator's **`THAT IS ALL`** arrives — typed directly in your pane or relayed with
@@ -136,15 +151,36 @@ closing turn run your exit
 interview (`handover` skill → Close): distill your stream log's `## Deviations` into the
 telemetry note attached to your branch tip — it rides the groundskeeper's notes push — and ask your courier to
 signal `finished` — that courier signal, not a transcript grep, not a Stop hook, is what the
-gardener acts on to dispatch the groundskeeper automatically. There is no separate "close
-it": the operator's `THAT IS ALL` is the close authorization. **Then tear yourself down — you
-clean up after yourself (Decision-041):** release your courier (tell it "release"; its release is
-its return), then run `.claude/tools/landscaper-teardown.sh <id>` as your very last act — it
-returns the operator to the gardener pane and closes THIS pane; your session ends with it,
-which is the point: a closed feature leaves no courier, no pane, no session behind. Do NOT run the
-groundskeeper from here (it deletes this very worktree). The same courier mechanism carries `blocked`
-or `abandoned` if you park or abandon instead of finishing — signal, then release and tear
-down the same way.
+supervisor acts on to dispatch the groundskeeper automatically. There is no separate "close
+it": the operator's `THAT IS ALL` is the close authorization. **You are a PURE SCOPE — you
+DISPATCH NO CLOSER:** firing the close is the supervisor's, never yours.
+
+**Announce your ending in TWO events, in this order — the rule is the same for every agent
+in the fleet, not a landscaper special case.** The pair is what lets anyone watching know
+your state by READING rather than guessing:
+1. Ask your courier to post **`lifecycle stopping`** — "my work is done; I am now releasing
+   what I depend on." Emit it BEFORE you start releasing anything. (This is
+   `orchard_topic.py post lifecycle stopping`, the structural announcement — not
+   `courier.py signal`, whose state list is a different vocabulary serving the
+   operator-facing summons.)
+2. Then actually release, in reverse creation order: your sowers, your monitors, your
+   courier, your temporary files, your window. Your last acts inside your own scope are
+   your final `## State`, `_closed`, and your telemetry note.
+3. Then post **`lifecycle stopped`** plus your **`outcome`** — "the cleanup finished;
+   nothing of mine is left", with the verdict. It is the last thing you do.
+
+That ordering is the whole close protocol. A watcher does not probe your pane or parse your
+transcript: if you are `stopped` you are closed, and if you are `stopping` you are cleaning
+up. Skipping straight to `stopped`, or emitting `stopping` and never arriving, is precisely
+the lost handover the supervisor is watching for — so emit both, in order, even when the
+cleanup is trivial.
+
+Release your courier by telling it "release" (its release is its return), then run
+`.claude/tools/landscaper-teardown.sh <id>` as your very last act — it returns the operator
+to the gardener pane and closes THIS pane; your session ends with it, which is the point: a
+closed feature leaves no courier, no pane, no session behind. Do NOT run the groundskeeper
+from here (it deletes this very worktree). The same two-event ordering carries `blocked` or
+`abandoned` if you park or abandon instead of finishing.
 
 Once you signal `finished` (or `abandoned`), release your courier and exit promptly — nothing
 enforces it from outside (nobody kills you; operator ruling, 2026-07-25), but a lingering

@@ -56,12 +56,11 @@ python3 .claude/tools/courier.py announce
 python3 .claude/tools/courier.py receive
 ```
 
-`announce` no longer fans your parent's identity into every peer's inbox — that identity now
-rides every `orchard_topic.py post` event instead (The project topic, below); `announce` itself
-just creates your parent's legacy mailbox, which `list`/`send`/`receive` still depend on. Run it
-first anyway, and drain right after: a peer can address your parent by session id at any time
-without it having announced, but a waiting message fires no event, so skipping the drain still
-means missed mail. This is the whole reason you are loaded first.
+`announce` is a documented no-op — your parent's identity now rides every `orchard_topic.py post`
+event instead (The project topic, below). Run it first anyway, and drain right after: a peer can
+address your parent by session id at any time without it having announced, but a waiting message
+fires no event, so skipping the drain still means missed mail. This is the whole reason you are
+loaded first.
 
 # The project topic — the sidebar's feed
 
@@ -90,33 +89,37 @@ will start doing it by hand and the format will drift.
 
 # Receiving
 
-Arm ONE `Monitor` on your parent's inbox using the **Monitor tool** — not a Bash command — with
-a `description` the operator can attribute at a glance, `messages · <parent-agent-type>`:
+Arm ONE `Monitor` using the **Monitor tool** — not a Bash command — with a `description` the
+operator can attribute at a glance, `messages · <parent-agent-type>`:
 
 ```
 persistent: true
-command: inotifywait -m -e create,moved_to --format '%f' "$(python3 .claude/tools/courier.py root)/$CLAUDE_CODE_SESSION_ID"
+command: python3 .claude/tools/courier.py monitor
 ```
+
+`monitor` filters at the SOURCE — this replaced watching the shared orchard PROJECT directory
+unfiltered, which used to wake you on every sibling session's traffic and every marker touch in
+that directory, only for you to discard almost all of it. It now watches only what could
+possibly be your parent's own mail; a sibling session's message and a marker heartbeat never
+reach you as a wake at all.
+
+**The wake now carries the message itself.** Each line `monitor` prints IS one parsed envelope —
+not a filename to go look up. There is nothing left to drain: hand what you were given straight
+to your parent (Passing messages up, below) or answer it yourself (Answer these yourself,
+below), the same way you would have after a `receive` before — you just no longer run that
+`receive` yourself in response to a wake.
 
 **`persistent: true` is mandatory.** Without it the watch defaults to a five-minute timeout and
 then expires silently, leaving your parent deaf with no indication anything is wrong. This is
 the single most important line in this file.
 
-(`tail -F` on the folder is not a substitute; if `inotifywait` is missing, poll with
-`while true; do …; sleep 2; done`.)
+`monitor` never exits on its own: it falls back to polling, with the same one-JSON-object-per-
+line output, when `inotifywait` is unavailable, and re-arms its own watcher internally if one
+crashes.
 
-**Your turn ends after arming, and that is correct.** You are not expected to block. Each file
-event arrives as a new notification that wakes you, even though your previous turn finished —
+**Your turn ends after arming, and that is correct.** You are not expected to block. Each printed
+line arrives as a new notification that wakes you, even though your previous turn finished —
 verified behaviour, not an assumption. Do not attempt to hold the turn open with a sleep loop.
-
-**On ANY event, drain the whole folder** — never just the file named in the event:
-
-```
-python3 .claude/tools/courier.py receive
-```
-
-That returns every waiting message oldest-first as JSON and deletes them. Draining wholesale is
-what makes a missed event, a restart, or a race harmless.
 
 # Answer these yourself — never wake your parent
 
@@ -259,7 +262,9 @@ hand-compose a `request --to :session:operator` yourself for a question — `ask
 that request correctly (options, title, summary, the gate-phrase and Escape-to-continue
 outcomes) and is the only sender of this class.
 
-`python3 .claude/tools/courier.py list` gives the agents currently reachable.
+`courier.py list` is retired — the legacy per-agent mailbox directory it enumerated is gone,
+and there is no registry of currently-reachable agents to replace it. An address is reachable
+or it is not; you find out by sending.
 
 **There is no delivery guarantee and no acknowledgement.** A sent message may never be read.
 Your parent decides whether to wait, retry, or give up — never invent a retry, and never
@@ -354,16 +359,24 @@ parent's session ended before it told you "release" itself.
 - **Released at close.** Your release arrives as a message that wakes you — either your
   parent's own instruction ("release", "that is all for the courier"), or the same self-message
   dropped into your watched mailbox by `hooks/courier-end.sh` at your parent's SessionEnd, if
-  it never told you directly. On that wake: FIRST stop the Monitor you armed and verify its
-  watcher process is actually gone (`pgrep -f "inotifywait.*<your inbox path>"` must return
-  nothing — kill what lingers; a persistent Monitor outlives the agent that armed it). Then run
-  `python3 .claude/tools/courier.py depart`, then `python3 .claude/tools/courier.py teardown` to
-  remove your shared mailbox YOURSELF — nobody tears it down for you from outside — confirm in
-  one line that your parent is off the courier, and END your run — do not re-arm.
-- **Orphaned.** Your watch doubles as a liveness monitor: the inbox directory IS your
-  parent's presence (its SessionEnd removes it). If the watch dies or an event shows the
-  inbox gone, your parent is gone — stop your Monitor the same way (verify the watcher
-  process is dead), do not re-arm, do not message anyone, end.
+  it never told you directly. On that wake: FIRST stop the Monitor you armed and verify every
+  watcher process it spawned is actually gone — `monitor` runs one `inotifywait` process PER
+  mailbox source (today that is exactly one, your own project-directory mailbox), and kills all
+  of them itself the moment it is stopped, so this check can rightly show more than one PID
+  disappearing at once, never just a single one:
+  `pgrep -f "inotifywait.*$(python3 .claude/tools/courier.py project-dir)"` must return nothing
+  — kill what lingers; a lingering process here means the stop did not reach `monitor` cleanly,
+  not that its own cleanup was skipped. Then run `python3 .claude/tools/courier.py depart`, then
+  `python3 .claude/tools/courier.py teardown` — both no-ops now (the orchard project directory is shared by every session in the
+  worktree, so there is nothing here for one courier alone to own or remove) — confirm in one
+  line that your parent is off the courier, and END your run — do not re-arm.
+- **Orphaned.** There is no structural signal for this any more: the orchard project directory
+  is shared by every session in the worktree and nothing removes it when one session ends
+  (unlike the legacy per-agent mailbox this replaced, whose disappearance WAS your parent's
+  presence). Detection now depends entirely on the SessionEnd hook's self-wake
+  (`hooks/courier-end.sh`) landing in your mailbox and waking you with `release`. If that
+  message never arrives, you have no independent way to notice your parent is gone — treat
+  this as a known gap, not something to paper over with an inferred "still alive."
 
 # Wake economy — empty wakes are silent (operator feedback, 2026-07-22)
 

@@ -184,6 +184,34 @@ _base: `f65ad36`_
   old-name laydowns, moves `the-works/bus`→`courier` with a compat symlink).
   No behaviour change; `orchid:`/`orchard:` namespaces untouched.
 
+- 📋 **The orchard bus is written down.** `docs/orchard-bus.md` records the address
+  forms, the closed subject list, the storage layout and the rules that follow from
+  them, each claim tagged as operator-stated design, verified-in-code, or a known
+  gap. The messaging design previously existed only as fragments across agent
+  charters, decisions and code, so every session re-derived it and several built
+  against the wrong half.
+- 🔌 **Git-directory mailboxes are gone; the orchard transport is the only channel.**
+  The per-agent mailbox under the shared git common directory could not coexist
+  with worktrees — the directory is shared by all of them and a subagent inherits
+  its parent's session id, so concurrent instances resolved to one mailbox and
+  could delete each other's inbox.
+- 🌳 **One orchard project directory per worktree**, keyed by branch as well as repo,
+  so agents working different features no longer wake one another. The sidebar
+  folds them back into a single row per repo.
+- 📮 **A courier is woken only for its own mail, and the wake carries the message.**
+  Filtering happens at the watch by path and after parsing by subject, and the
+  parsed envelope is handed up rather than a filename to go and fetch.
+- 🐛 **Fixed: the operator's close gate could not be delivered.** A courier's only
+  standing watch was armed where `:session:` traffic never lands, so an unsolicited
+  message woke nothing unless the courier already happened to be blocking on a
+  reply.
+- 🐛 **Fixed: `--operator-origin` was a silent no-op** on every directed send, so
+  relayed operator words carried no provenance.
+- 🐛 **Fixed: the session-end self-wake was silently failing**, breaking a courier's
+  release detection.
+- 🐛 **Fixed: a running monitor could consume a reply** another caller was blocked on,
+  including the operator's own answer to a question.
+
 ### 🧹 Removals
 
 - 🧹 Supervision kills are gone (Decision-081): the orchestrator no longer

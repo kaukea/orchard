@@ -6,13 +6,14 @@ message: the courier sidecar shells out to this script on both send and receive,
 the format cannot drift across prompts and cannot be got wrong by an agent
 following prose.
 
-Layout (uncommittable, git-common-dir, so every worktree of the repo shares it):
-
-    <git-common-dir>/the-works/courier/<session-id>/<datetime>.json
-
-The set of folders IS the registry — an agent exists for messaging purposes iff
-its folder does. A SessionEnd hook removes it, so sending to an agent that has
-finished fails immediately rather than writing into a folder nobody watches.
+Transport: flat files + marker heartbeats under $XDG_RUNTIME_DIR/orchard/ (see
+the "orchard transport" section below), addressed by :session:<id> or
+:topic:<name>. This is the ONLY transport — the git-common-dir per-agent
+mailbox this replaced could not coexist with worktrees (--git-common-dir is
+shared by every worktree of a repo, and a subagent inherits its parent's
+CLAUDE_CODE_SESSION_ID, so concurrent worktrees resolved to the same box and
+could delete each other's inbox) and was removed outright (operator ruling,
+2026-07-27).
 
 Messages are ephemeral and deleted on consumption, so receiving is "take what is
 there", with no bookkeeping. There is NO delivery guarantee: a sender expects no
@@ -21,43 +22,47 @@ answer and decides for itself whether to retry, abandon, or error.
 Identity is the session id, read from the environment. It is not derived from
 location: two sessions can share a directory, and a subagent inherits its
 parent's environment verbatim — which is deliberate, since a courier sidecar must
-resolve to its PARENT's inbox.
+resolve to its PARENT's mailbox.
 
 Usage:
   courier.py whoami                                this session's id
-  courier.py init [id] [--agent ROLE]              create an inbox; also
-                                                resolves and persists this
-                                                session's role (for identity_of()
-                                                to recover across a resume, when
-                                                the harness sets no
-                                                CLAUDE_CODE_AGENT): harness env
-                                                wins, else --agent ROLE if given,
-                                                else a best-effort walk of the
-                                                launching `claude` process's own
-                                                command line for its --agent
-                                                flag. Never overwrites an
-                                                already-persisted role.
-  courier.py teardown [id]                         remove it (session end)
-  courier.py list                                  registry: one agent id per line
-  courier.py send --from A --to B [--body X] [--notify-user] [--in-reply-to ID]
+  courier.py init                                  ensure this session's orchard
+                                                project directory exists; print it
+                                                (also SessionStart's structural
+                                                guarantee — hooks/courier-init.sh)
+  courier.py teardown                              no-op (nothing owned to remove)
+  courier.py project-dir                           print this session's orchard
+                                                project directory (what a courier's
+                                                Monitor watches, agents/courier.md)
+  courier.py send --to :session:<id>|:topic:<name>|operator --subject S
+             [--body X] [--notify-user] [--target-project SLUG]
+             [--in-reply-to ID]                    `:session:operator` is a
+                                                RESERVED, dot-free target: always
+                                                the SENDER's own project
+                                                (projects/<repo>.<project>/
+                                                operator.<ts>.json), no allowlist
+                                                needed
   courier.py broadcast                             RETIRED — errors, pointing at
                                                 orchard_topic.py post (telemetry) or
                                                 send/request (directed). Fan-out is
                                                 the token leak; nothing fans out any
                                                 more (see below: announce/depart/
                                                 signal/ask all lost their fallback).
-  courier.py receive [id]                          drain: JSON array, oldest first
-
-  Orchard transport (additive; routed whenever --to carries a :session:/
-  :topic: prefix — see the "orchard transport" section below for the
-  flat+marker layout under $XDG_RUNTIME_DIR/orchard/). `:session:operator` is
-  a RESERVED, dot-free target: always the SENDER's own project
-  (projects/<repo>.<project>/operator.<ts>.json), no allowlist needed:
-  courier.py send --to :session:<id>|:topic:<name>|operator --subject S
-             [--body X] [--target-project SLUG] [--in-reply-to ID]
-  courier.py receive                               also drains this session's
-                                                orchard mailbox (merged into
-                                                the same JSON array)
+  courier.py receive                               drain this session's orchard
+                                                mailbox: JSON array, oldest first,
+                                                delete-on-read
+  courier.py monitor [--poll-interval N]           long-running: one inotifywait
+                                                watcher per mailbox source, filtered
+                                                at the watch to what could possibly
+                                                be this session's own (falls back to
+                                                polling every N seconds — default
+                                                2.0 — when inotifywait is missing);
+                                                on each arrival, drains and prints
+                                                every message that is actually its
+                                                own as JSON Lines, flushed
+                                                immediately; never exits on its own
+                                                (agents/courier.md arms this as the
+                                                Monitor)
   courier.py request --to :session:<id> --subject S [--body X]
              [--target-project SLUG]               send, then block for the
                                                 matching reply; prints its body
@@ -66,9 +71,7 @@ Usage:
   courier.py identity                              immutable facts about this session
   courier.py status                                mutable state: occupancy and spend
   courier.py announce                              no-op (identity rides every
-                                                orchard_topic.py event instead);
-                                                still creates this session's
-                                                legacy inbox
+                                                orchard_topic.py event instead)
   courier.py depart                                no-op (nothing reads it)
   courier.py signal --state S [--to ID]            lifecycle push, directed at the
                                                 parent ONLY (--to, else
@@ -112,10 +115,9 @@ Usage:
                                                 (no --multi) is unchanged: instant-on-digit.
                                                 --title/--summary: optional short framing shown
                                                 prominently above the question in the popup.
-  courier.py root                                  print the courier root
   courier.py validate [PATH]                       audit recorded traffic against
-                                                WIRE GRAMMAR v1; PATH is a
-                                                courier-root directory read
+                                                WIRE GRAMMAR v1; PATH is an
+                                                orchard-root directory read
                                                 recursively, else envelopes
                                                 come JSON-lines from stdin;
                                                 prints one line per violation/
@@ -127,12 +129,15 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable, NamedTuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from feature_name import feature_name as _feature_name  # noqa: E402
@@ -318,18 +323,11 @@ def git(*args: str) -> str:
     return done.stdout.strip()
 
 
-def courier_root() -> Path:
-    common = git("rev-parse", "--git-common-dir")
-    if not common:
-        sys.exit("courier: not inside a git repository — no courier root")
-    return Path(common).resolve() / "the-works" / "courier"
-
-
 def whoami() -> str:
     """This session's id, straight from the environment.
 
     Every session has one and can read its own. A subagent inherits its parent's,
-    which is what lets a courier sidecar find its parent's inbox without being told.
+    which is what lets a courier sidecar find its parent's mailbox without being told.
     """
     session = os.environ.get("CLAUDE_CODE_SESSION_ID", "").strip()
     if not session:
@@ -337,24 +335,9 @@ def whoami() -> str:
     return session
 
 
-def inbox(agent_id: str) -> Path:
-    if not agent_id or "/" in agent_id or agent_id.startswith("."):
-        sys.exit(f"courier: invalid agent id {agent_id!r}")
-    return courier_root() / agent_id
-
-
 def stamp() -> str:
     # sortable and readable; ':' avoided so the name is portable
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S.%f")
-
-
-def deliver(target: Path, envelope: dict) -> None:
-    """Write atomically: a watcher must never observe a half-written message."""
-    target.mkdir(parents=True, exist_ok=True)
-    final = target / f"{stamp()}.json"
-    tmp = target / f".{final.name}.partial"
-    tmp.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
-    os.replace(tmp, final)          # atomic; fires the watcher's moved_to
 
 
 def transcript() -> Path | None:
@@ -376,94 +359,6 @@ def usage_entries(path: Path):
             yield usage, message.get("model")
 
 
-def _feature_identity(top: str | None) -> tuple[str | None, str | None, str | None]:
-    """(worktree, feature_id, feature_name) — resolved together since they
-    hinge on the same git lookups. Best-effort: a transient failure here
-    (e.g. a git subprocess error `git()` doesn't already swallow, or
-    feature_name.py hitting an unreadable sidecar) must never cost the
-    caller `identity.agent` too — observed live: a gardener session posted
-    orchard:agent:status/delegation:begin with NO identity block at all,
-    because one failed lookup here discarded the whole identity dict
-    upstream. Any exception collapses to (None, None, None) instead of
-    propagating.
-    """
-    try:
-        worktree = Path(top).name if top else None
-        linked = "/worktrees/" in git("rev-parse", "--git-dir")
-        feature_id = worktree if linked else None
-        # Ledger-derived human name (tools/feature_name.py, sidebar-polish item 11):
-        # board short-title, else sidecar H1, else mechanical hyphen->space, so
-        # every consumer reads one already-authored field instead of re-deriving
-        # (Decision-032).
-        feature_name = _feature_name(feature_id, root=top) if feature_id else None
-        return worktree, feature_id, feature_name
-    except Exception:
-        return None, None, None
-
-
-def _task_identity(feature_id: str | None, feature_name: str | None) -> tuple[str | None, str | None]:
-    """(task_id, task_name) — only the agent itself knows which task within
-    its feature it is on, so ORCHID_TASK_ID/ORCHID_TASK_NAME are set by
-    whatever dispatched it (a landscaper handing a step to a sower, say).
-    A feature spans many tasks in general, but today one feature still maps
-    to exactly one task, so with neither env var set, task defaults to the
-    feature id and task_name to the feature's display name — an explicit,
-    commented default rather than an accidental fallthrough.
-    """
-    task_id = os.environ.get("ORCHID_TASK_ID") or feature_id
-    task_name = os.environ.get("ORCHID_TASK_NAME") or feature_name
-    return task_id, task_name
-
-
-def _proc_cmdline(pid: int) -> list[str]:
-    raw = Path(f"/proc/{pid}/cmdline").read_bytes()
-    return [part.decode(errors="replace") for part in raw.split(b"\0") if part]
-
-
-def _proc_ppid(pid: int) -> int:
-    stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-    fields = stat.rsplit(")", 1)[1].split()
-    return int(fields[1])
-
-
-def _agent_flag_value(cmdline: list[str]) -> str | None:
-    for index, token in enumerate(cmdline):
-        if token == "--agent" and index + 1 < len(cmdline):
-            return cmdline[index + 1]
-        if token.startswith("--agent="):
-            return token.split("=", 1)[1]
-    return None
-
-
-def _nearest_claude_cmdline(pid: int, max_hops: int = 32) -> list[str] | None:
-    for _ in range(max_hops):
-        cmdline = _proc_cmdline(pid)
-        if cmdline and Path(cmdline[0]).name == "claude":
-            return cmdline
-        pid = _proc_ppid(pid)
-        if pid <= 1:
-            return None
-    return None
-
-
-def _role_from_launching_claude() -> str | None:
-    try:
-        cmdline = _nearest_claude_cmdline(os.getpid())
-        return _agent_flag_value(cmdline) if cmdline else None
-    except Exception:
-        return None
-
-
-def resolve_session_role(declared: str | None = None) -> str | None:
-    """This session's role, harness first: CLAUDE_CODE_AGENT (set by the
-    harness, so never guessed) beats a self-declaration (`init --agent`,
-    for a session naming itself when the harness gives nothing — e.g. a
-    resumed session that already knows its own charter) beats a best-effort
-    walk up to the launching `claude` process's own `--agent` flag (the last
-    resort — a resumed process typically has none)."""
-    return os.environ.get("CLAUDE_CODE_AGENT") or declared or _role_from_launching_claude()
-
-
 def identity_of() -> dict:
     """Immutable facts, fixed for this session's whole life.
 
@@ -471,18 +366,19 @@ def identity_of() -> dict:
     are not identity, and pinning them here would bake in a value that goes stale.
     """
     top = git("rev-parse", "--show-toplevel")
-    worktree, feature_id, feature_name = _feature_identity(top)
-    task_id, task_name = _task_identity(feature_id, feature_name)
-    session_id = whoami()
-    agent_type = os.environ.get("CLAUDE_CODE_AGENT") or persisted_session_role(session_id) or None
+    worktree = Path(top).name if top else None
+    linked = "/worktrees/" in git("rev-parse", "--git-dir")
+    feature_id = worktree if linked else None
     return {
-        "session_id": session_id,
-        "agent_type": agent_type,
+        "session_id": whoami(),
+        "agent_type": os.environ.get("CLAUDE_CODE_AGENT") or None,
         "worktree": worktree,
         "feature_id": feature_id,
-        "name": feature_name,
-        "task_id": task_id,
-        "task_name": task_name,
+        # Ledger-derived human name (tools/feature_name.py, sidebar-polish item 11):
+        # board short-title, else sidecar H1, else mechanical hyphen->space, so
+        # every consumer reads one already-authored field instead of re-deriving
+        # (Decision-032).
+        "name": _feature_name(feature_id, root=top) if feature_id else None,
         "parent_session": os.environ.get("ORCHID_PARENT_SESSION") or None,
     }
 
@@ -562,28 +458,16 @@ def make_envelope(sender: str, to: str, *, body=None, notify_user=False,
     return env
 
 
-def envelope_of(args, to: str) -> dict:
-    return make_envelope(
-        args.sender, to,
-        body=getattr(args, "body", None),
-        notify_user=bool(getattr(args, "notify_user", False)),
-        operator_origin=bool(getattr(args, "operator_origin", False)),
-        in_reply_to=getattr(args, "in_reply_to", None),
-    )
-
-
 def cmd_send(args) -> None:
-    if is_orchard_address(args.to):
-        env = orchard_send(args)
-        print(env["id"])
-        return
-    if not args.sender:
-        sys.exit("courier: send requires --from")
     enforce_orchid_grammar(args)
-    target = inbox(args.to)
-    if not target.is_dir():
-        sys.exit(f"courier: no such agent {args.to!r} (no inbox) — it has finished or never started")
-    deliver(target, envelope_of(args, args.to))
+    if not is_orchard_address(args.to):
+        sys.exit(
+            f"courier: send --to {args.to!r} is not an orchard address — the "
+            "legacy per-agent mailbox is gone; use :session:<id> or "
+            ":topic:<name>"
+        )
+    env = orchard_send(args)
+    print(env["id"])
 
 
 def cmd_broadcast(args) -> None:
@@ -602,53 +486,57 @@ def cmd_broadcast(args) -> None:
 
 
 def cmd_receive(args) -> None:
-    box = inbox(args.agent_id)
-    out = []
-    if box.is_dir():
-        for f in sorted(box.glob("*.json")):        # lexical == chronological
-            try:
-                out.append(json.loads(f.read_text(encoding="utf-8")))
-            except (json.JSONDecodeError, OSError) as exc:
-                # left on disk deliberately: a malformed envelope is evidence, and
-                # deleting it would destroy the only copy of the thing to debug
-                out.append({"type": "malformed", "file": f.name, "error": str(exc)})
-                continue
-            f.unlink(missing_ok=True)               # ephemeral: consumed is gone
-    if args.agent_id == whoami():
-        out.extend(orchard_receive_own())
-    print(json.dumps(out, indent=2))
+    print(json.dumps(orchard_receive_own(), indent=2))
+
+
+def cmd_monitor(args) -> None:
+    """Long-running: watches THIS session's mailbox sources, filtered at the
+    watch to what could possibly be its own, and on each arrival drains and
+    prints every message that is actually its own — one JSON object per
+    line, flushed immediately. Reuses each source's own read (for the
+    project-directory mailbox, orchard_receive_own()) so delete-on-
+    consumption semantics are unchanged and there is no second parsing
+    path. Never exits on its own — this is what agents/courier.md arms as
+    the Monitor."""
+    sources = _monitor_sources()
+    _drain_all(sources)
+    if shutil.which("inotifywait"):
+        _monitor_inotify(sources)
+    else:
+        _monitor_poll(sources, args.poll_interval)
+
+
+def _ensure_project_dir() -> Path:
+    dir_path = project_dir(project_slug())
+    dir_path.mkdir(parents=True, exist_ok=True)
+    return dir_path
 
 
 def cmd_init(args) -> None:
-    box = inbox(args.agent_id)
-    box.mkdir(parents=True, exist_ok=True)
-    _persist_role_for_this_session(getattr(args, "declared_role", None))
-    print(box)
-
-
-def _persist_role_for_this_session(declared_role: str | None) -> None:
-    try:
-        session_id = whoami()
-    except SystemExit:
-        return
-    persist_session_role(session_id, resolve_session_role(declared_role))
+    """Structural half of SessionStart (hooks/courier-init.sh): ensure this
+    session's orchard project directory exists, so a courier's Monitor
+    always has something to watch even before anyone has announced or sent
+    anything. The legacy per-agent mailbox this used to create and claim
+    ownership of (Decision-095/096) is gone — orchard messages are flat
+    files under a shared project directory, so there is nothing left here
+    for one courier to own against another.
+    """
+    print(_ensure_project_dir())
 
 
 def cmd_teardown(args) -> None:
-    box = inbox(args.agent_id)
-    if box.is_dir():
-        for f in box.iterdir():
-            f.unlink(missing_ok=True)
-        box.rmdir()
-    print(f"removed {box}")
+    """Dead: the legacy per-agent mailbox this used to remove is gone —
+    orchard messages are flat, delete-on-read files under a directory
+    shared by every session in the project, with nothing owned by one
+    courier to tear down. Kept as a documented no-op so an existing
+    caller's `teardown` at release does not start erroring."""
+    print("teardown: no-op — no owned mailbox to remove")
 
 
-def cmd_list(args) -> None:
-    root = courier_root()
-    if root.is_dir():
-        for d in sorted(root.iterdir()):
-            if d.is_dir():
-                print(d.name)
+def cmd_project_dir(args) -> None:
+    """This session's orchard project directory — what a courier's Monitor
+    watches (agents/courier.md) and what `receive` drains."""
+    print(_ensure_project_dir())
 
 
 def cmd_announce(args) -> None:
@@ -656,14 +544,10 @@ def cmd_announce(args) -> None:
     snapshot now rides every orchard_topic.py event (its `identity` field,
     see tools/orchard_topic.py._attach_snapshot), so a separate broadcast is
     dead weight — the fan-out this replaced was the token leak. Kept as a
-    no-op that still creates this session's legacy inbox (the courier-root
-    registry membership cmd_list/send/receive depend on), so an existing
-    caller's `announce` at session start does not regress inbox creation.
-    """
-    me = whoami()
-    inbox(me).mkdir(parents=True, exist_ok=True)
+    documented no-op so an existing caller's `announce` at session start
+    does not start erroring."""
     print(f"announce: identity no longer fanned out — it rides every "
-          f"orchard_topic.py event for {me} instead")
+          f"orchard_topic.py event for {whoami()} instead")
 
 
 def cmd_depart(args) -> None:
@@ -697,13 +581,6 @@ def cmd_signal(args) -> None:
     if not to:
         print(f"signal {args.state} — no parent known, not delivered")
         return
-    # --to is documented as a bare session id, but every other --to in this
-    # script takes a full `:session:<id>` address — a caller that copies that
-    # habit here would otherwise double the prefix (`:session::session:<id>`)
-    # once wrapped below, which leaked a `:` into a delivered filename
-    # (Decision-091 rejects that outright). Idempotent: a no-op on the
-    # documented bare-id case.
-    to = to.removeprefix(":session:")
 
     parent_project = os.environ.get("ORCHID_PARENT_PROJECT") or project_slug()
     ns = argparse.Namespace(
@@ -932,8 +809,8 @@ def _report(label: str, severity: str, frm: str, reason: str) -> None:
 def cmd_validate(args) -> None:
     """Audit recorded courier traffic against WIRE GRAMMAR v1 (the feature's
     agreed test method: a role's traffic must validate with no unspecified
-    message). PATH is a courier-root directory, read recursively; with no PATH,
-    envelopes come JSON-lines from stdin."""
+    message). PATH is an orchard-root directory, read recursively; with no
+    PATH, envelopes come JSON-lines from stdin."""
     if args.path:
         root = Path(args.path)
         if not root.is_dir():
@@ -968,15 +845,19 @@ def cmd_validate(args) -> None:
 # ---------------------------------------------------------------------------
 # orchard transport: flat files + marker heartbeats under
 # $XDG_RUNTIME_DIR/orchard/{projects/<repo>.<project>,topics/<name>}/, addressed
-# by ":session:<id>" / ":topic:<name>" rather than a bare agent id. Additive
-# alongside the courier_root() layout above — cmd_send/cmd_receive route into
-# this section only when the address carries one of those two prefixes.
+# by ":session:<id>" / ":topic:<name>". THE transport — the legacy
+# git-common-dir per-agent mailbox this replaced could not coexist with
+# worktrees (--git-common-dir is shared by every worktree of a repo, and a
+# subagent inherits its parent's CLAUDE_CODE_SESSION_ID, so concurrent
+# worktrees resolved to the same box and could delete each other's inbox)
+# and was removed outright (operator ruling, 2026-07-27).
 # ---------------------------------------------------------------------------
 
 ORCHARD_ADDRESS_RE = re.compile(r"^:(session|topic):(.+)$")
 ORCHARD_REGISTRY_PATH = Path.home() / ".config" / "orchids" / "sidebar-registry.json"
 ORCHARD_REQUEST_TIMEOUT_S = 30.0
 ORCHARD_POLL_INTERVAL_S = 0.5
+MONITOR_POLL_INTERVAL_S = 2.0
 
 # The orchard subject list is CLOSED and NOT extensible (operator ruling):
 # validation is EXACT MEMBERSHIP against this frozenset — no regex, no
@@ -1033,8 +914,6 @@ def parse_orchard_address(addr: str) -> tuple[str, str]:
 def _check_path_component(value: str, label: str, *, dot_free: bool = False) -> None:
     if not value or "/" in value or value in (".", ".."):
         sys.exit(f"courier: invalid {label} {value!r}")
-    if ":" in value:
-        sys.exit(f"courier: invalid {label} {value!r} — must not carry a routing prefix")
     if dot_free and "." in value:
         sys.exit(f"courier: invalid {label} {value!r} — must be dot-free")
 
@@ -1062,221 +941,66 @@ def _owner_repo_slug(remote_url: str) -> str | None:
     return f"{match.group('owner')}.{match.group('repo')}" if match else None
 
 
+BRANCH_SEPARATOR = "@"
+
+
+def _sanitise_branch(branch: str) -> str:
+    """A branch name as a single safe path component: `f/close-family-fakes` ->
+    `f-close-family-fakes`. Slashes are what force this, but anything outside
+    the safe set is folded the same way so no branch name can escape a
+    directory or smuggle a separator."""
+    return re.sub(r"[^A-Za-z0-9._-]", "-", branch).strip("-") or "detached"
+
+
+def current_branch() -> str:
+    """This WORKTREE's branch, sanitised. A detached HEAD has no branch name,
+    so its short SHA stands in — still unique per worktree, which is the only
+    property being relied on."""
+    branch = git("rev-parse", "--abbrev-ref", "HEAD")
+    if branch and branch != "HEAD":
+        return _sanitise_branch(branch)
+    return _sanitise_branch(git("rev-parse", "--short", "HEAD") or "detached")
+
+
 def project_slug() -> str:
-    """`<repo>.<project>`, identical for every worktree of the same repo:
-    --git-common-dir folds worktrees to one path. Prefers the origin remote's
-    owner/repo (stable across clones/forks); falls back to the repo-root
-    directory basename when there is no remote."""
+    """`<owner>.<repo>@<branch>` — one orchard project directory PER WORKTREE.
+
+    The repo half prefers the origin remote's owner/repo (stable across clones
+    and forks) and falls back to the repo-root directory basename.
+
+    The branch half is what keeps parallel worktrees apart. `--git-common-dir`
+    deliberately folds every worktree of a repo to one path, so a slug built
+    from it alone is IDENTICAL in every worktree — and worktrees exist precisely
+    so several jobs run at once. Without the branch, concurrent features share
+    one project directory and their traffic and feature markers pile together
+    (operator ruling, 2026-07-27).
+
+    The separator is `@`, not a dot, so the `<owner>.<repo>` shape stays
+    splittable on its first dot for display.
+    """
     common = git("rev-parse", "--git-common-dir")
     if not common:
         sys.exit("courier: not inside a git repository — no project slug")
     repo_root = Path(common).resolve().parent
     remote = git("remote", "get-url", "origin")
-    slug = _owner_repo_slug(remote) if remote else None
-    return slug or repo_root.name
+    repo = (_owner_repo_slug(remote) if remote else None) or repo_root.name
+    return f"{repo}{BRANCH_SEPARATOR}{current_branch()}"
 
 
-ORCHARD_TIMESTAMP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{6}$")
-
-
-def _valid_orchard_id(component: str) -> bool:
-    return bool(component) and "/" not in component and ":" not in component and component not in (".", "..")
-
-
-def validate_orchard_filename(name: str) -> None:
-    """The single gate every name entering the orchard tree passes through
-    (operator ruling, Decision-091): exactly `<sessionid>.<ts>.json`,
-    `<sessionid>.marker`, or `<feature-id>.marker` — no coercion, no silent
-    repair. Anything else, including a leaked `:` routing prefix in any
-    component, raises."""
-    if name.endswith(".marker"):
-        id_ = name[: -len(".marker")]
-        if not _valid_orchard_id(id_) or "." in id_:
-            raise ValueError(f"invalid orchard filename {name!r} — expected <id>.marker")
-        return
-    if name.endswith(".json"):
-        sid, sep, ts = name[: -len(".json")].partition(".")
-        if not sep or not _valid_orchard_id(sid) or not ORCHARD_TIMESTAMP_RE.match(ts):
-            raise ValueError(f"invalid orchard filename {name!r} — expected <sessionid>.<ts>.json")
-        return
-    raise ValueError(f"invalid orchard filename {name!r} — must be <sessionid>.<ts>.json or <id>.marker")
-
-
-def orchard_message_name(sid: str) -> str:
+def _stamp_filename(sid: str) -> str:
     return f"{sid}.{stamp()}.json"
 
 
-def orchard_marker_name(id_: str) -> str:
-    return f"{id_}.marker"
-
-
-def _session_role_marker(session_id: str) -> Path | None:
-    """This session's own heartbeat marker, keyed by session id and already
-    owned by courier.py — reused as the resume-durable home for its role
-    rather than inventing a new tree. `None` whenever the orchard root can't
-    be resolved (no XDG_RUNTIME_DIR, no git repo): the caller treats that as
-    "role unavailable", never an error."""
-    try:
-        return project_dir(project_slug()) / orchard_marker_name(session_id)
-    except SystemExit:
-        return None
-
-
-def _read_session_role(path: Path) -> str | None:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    role = payload.get("role") if isinstance(payload, dict) else None
-    return role if isinstance(role, str) and role else None
-
-
-def persisted_session_role(session_id: str) -> str | None:
-    path = _session_role_marker(session_id)
-    return _read_session_role(path) if path else None
-
-
-def persist_session_role(session_id: str, role: str | None) -> None:
-    """Write-once: a role already on record is never touched again, so a
-    resume with nothing to offer (empty environment, no launching-process
-    flag) can never clobber what an earlier launch established."""
-    if not role:
-        return
-    path = _session_role_marker(session_id)
-    if path is None or _read_session_role(path):
-        return
-    try:
-        write_orchard_file(path.parent, path.name, {"role": role})
-    except Exception:
-        pass
-
-
-def write_orchard_file(dir_path: Path, name: str, payload: dict | None = None) -> Path:
-    """The ONE writer for the orchard tree: every filename is constructed by
-    a caller of orchard_message_name/orchard_marker_name (never assembled
-    inline) and validated here before anything touches disk. `payload=None`
-    touches an empty heartbeat marker (mtime IS the liveness signal, per
-    Decision-091); otherwise `payload` is written as pretty JSON, atomically
-    (temp file + rename, so a watcher never observes a half-written file)."""
-    validate_orchard_filename(name)
-    dir_path.mkdir(parents=True, exist_ok=True)
-    final = dir_path / name
-    if payload is None:
-        final.touch(exist_ok=True)
-    else:
-        tmp = dir_path / f".{name}.partial"
-        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        os.replace(tmp, final)
-    return final
-
-
-# The durable feature-node marker (`<feature-id>.marker`, distinct from the
-# per-session heartbeat marker above): persists the TASKS the feature maps
-# to, never agent/session identity — that is ephemeral. `tasks` is a list
-# keyed WITHIN by task id (never feature id — a feature spans many tasks,
-# so keying a task entry on its feature would conflate the two levels) so
-# sibling tasks under one feature node have room to persist even though,
-# today, a feature maps to exactly one task. Merged in place so a late
-# event still lands on the right node.
-_FEATURE_TASK_STATE_BY_SUBJECT = {
-    "orchard:agent:outcome:success": "done",
-    "orchard:agent:outcome:fail": "failed",
-}
-
-
-def _feature_marker_path(dir_path: Path, feature: str) -> Path:
-    return dir_path / f"{feature}.marker"
-
-
-def _load_feature_marker(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def _feature_task_state(subject: str) -> str | None:
-    if subject in _FEATURE_TASK_STATE_BY_SUBJECT:
-        return _FEATURE_TASK_STATE_BY_SUBJECT[subject]
-    if subject.startswith("orchard:agent:lifecycle:"):
-        return "working"
-    return None
-
-
-def _merge_feature_task(tasks: list[dict], task_id: str, task_name: str | None,
-                         subject: str, now: str) -> None:
-    state = _feature_task_state(subject)
-    for task in tasks:
-        if task.get("task") == task_id:
-            task["name"] = task_name or task["name"]
-            task["state"] = state or task["state"]
-            task["updated"] = now
-            return
-    tasks.append({
-        "task": task_id,
-        "name": task_name,
-        "state": state or "working",
-        "updated": now,
-    })
-
-
-def merge_feature_marker(path: Path, project: str, feature: str,
-                          envelope: dict, now: str) -> dict:
-    """Merge-never-truncate for the CURRENT shape only: a rejected earlier
-    shape — the `sessions` identity cache, or a `tasks[]` entry keyed by the
-    now-retired `feature` field (schema 1, which conflated task and
-    feature) or by nothing at all (e.g. a delegation label) — is discarded
-    on sight rather than carried forward. That is not truncating live data,
-    it is dropping a shape the design has rejected; an old-shape marker
-    already on disk is simply read as if its `tasks[]` were empty, never a
-    crash. A `tasks[]` entry that IS current (keyed by `task`) still
-    survives forever, terminal state included.
-
-    The marker stays keyed on the FEATURE at file level (`feature`, `name`
-    — the feature's own display name, `area`, `updated`); each task entry
-    inside `tasks[]` carries its own `task`/`name`/`state`/`updated`. The
-    marker holds nothing agent-shaped (no role, agent name, model, or
-    activity) — that is live-only and never persisted here.
-    """
-    marker = _load_feature_marker(path)
-    marker.pop("sessions", None)
-    identity = envelope.get("identity") or {}
-    marker["schema"] = 2
-    marker["project"] = project
-    marker["feature"] = feature
-    marker["name"] = identity.get("feature_name") or marker.get("name")
-    marker["area"] = identity.get("area") or marker.get("area")
-    tasks = [t for t in marker.get("tasks", []) if t.get("task")]
-    task_id = identity.get("task") or feature
-    task_name = identity.get("task_name") or identity.get("feature_name")
-    _merge_feature_task(tasks, task_id, task_name,
-                         envelope.get("subject", ""), now)
-    marker["tasks"] = tasks
-    marker["updated"] = now
-    return marker
-
-
-def write_feature_marker(dir_path: Path, project: str, envelope: dict) -> None:
-    identity = envelope.get("identity") or {}
-    feature = identity.get("feature")
-    if not feature or "/" in feature or feature in (".", ".."):
-        return
-    path = _feature_marker_path(dir_path, feature)
-    now = datetime.now(timezone.utc).isoformat()
-    marker = merge_feature_marker(path, project, feature, envelope, now)
-    write_orchard_file(dir_path, orchard_marker_name(feature), marker)
-
-
 def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
-    """Atomically write the message, touch/create the marker heartbeat, merge
-    the feature-node marker when the envelope carries one, bump the parent
-    dir's mtime (nested writes don't bubble automatically), then give the
-    compaction pass a chance to run. Both writes go through write_orchard_file
-    — the one place a name is built and validated (Decision-091)."""
-    final = write_orchard_file(dir_path, orchard_message_name(sid), envelope)
-    write_orchard_file(dir_path, orchard_marker_name(sid))
-    if dir_path.parent.name == "projects":
-        write_feature_marker(dir_path, dir_path.name, envelope)
+    """Atomically write the message, touch/create the marker heartbeat, bump
+    the parent dir's mtime (nested writes don't bubble automatically), then
+    give the compaction pass a chance to run."""
+    dir_path.mkdir(parents=True, exist_ok=True)
+    final = dir_path / _stamp_filename(sid)
+    tmp = dir_path / f".{final.name}.partial"
+    tmp.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
+    os.replace(tmp, final)
+    (dir_path / f"{sid}.marker").touch(exist_ok=True)
     os.utime(dir_path, None)
     maybe_compact(dir_path)
     return final
@@ -1284,7 +1008,7 @@ def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
 
 def make_orchard_envelope(sender: str, to: str, subject: str, *, body=None,
                            in_reply_to=None, repo=None, project=None,
-                           notify_user=False) -> dict:
+                           notify_user=False, operator_origin=False) -> dict:
     env = {
         "id": uuid.uuid4().hex[:12],
         "ts": datetime.now(timezone.utc).isoformat(),
@@ -1300,6 +1024,8 @@ def make_orchard_envelope(sender: str, to: str, subject: str, *, body=None,
         env["project"] = project
     if notify_user:
         env["notify_user"] = True
+    if operator_origin:
+        env["operator_origin"] = True
     if body is not None:
         env["body"] = body
     return env
@@ -1419,6 +1145,7 @@ def orchard_send(args) -> dict:
         in_reply_to=getattr(args, "in_reply_to", None),
         repo=repo, project=project_field,
         notify_user=bool(getattr(args, "notify_user", False)),
+        operator_origin=bool(getattr(args, "operator_origin", False)),
     )
     violation = _schema_violation(env, _load_envelope_schema())
     if violation:
@@ -1427,10 +1154,22 @@ def orchard_send(args) -> dict:
     return env
 
 
-def orchard_receive_own() -> list[dict]:
+def orchard_receive_own(*, skip_replies: bool = False) -> list[dict]:
     """This session's personal-mailbox messages, delete-on-read. Skipped
     (returns []) when XDG_RUNTIME_DIR is unset, so a plain `receive` in an
-    environment with no orchard root keeps working exactly as before."""
+    environment with no orchard root keeps working exactly as before.
+
+    `skip_replies` leaves an envelope carrying `in_reply_to` untouched —
+    neither returned nor deleted — instead of consuming it. `_find_orchard_reply`
+    and `_match_answer` glob this SAME directory for exactly such an
+    envelope while a `request`/`ask` caller blocks on it; a continuously
+    running reader (`monitor`) that drained indiscriminately would race
+    that waiter and could delete the one reply it is owed before it looks —
+    including the operator's own answer to `ask`. Plain one-shot `receive`
+    keeps the old, indiscriminate default (`skip_replies=False`): it has no
+    waiter of its own to race against attention that already moved to
+    consume its output the same turn.
+    """
     if not os.environ.get("XDG_RUNTIME_DIR"):
         return []
     sid = whoami()
@@ -1442,12 +1181,195 @@ def orchard_receive_own() -> list[dict]:
         if f.name.startswith("."):
             continue
         try:
-            out.append(json.loads(f.read_text(encoding="utf-8")))
+            env = json.loads(f.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError) as exc:
             out.append({"type": "malformed", "file": f.name, "error": str(exc)})
             continue
+        if skip_replies and env.get("in_reply_to"):
+            continue
+        out.append(env)
         f.unlink(missing_ok=True)
     return out
+
+
+class MonitorSource(NamedTuple):
+    """One watchable mailbox, filtered in two stages that must never be
+    confused:
+
+    WATCH-STAGE selectivity (`directory`, `path_filter`) happens at the
+    kernel, via `inotifywait --include` matching a file's full path — cheap,
+    but limited to what a filename can say. This is what direct addressing
+    (`:session:<id>`) uses: the recipient id IS the filename prefix, so
+    filtering by path is exact and sufficient — every message that reaches
+    this stage already belongs to this session.
+
+    PARSE-STAGE selectivity (`subject_filter`) happens after `read()` has
+    parsed an envelope, because a subject lives INSIDE the file, not in its
+    path — no filename pattern can express it. Direct mail leaves this
+    empty (everything addressed to this session is its own, by
+    definition); a topic subscription — not implemented here, only shaped
+    for — would use a non-empty set, since subscribing yields everything
+    published on the topic and the subject is what narrows it to what this
+    session actually asked for. Empty means "no narrowing: pass whatever
+    reached parsing."
+
+    `read()` is the one place an envelope is built and consumed
+    (`orchard_receive_own` for the mailbox source below) — never
+    reinvented per source.
+    """
+    directory: Path
+    path_filter: str
+    subject_filter: frozenset[str]
+    read: Callable[[], list[dict]]
+
+
+def _own_mailbox_path_filter(sid: str) -> str:
+    """Cuts the obvious noise in the project directory: a sibling session's
+    message files, and this session's own `<sid>.marker` heartbeat.
+    `inotifywait --include` matches the FULL PATH, not the bare filename, so
+    the pattern is unanchored at the start; verified empirically to fire for
+    `<sid>.<ts>.json` and not for `<sid>.marker`, `<other-sid>.<ts>.json`, or
+    `<other-sid>.marker`."""
+    return rf"/{re.escape(sid)}\..*\.json$"
+
+
+def _own_mailbox_source() -> MonitorSource:
+    """Direct mail: addressed to this session by id, so watch-stage
+    filtering is exact and there is nothing left for parse-stage filtering
+    to narrow. `skip_replies=True` (orchard_receive_own, above) is load-
+    bearing here, not cosmetic: `monitor` runs continuously, so without it
+    it would race a blocked `request`/`ask` waiter for the one reply file
+    that answers it — including the operator's own answer — and could
+    delete it first, leaving that caller hanging forever."""
+    sid = whoami()
+    return MonitorSource(
+        _ensure_project_dir(), _own_mailbox_path_filter(sid), frozenset(),
+        lambda: orchard_receive_own(skip_replies=True),
+    )
+
+
+def _monitor_sources() -> list[MonitorSource]:
+    """Today: just this session's own project-directory mailbox. A
+    subscribed topic folder (`orchard/topics/<name>/<sessionid>/`) is a
+    second entry in this list, not a reason to change this function's
+    shape, `MonitorSource`, or the watch loop below."""
+    return [_own_mailbox_source()]
+
+
+def _passes_subject_filter(env: dict, subject_filter: frozenset[str]) -> bool:
+    return not subject_filter or env.get("subject") in subject_filter
+
+
+def _drain_and_print(source: MonitorSource) -> None:
+    for env in source.read():
+        if _passes_subject_filter(env, source.subject_filter):
+            print(json.dumps(env), flush=True)
+
+
+def _drain_all(sources: list[MonitorSource]) -> None:
+    for source in sources:
+        _drain_and_print(source)
+
+
+def _spawn_inotifywait(source: MonitorSource) -> subprocess.Popen:
+    command = [
+        "inotifywait", "-m", "-e", "create", "-e", "moved_to",
+        "--include", source.path_filter, "--format", "%f", str(source.directory),
+    ]
+    return subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1,
+    )
+
+
+def _inotify_watch_is_armed(pid: int) -> bool:
+    """True once `pid`'s inotify fd shows an established watch descriptor
+    (a `wd:` line in its fdinfo) — the kernel is now watching, so any file
+    created from this instant on is guaranteed to raise an event. Before
+    this, a file this process's watch was meant to see can slip past
+    unnoticed and un-eventful."""
+    try:
+        fds = list(Path(f"/proc/{pid}/fd").iterdir())
+    except OSError:
+        return False
+    for fd in fds:
+        try:
+            if "inotify" not in os.readlink(fd):
+                continue
+            if "wd:" in Path(f"/proc/{pid}/fdinfo/{fd.name}").read_text():
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _await_inotify_armed(process: subprocess.Popen, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and process.poll() is None:
+        if _inotify_watch_is_armed(process.pid):
+            return
+        time.sleep(0.005)
+
+
+def _watch_source_forever(source: MonitorSource, sources: list[MonitorSource],
+                           processes: list[subprocess.Popen]) -> None:
+    while True:
+        process = _spawn_inotifywait(source)
+        processes.append(process)
+        _await_inotify_armed(process)
+        # Closes the startup race: a file created between spawning this
+        # watcher and its watch actually going live raises no kernel event
+        # (the watch was not yet armed to see it) and would otherwise sit
+        # forever unless some UNRELATED later event happened to trigger a
+        # drain. This catch-up drain is unconditional and state-based, so
+        # it picks up exactly such a file regardless of when it landed.
+        _drain_all(sources)
+        for _line in process.stdout:
+            _drain_all(sources)
+        process.wait()
+
+
+def _kill_children(processes: list[subprocess.Popen]) -> None:
+    for process in processes:
+        if process.poll() is None:
+            try:
+                process.kill()
+            except OSError:
+                pass
+
+
+def _monitor_inotify(sources: list[MonitorSource]) -> None:
+    """ONE `inotifywait` watcher PER SOURCE, each with its own exact
+    `--include` filter — `--include` is a single global regex per
+    invocation, so a source with a different directory and pattern (a
+    subscribed topic folder, one day) cannot share a process with this one
+    without widening the filter and letting noise back in. Every watcher
+    feeds the same drain: whichever one fires, every source's mailbox is
+    drained (the existing wholesale-drain rule), so which source fired is
+    never load-bearing.
+
+    On SIGTERM — how the courier's Monitor teardown ends this process —
+    every watcher this instance spawned is killed before exit, so nothing
+    is ever left behind for the charter to have to hunt down process by
+    process."""
+    processes: list[subprocess.Popen] = []
+    signal.signal(signal.SIGTERM, lambda *_args: sys.exit(0))
+    try:
+        threads = [
+            threading.Thread(target=_watch_source_forever, args=(source, sources, processes), daemon=True)
+            for source in sources
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    finally:
+        _kill_children(processes)
+
+
+def _monitor_poll(sources: list[MonitorSource], poll_interval: float) -> None:
+    while True:
+        time.sleep(poll_interval)
+        _drain_all(sources)
 
 
 def _find_orchard_reply(dir_path: Path, sid: str, request_id: str) -> dict | None:
@@ -1532,22 +1454,16 @@ def main() -> None:
     p = argparse.ArgumentParser(description="repo-scoped agent message courier")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    for name, fn in (("teardown", cmd_teardown), ("receive", cmd_receive)):
-        s = sub.add_parser(name)
-        s.add_argument("agent_id", nargs="?", default=None)
-        s.set_defaults(func=fn)
-
-    s = sub.add_parser("init")
-    s.add_argument("agent_id", nargs="?", default=None)
-    s.add_argument("--agent", dest="declared_role", default=None,
-                   help="self-declared role, used only when the harness sets "
-                        "no CLAUDE_CODE_AGENT — e.g. a resumed session naming "
-                        "itself so identity_of() recovers it")
-    s.set_defaults(func=cmd_init)
-
     sub.add_parser("whoami").set_defaults(func=lambda a: print(whoami()))
-    sub.add_parser("list").set_defaults(func=cmd_list)
-    sub.add_parser("root").set_defaults(func=lambda a: print(courier_root()))
+    sub.add_parser("init").set_defaults(func=cmd_init)
+    sub.add_parser("teardown").set_defaults(func=cmd_teardown)
+    sub.add_parser("receive").set_defaults(func=cmd_receive)
+    s = sub.add_parser("monitor")
+    s.add_argument("--poll-interval", dest="poll_interval", type=float, default=MONITOR_POLL_INTERVAL_S,
+                   help="seconds between drains when inotifywait is unavailable "
+                        f"(default {MONITOR_POLL_INTERVAL_S})")
+    s.set_defaults(func=cmd_monitor)
+    sub.add_parser("project-dir").set_defaults(func=cmd_project_dir)
     sub.add_parser("announce").set_defaults(func=cmd_announce)
     sub.add_parser("depart").set_defaults(func=cmd_depart)
     sub.add_parser("identity").set_defaults(
@@ -1556,9 +1472,10 @@ def main() -> None:
         func=lambda a: print(json.dumps(status_of(), indent=2)))
 
     def msg_args(s):
-        # not required: an orchard (:session:/:topic:) send auto-detects the
-        # sender via whoami() and never passes --from; the legacy path still
-        # requires it, enforced in cmd_send/cmd_broadcast themselves.
+        # --from is accepted but IGNORED — orchard always derives the sender
+        # from whoami() (orchard_send). Kept only so an existing caller that
+        # still passes it (e.g. hooks/courier-end.sh's self-wake send) does
+        # not start hitting an argparse "unrecognized arguments" error.
         s.add_argument("--from", dest="sender", required=False, default=None)
         s.add_argument("--body")
         s.add_argument("--notify-user", dest="notify_user", action="store_true",
@@ -1568,11 +1485,9 @@ def main() -> None:
         return s
 
     s = msg_args(sub.add_parser("send"))
-    s.add_argument("--to", required=True)
+    s.add_argument("--to", required=True, help=":session:<id> or :topic:<name>")
     s.add_argument("--in-reply-to", dest="in_reply_to")
-    s.add_argument("--subject",
-                    help="orchard wire-grammar subject; required when --to is "
-                         ":session:<id> or :topic:<name>")
+    s.add_argument("--subject", help="orchard wire-grammar subject; required")
     s.add_argument("--target-project", dest="target_project",
                     help="cross-project slug for a :session: send outside the "
                          "sender's own project")
@@ -1632,13 +1547,11 @@ def main() -> None:
 
     s = sub.add_parser("validate")
     s.add_argument("path", nargs="?", default=None,
-                    help="courier-root directory to audit recursively; omit to "
+                    help="orchard-root directory to audit recursively; omit to "
                          "read JSON-lines envelopes from stdin")
     s.set_defaults(func=cmd_validate)
 
     args = p.parse_args()
-    if getattr(args, "agent_id", "sentinel") is None:
-        args.agent_id = whoami()
     args.func(args)
 
 

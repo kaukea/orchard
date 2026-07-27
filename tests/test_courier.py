@@ -9,6 +9,7 @@ Runs under both `python3 -m unittest discover` and `pytest`.
 """
 import json
 import os
+import select
 import subprocess
 import sys
 import tempfile
@@ -58,33 +59,51 @@ class MakeEnvelopeTests(unittest.TestCase):
 
 
 class CliRoundTripTests(unittest.TestCase):
-    """CLI-level: `send --operator-origin` then `receive`, in a real repo."""
+    """CLI-level: `send --operator-origin` then `receive`, in a real repo,
+    over the orchard `:session:` transport — the legacy per-agent mailbox
+    this used to exercise via `init` + a plain address is gone
+    (operator ruling, 2026-07-27)."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
-        self.repo = make_repo(self._tmp.name)
+        base = Path(self._tmp.name)
+        self.runtime_dir = base / "run"
+        self.runtime_dir.mkdir()
+        self.cache_home = base / "cache"
+        self.cache_home.mkdir()
+        self.home = base / "home"
+        self.home.mkdir()
+        self.repo = make_repo(str(base))
 
-    def _courier(self, *args):
+    def _env(self, session_id):
+        return dict(
+            os.environ, CLAUDE_CODE_SESSION_ID=session_id,
+            XDG_RUNTIME_DIR=str(self.runtime_dir), XDG_CACHE_HOME=str(self.cache_home),
+            HOME=str(self.home),
+        )
+
+    def _courier(self, session_id, *args):
         return subprocess.run(
             [sys.executable, _COURIER_PY, *args],
             cwd=self.repo, check=True, capture_output=True, text=True,
+            env=self._env(session_id),
         )
 
     def test_operator_origin_round_trips_through_send_and_receive(self):
-        self._courier("init", "recipientA")
         self._courier(
-            "send", "--from", "senderX", "--to", "recipientA",
+            "senderX", "send", "--to", ":session:recipientA",
+            "--subject", "orchard:agent:message:content",
             "--operator-origin", "--body", "hello",
         )
 
-        out = self._courier("receive", "recipientA")
+        out = self._courier("recipientA", "receive")
         messages = json.loads(out.stdout)
 
         self.assertEqual(len(messages), 1)
         msg = messages[0]
         self.assertTrue(msg["operator_origin"])
-        self.assertEqual(msg["from"], "senderX")
+        self.assertEqual(msg["from"], ":session:senderX")
         self.assertEqual(msg["body"], "hello")
 
         if jsonschema is not None:
@@ -442,25 +461,48 @@ class AskCliRoundTripTests(unittest.TestCase):
 
 
 class OrchidGrammarCliTests(unittest.TestCase):
-    """CLI-level: WIRE GRAMMAR v1 enforcement in `send` and `broadcast`
+    """CLI-level: WIRE GRAMMAR v1 enforcement in `send`
     (docs/TODO.md.d/bus-message-specifying.md) — valid orchid:* bodies pass,
-    malformed/unknown ones argparse-error out naming the allowed classes."""
+    malformed/unknown ones argparse-error out naming the allowed classes.
+
+    Exercised over the orchard `:session:` transport — the legacy per-agent
+    mailbox this used to run against via `init` + a plain address is gone
+    (operator ruling, 2026-07-27). `enforce_orchid_grammar` now runs for
+    every `send` (it used to run only on the removed legacy branch; moved
+    rather than dropped, since an orchard `--body` can carry an orchid:*
+    string exactly as a legacy one could) — see broadcast's OWN retirement
+    test in BroadcastRetiredCliTests, split out below since broadcast never
+    reaches this grammar at all (it hard-errors unconditionally)."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
-        self.repo = make_repo(self._tmp.name)
-        self._courier("init", "peerA")
+        base = Path(self._tmp.name)
+        self.runtime_dir = base / "run"
+        self.runtime_dir.mkdir()
+        self.cache_home = base / "cache"
+        self.cache_home.mkdir()
+        self.home = base / "home"
+        self.home.mkdir()
+        self.repo = make_repo(str(base))
 
     def _courier(self, *args):
+        env = dict(
+            os.environ, CLAUDE_CODE_SESSION_ID="senderX",
+            XDG_RUNTIME_DIR=str(self.runtime_dir), XDG_CACHE_HOME=str(self.cache_home),
+            HOME=str(self.home),
+        )
         return subprocess.run(
             [sys.executable, _COURIER_PY, *args],
-            cwd=self.repo, capture_output=True, text=True,
+            cwd=self.repo, capture_output=True, text=True, env=env,
         )
 
     def _send(self, body, *extra):
-        return self._courier("send", "--from", "senderX", "--to", "peerA",
-                          "--body", body, *extra)
+        return self._courier(
+            "send", "--to", ":session:peerA",
+            "--subject", "orchard:agent:message:content",
+            "--body", body, *extra,
+        )
 
     def assertRejected(self, proc, *fragments):
         self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
@@ -590,12 +632,26 @@ class OrchidGrammarCliTests(unittest.TestCase):
         proc = self._send("please look at this", "--notify-user")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
+
+class BroadcastRetiredCliTests(unittest.TestCase):
+    """CLI-level: `broadcast` hard-errors unconditionally, pointing at
+    orchard_topic.py post (telemetry) or send/request (directed) — split out
+    of OrchidGrammarCliTests since it never reaches WIRE GRAMMAR v1 at all,
+    valid, invalid, or the ask-only interrupt class, and has no dependency
+    on any mailbox (legacy or orchard)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = make_repo(self._tmp.name)
+
+    def _courier(self, *args):
+        return subprocess.run(
+            [sys.executable, _COURIER_PY, *args],
+            cwd=self.repo, capture_output=True, text=True,
+        )
+
     def test_broadcast_is_retired_regardless_of_grammar(self):
-        """broadcast no longer parses or enforces WIRE GRAMMAR v1 at all — it
-        hard-errors unconditionally, pointing at orchard_topic.py post
-        (telemetry) or send/request (directed), whether the body would have
-        been valid, invalid, or the ask-only interrupt class."""
-        self._courier("init", "senderX")
         for body in ("orchid:phase:building", "orchid:status:building", "orchid:interrupt:question:hi"):
             proc = self._courier("broadcast", "--from", "senderX", "--body", body)
             self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
@@ -774,6 +830,159 @@ class OrchardSubjectCliTests(unittest.TestCase):
     def test_task_outcome_failed_by_gardener_is_accepted(self):
         proc = self._send("orchard:task:outcome:failed", CLAUDE_CODE_AGENT="gardener")
         self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
+class MonitorCliTests(unittest.TestCase):
+    """CLI-level: `courier.py monitor` (close-family-fakes) — filters at the
+    orchard SOURCE (inotifywait --include, verified working pattern
+    `/<sid>\\..*\\.json$`) rather than waking on every sibling session's
+    traffic and every marker touch, and hands up the PARSED envelope itself
+    instead of a filename to go look up. Reuses orchard_receive_own() for
+    the actual parse/delete, so delete-on-consumption semantics carry over
+    unchanged. Every assertion here is on a BOUNDED wait — a monitor that
+    never fires must not hang the suite."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        base = Path(self._tmp.name)
+        self.runtime_dir = base / "run"
+        self.runtime_dir.mkdir()
+        self.cache_home = base / "cache"
+        self.cache_home.mkdir()
+        self.home = base / "home"
+        self.home.mkdir()
+        self.repo = make_repo(str(base))
+
+    def _env(self, session_id):
+        return dict(
+            os.environ, CLAUDE_CODE_SESSION_ID=session_id,
+            XDG_RUNTIME_DIR=str(self.runtime_dir), XDG_CACHE_HOME=str(self.cache_home),
+            HOME=str(self.home),
+        )
+
+    def _courier(self, session_id, *args):
+        return subprocess.run(
+            [sys.executable, _COURIER_PY, *args],
+            cwd=self.repo, check=True, capture_output=True, text=True,
+            env=self._env(session_id),
+        )
+
+    def _project_dir(self):
+        proc = subprocess.run(
+            [sys.executable, _COURIER_PY, "project-dir"],
+            cwd=self.repo, capture_output=True, text=True,
+            env=self._env("dir-probe"), check=True,
+        )
+        return Path(proc.stdout.strip())
+
+    def _stop_monitor(self, proc):
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+
+    def _start_monitor(self, session_id):
+        proc = subprocess.Popen(
+            [sys.executable, _COURIER_PY, "monitor"],
+            cwd=self.repo, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=self._env(session_id), bufsize=1,
+        )
+        self.addCleanup(self._stop_monitor, proc)
+        return proc
+
+    def _readline_within(self, proc, timeout):
+        ready, _, _ = select.select([proc.stdout], [], [], timeout)
+        if not ready:
+            return None
+        return proc.stdout.readline()
+
+    def _remaining_files(self, sid):
+        box = self._project_dir()
+        return [f for f in box.glob(f"{sid}.*.json") if not f.name.startswith(".")]
+
+    def test_message_addressed_to_this_session_appears_as_parsed_json(self):
+        proc = self._start_monitor("recipientA")
+        self._courier(
+            "senderX", "send", "--to", ":session:recipientA",
+            "--subject", "orchard:agent:message:content", "--body", "hello there",
+        )
+
+        line = self._readline_within(proc, 10)
+        self.assertIsNotNone(line, "monitor produced no output for its own mail within 10s")
+        env = json.loads(line)
+        self.assertEqual(env["to"], ":session:recipientA")
+        self.assertEqual(env["body"], "hello there")
+        self.assertEqual(self._remaining_files("recipientA"), [])  # consumed, delete-on-read
+
+    def test_sibling_session_message_does_not_wake_it(self):
+        proc = self._start_monitor("recipientA")
+        self._courier(
+            "senderX", "send", "--to", ":session:siblingB",
+            "--subject", "orchard:agent:message:content", "--body", "not for you",
+        )
+
+        self.assertIsNone(
+            self._readline_within(proc, 2),
+            "monitor woke on a sibling session's message in the same project directory",
+        )
+
+    def test_marker_touch_does_not_wake_it(self):
+        proc = self._start_monitor("recipientA")
+        box = self._project_dir()
+        box.mkdir(parents=True, exist_ok=True)
+        (box / "recipientA.marker").touch()
+
+        self.assertIsNone(
+            self._readline_within(proc, 2),
+            "monitor woke on its own marker heartbeat touch",
+        )
+
+    def test_reply_in_flight_is_left_for_the_request_waiter(self):
+        """A running monitor must not steal an envelope a blocked
+        `request`/`ask` caller is polling for (docs: the reply-race the
+        operator flagged) — it is left on disk, untouched, while an
+        ordinary unsolicited message alongside it is still delivered."""
+        proc = self._start_monitor("recipientA")
+        self._courier(
+            "question-broker", "reply", "--to", ":session:recipientA",
+            "--in-reply-to", "req-123", "--subject", "orchard:operator:message:response",
+            "--body", "the answer",
+        )
+
+        self.assertIsNone(
+            self._readline_within(proc, 2),
+            "monitor printed a reply that a request/ask waiter is owed",
+        )
+        remaining = self._remaining_files("recipientA")
+        self.assertEqual(len(remaining), 1, "monitor deleted a reply it should have left untouched")
+
+        self._courier(
+            "senderY", "send", "--to", ":session:recipientA",
+            "--subject", "orchard:agent:message:content", "--body", "unsolicited",
+        )
+        line = self._readline_within(proc, 10)
+        self.assertIsNotNone(line, "monitor did not deliver an ordinary message alongside a held reply")
+        self.assertEqual(json.loads(line)["body"], "unsolicited")
+        self.assertEqual(len(self._remaining_files("recipientA")), 1)  # only the untouched reply left
+
+    def test_monitor_leaves_no_watcher_process_behind_on_termination(self):
+        proc = self._start_monitor("recipientA")
+        self._readline_within(proc, 1)  # let it actually arm its watch
+        pid = proc.pid
+        self._stop_monitor(proc)
+
+        check = subprocess.run(
+            ["pgrep", "-f", "inotifywait.*recipientA"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(
+            check.stdout.strip(), "",
+            f"a watcher spawned by monitor (pid {pid}) is still running: {check.stdout!r}",
+        )
 
 
 if __name__ == "__main__":

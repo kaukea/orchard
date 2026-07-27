@@ -22,15 +22,24 @@ build approval are human-only, always.
 
 | Role | Model | Dispatch | Scope & boundary |
 |---|---|---|---|
-| gardener | opus | top-level session (`claude --agent gardener`) | Knows the board, prioritises, holds MOOD, hands ONE feature to a landscaper on explicit operator go. Never codes; never opens a sidecar in steady state. Authors only the workflow component, directly on `main`. Never kills, reaps, or removes another agent's process, pane, window, or files — lingering state is reported to the operator, who rules on it. |
+| gardener | opus | top-level session (`claude --agent gardener`) | Knows the board, prioritises, holds MOOD, launches ONE supervisor (its own subagent) per feature on explicit operator go and hands it that feature; the supervisor owns the feature's pipeline. Never codes; never opens a sidecar in steady state. Authors only the workflow component, directly on `main`. Never kills, reaps, or removes another agent's process, pane, window, or files — lingering state is reported to the operator, who rules on it. |
 | bloomer | fable-5 | own pane inside the gardener's window (`tools/bloomer-launch.sh` / `bloomer-teardown.sh`) | The Decision-027 intake-measurement instrument: turns a two-to-three-sentence functional spec into a converged WHAT. Question selection and stopping are owned by the statistical engine `tools/bloom_engine.py` (EIG + IRT/Fisher-information selection, SE-threshold stop; item parameters flagged uncalibrated); phrasing and parsing by the LLM. Asks only on measured low confidence, records voluntary deferrals, and reports a graduated confidence band over the courier — the gardener executes any launch. Single-writer on its task's sidecar. Scheduled backlog-prep passes stay with the demoted predecessor definition until the repoint follow-up. |
-| landscaper | opus | worktree session (`.claude/worktrees/<id>`, branch `f/<id>`) | One feature; its sidecar is the whole scope. Read-only discovery (parallel explorers) → plan agreed with the operator → **no file edit before MAKE IT SO** → builds/tests → on the operator's `THAT IS ALL`, countersigns and signals `finished` on the courier. Never reads the board or prior conversation. |
+| supervisor | sonnet | the gardener's own subagent, one per feature (Decision-068) | Owns ONE feature's pipeline from the gardener's launch to the result: EXTRACT next-agent context → SELECT & DISPATCH (spawns the landscaper as ITS OWN child, so the landscaper's lifecycle homes here) → WATCH the orchard lifecycle → fire the groundskeeper CLOSE → REPORT the result to the gardener and RELEASE what it created. Choreographs; never authors, never judges (Valve rules yes/no), never kills (Decision-081) — supervision COLLECTS. Death/timeout verification is its own; other agents "ask the supervisor." Carries NO Decision-085 role glyph — an internal gardener subagent, not a seventh garden role. |
+| landscaper | opus | worktree session (`.claude/worktrees/<id>`, branch `f/<id>`), spawned by the supervisor as its own child | One feature; its sidecar is the whole scope — now a PURE SCOPE. Read-only discovery (parallel explorers) → plan agreed with the operator → **no file edit before MAKE IT SO** → builds/tests → on the operator's `THAT IS ALL`, countersigns and emits its terminal `lifecycle:stopped`+`outcome`. Dispatches no closer — the supervisor fires the close off that terminal signal. Never reads the board or prior conversation. |
 | sower | sonnet | headless subagent from the landscaper | Exactly one step-spec; returns typed diff + self-test. |
-| groundskeeper | sonnet | headless, in the MAIN repo, dispatched on the landscaper's `finished` signal | The deterministic close: verify docs, tag, squash-merge, push, remove worktree + branch. Verifies documentation, never authors it. |
+| groundskeeper | sonnet | headless, in the MAIN repo, fired by the SUPERVISOR on the landscaper's terminal `lifecycle:stopped`+`outcome` (or the supervisor's verified silent-death verdict) | The deterministic close: verify docs, tag, squash-merge, push, remove worktree + branch. Verifies documentation, never authors it. |
 | courier | haiku | one per agent, no session id of its own (shares its parent's) | Not on the pipeline — the sidecar that connects an agent to the message transport. Watches its parent's session mailbox, relays arriving messages up, sends on request. Owns the mechanism so no other role learns it. Closes only via a self-message wake, never an external kill (Decisions 041/046/081). Does nothing else. |
 
 Isolation is per-dispatch (native worktrees), not a per-repo mode. One writer
 per task, always.
+
+Pipeline ownership is the **supervisor's**: the feature-close no longer
+originates in the landscaper (self-dispatch) nor in the gardener
+(dispatch-at-relay) — the supervisor fires it, on the landscaper's terminal
+`lifecycle:stopped`+`outcome` or on its own verified silent-death verdict, then
+reports the result to the gardener. Supervision COLLECTS, never kills
+(Decision-081); death and timeout verification live with the supervisor, and
+other roles ask it rather than checking themselves.
 
 ## The cloud path
 
@@ -80,54 +89,16 @@ session ──spawns──> courier sidecar (shares parent's session id)
   location. Role and worktree are separate facts, not folded into the address.
   A courier sidecar carries no session id of its own — it always resolves to
   its parent's.
-- **A session's role survives a resume.** A resumed session loses the role it
-  was launched with, so role is resolved once and then persisted against the
-  session id in its own runtime marker; a session can declare its own role
-  when nothing else supplies one. This is wiring between session startup and
-  the transport's identity, not a courier concern on its own.
 - **Transport** = flat message files plus a per-session marker under the
   USER-WIDE runtime tree `$XDG_RUNTIME_DIR/orchard/{projects/<repo>.<project>,
   topics/<name>}/`, named `<sessionid>.<ts>.json` (+ `<sessionid>.marker`).
-  tmpfs, per-user, and crosses repos by construction — this replaces the
-  repo-scoped `the-works/courier/<sid>/` inboxes as the transport of record.
-- **Identity carries the task.** Every event's identity block carries
-  `task`/`task_name` alongside `feature`/`feature_name` — only the acting
-  agent knows which task it is on, and nothing downstream can infer it from
-  the feature alone.
-- **Feature markers** = a SECOND marker kind, `<feature-id>.marker`, written
-  by the same delivery path whenever an envelope's identity names a feature.
-  It is JSON, not a touch-file, schema 2: one marker per feature, holding its
-  TASK entries keyed on `task` (name, area, state), merged and never
-  truncated — a feature spans many tasks, several of which are commonly
-  worked at once. Events are what is happening now and are archived after
-  120 minutes; the feature marker is what remains when nothing is happening,
-  and it is what lets the sidebar keep drawing a task whose events are long
-  gone. It holds nothing agent-shaped. Pruning archives a node rather than
-  deleting it (`_archived/`), so moving the file back rehydrates the
-  feature; no pruner exists yet, by operator ruling.
-- **The display hierarchy is seven levels**: `area -> component -> feature ->
-  task -> step -> agent -> subagent`. Area and component come from
-  `ARCHITECTURE.md`'s own functionality/area taxonomy and are NOT rendered
-  yet; the renderer enters at FEATURE and builds downward. A feature spans
-  many tasks — several are commonly worked at once — and a step may hold
-  more than one agent. A SESSION IS NOT A ROW: it resolves to an agent on a
-  step of a task. An agent is an own-session delegation sent to complete a
-  task, and there may be several in sequence — a sower, a valve alongside
-  it, a cleanup — before the work returns to the orchestrator. A subagent is
-  what an agent spins up. Agents and subagents are EPHEMERAL: they display
-  while working and stop displaying when they finish, and so do an agent's
-  name, model and activity, which are a subscript of the task rather than
-  something that outlives it. The task is the one that does not disappear.
-  This is why the renderer sources agent and subagent rows live from events
-  only, and takes task rows from the marker: a task whose agents have all
-  stopped stays on screen as a single row carrying its final state.
-- **Step is derived client-side, not carried on the wire.** Within a task,
-  five steps run in order — ideation, scoping, designing, building,
-  releasing. Which step is active is derived by the renderer from the
-  acting agent's ROLE, via a `step:` key in that role's agent-charter
-  frontmatter; nothing on the message bus names a step, and nothing may be
-  added to the transport to supply one. The map fails open — an unmapped
-  role still renders, just without a step.
+  tmpfs, per-user, and crosses repos by construction — the ONLY transport. The
+  repo-scoped `the-works/courier/<sid>/` inboxes it replaced were REMOVED
+  outright (2026-07-27): `--git-common-dir` is shared by every worktree, and a
+  subagent inherits its parent's session id, so concurrent worktrees resolved to
+  one box and could delete each other's inbox. A project directory is keyed
+  `<owner>.<repo>@<branch>` — one per worktree, so agents on different features
+  do not wake one another's monitors; the sidebar folds them back to one row.
 - **Addressing**: `From` is always `:session:<id>`. `To` is `:session:<id>` (a
   directed message — a cross-project delivery is gated by the
   `~/.config/orchids/sidebar-registry.json` allowlist) or `:topic:<name>`. A
@@ -204,7 +175,7 @@ mount, all showing the same global picture.
 $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
                         │ build_model(): fold per-session events (identity/status snapshot on each)
                         ▼
-        Fleet/Repo/Feature/Task/Step/Agent/Subagent ──flatten──> sidebar.py (curses)
+                    Fleet/Repo/Feature/Subagent ──flatten──> sidebar.py (curses)
                                                                 │ Enter
                                                                 └─> sidebar_nav ──> tmux switch
 ```
@@ -214,7 +185,7 @@ $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
   old courier-inbox reader) and `sidebar_v3.py` (the topic-only prototype) are
   DELETED. `build_model()` folds each project directory's event files into one
   record per session (latest of each kind wins), then assembles the
-  Fleet/Repo/Feature/Task/Step/Agent/Subagent model — identity and role/model come off the
+  Fleet/Repo/Feature/Subagent model — identity and role/model come off the
   identity/status snapshot every `orchard_topic.py` event carries, not a
   separate observation step. Updates are event-driven (inotify on the
   projects root), polling-fallback otherwise.
@@ -227,33 +198,27 @@ $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
   dropped. Rows persist until a process restart clears the tmpfs projects
   tree — predictable, since a row never jumps in or out of the bar for no
   reason.
-- **Depth is carried by background colour, not indentation.** Colour encodes
-  LINEAGE in three grades — feature base, task base, content base — with
-  per-row contrast computed at runtime against the published guidelines.
-  This is a cross-cutting presentation pattern that governs any renderer of
-  this tree, which is why it is recorded here rather than only in code.
 - **Renders the approved display grammar** (fixed visual contract: the blessed
   mock archived with the courier-message-specifying stream). Repo headers are solid
   per-repo hue blocks; a feature is ONE line — its name drawn over the progress
-  fill derived from the active step, right-aligned percentage. One circle
+  fill derived from the phase channel, right-aligned percentage. One circle
   family carries state: ✓ done (green, sorted to top, retained), ⠧ active,
   ○ waiting/todo — no watch or timer glyphs; a stale/failed row falls back to
   the same muted/red treatment (see Retention above). The live feature line
   carries the frame's single animated element, a bidirectional lifted-band
-  sweep; beneath it the small-caps step label, the NBSP-glued identity line
-  (status word ⋮ role ⋮ model on the model colour ramp), the five-step
+  sweep; beneath it the small-caps phase label, the NBSP-glued identity line
+  (status word ⋮ role ⋮ model on the model colour ramp), the five-phase
   checklist with inline subagent dots (● running, ○ queued — count is the
   information; done subagents vanish), and dim guide-line footers (age vs
   worked, tokens/dollars — deterministic zero-token local sources).
   Role-emoji and location-badge maps are data-driven so pending picks drop in
   without code changes. The event grammar this model reads (`orchard_topic.py`'s
-  `lifecycle`/`status`/`delegation`/`outcome`/`task` verbs) carries no step
-  field, question badge, or age/worked/tokens/dollars signal — the step is
-  resolved client-side (see the message courier section, above) while those
-  other row fields stay in the model (so the renderer needs no special-casing
-  once a source lands) but currently always render at their empty default;
-  the `?N` question badge is retired outright (questions no longer reach a
-  feature row at all — see below).
+  `lifecycle`/`status`/`delegation`/`outcome`/`task` verbs) carries no phase
+  tick, question badge, or age/worked/tokens/dollars signal yet — those row
+  fields stay in the model (so the renderer needs no special-casing once a
+  source lands) but currently always render at their empty default; the `?N`
+  question badge is retired outright (questions no longer reach a feature
+  row at all — see below).
   A scroll offset follows the selected row once the tree exceeds the pane's
   height. The project header is a static half-block colour-gradient bevel (the
   classic orchid family), flat light-gray instead for a paused project. Each
@@ -267,27 +232,14 @@ $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
   grammar transform — falling back to the mechanical hyphen-to-space form only
   pre-intake (`tools/feature_name.py`, one helper, every title call site).
   Switching the client happens on Enter. Windows carry the human-readable
-  identity. Teardown, reaping, and focus return key off stable tmux **window**
-  user-options — `@landscaper_id` (set on each landscaper window at launch) and
-  `@gardener_id` (set on the gardener's own window at boot) — immune to the live
+  identity. Teardown and reaping key off a stable `@landscaper_id` tmux **window**
+  user-option, set on the landscaper window at launch — immune to the live
   status-glyph indicator that clobbers pane titles. `land:<id>` survives only as
   a non-load-bearing human hint on the pane title. `@landscaper_id` is the small stable
-  handle contract the sidebar mount also consumes. At close the landscaper window
-  is released by the window-kill primitive (`tools/landscaper-teardown.sh`), which
-  resolves the window by `@landscaper_id`, returns focus by selecting the
-  `@gardener_id` window, and kills the landscaper window — invoked by the gardener's
-  groundskeeper as part of the reverse-order release of window, branch, and worktree
-  (Decision-090); the former `.return-window` marker is retired. The full tmux
-  layout, naming, pane-stacking, and close contract is the committed spec in
-  `docs/tmux-topology.md`.
+  handle contract the sidebar mount also consumes.
 - **Mounted automatically** at the gardener's own boot, in addition to the
   existing per-landscaper-spawn mount — no manual step either way
   (`tools/sidebar-mount.sh`, idempotent).
-- **Runs from the caller's own checkout.** The mount prefers the invoking
-  repository's own renderer, falling back to the fleet-vendored copy pinned
-  to `main` only when the invoking repo carries none of its own. Principle:
-  a surface whose purpose is to collect the operator's verdict must run the
-  code being judged.
 - **Operator questions** no longer surface as a row badge (above): they go
   through the tmux popup broker, `tools/orchard-question-broker.py`, mounted
   once per tmux server by `tools/orchard-question-broker-mount.sh`. The
@@ -346,7 +298,7 @@ symlink, everyone), `template` (install-time copy, then project-owned),
 ## Repo layout
 
 ```
-agents/            five pipeline roles + courier sidecar (→ .claude/agents/)
+agents/            five pipeline roles + supervisor subagent + courier sidecar (→ .claude/agents/)
 skills/<name>/     SKILL.md packages (→ .claude/skills/, per role)
 hooks/             courier-init.sh · courier-end.sh (→ .claude/hooks/)
 tools/             board_lint.py · board_stale.py · courier.py · orchard_topic.py · orchard_compact.py · orchard-question-broker.py · landscaper-teardown.sh · sidebar.py · sidebar_nav.py · sidebar-mount.sh (→ .claude/tools/)

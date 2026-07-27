@@ -25,5 +25,11 @@ done
 sid="${CLAUDE_CODE_SESSION_ID:-}"
 [ -n "$sid" ] || exit 0
 
-python3 "$courier" send --from "$sid" --to "$sid" --body "release" >/dev/null 2>&1 || true
+# The courier's self-wake at session end. `--to` MUST be a full `:session:<id>`
+# address: since the git-directory mailbox was removed, `send` accepts orchard
+# addresses only and rejects a bare id. The `|| true` below means a malformed
+# address fails SILENTLY and the courier simply never wakes to release itself,
+# so this address is load-bearing and easy to break unnoticed.
+python3 "$courier" send --from "$sid" --to ":session:$sid" \
+  --subject "orchard:agent:message:request" --body "release" >/dev/null 2>&1 || true
 exit 0
