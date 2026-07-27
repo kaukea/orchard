@@ -36,6 +36,41 @@
 
 ## Findings
 
+### Result
+
+`Result: done — awaiting the operator's verdict on the rendered pane.`
+
+- **Branch** `f/sidebar-teamwork`, **HEAD** `d249908`, eight commits above the `🎉` scope
+  anchor `fbb4c22` (base `d0b27dd`).
+- **Tested, both agreed methods run and reported real.** The suite is **36 failed / 496
+  passed**. The 36 are byte-identical to the set already failing at the base commit
+  `d0b27dd`, all inside `test_orchard_transport.py` (26) and `test_orchard_topic.py` (10) —
+  the transport layer, ruled out of scope, and `git diff d0b27dd..HEAD` over those files and
+  their producers returns nothing. Zero sidebar-layer failures. The branch took the suite
+  from 429 passing to 496. Decision-103 is satisfied by both halves: a real bus round-trip
+  test that posts through `orchard_topic.py` in a subprocess and reads back with
+  `build_model()`, and static-fixture tests over hand-validated captured content.
+- **The renderer was judged on rendered frames, not on code review.** Contrast is measured
+  off the bytes the terminal actually received — worst text pair 4.50 against a 4.5 minimum,
+  worst mark pair 3.01 against 3.0, swept across every row kind in both the resting and the
+  selected state (1374 samples). The dead-space fill and the selection highlight are each
+  asserted against a real frame driven through tmux.
+- **Acceptance surface, per Decision-112:** pane **`main:2.3`**, titled `BRANCH renderer
+  f/sidebar-teamwork`, 42 columns. Verified by process identity, not by assumption — pid
+  1127933 runs
+  `/home/sudoku/src/serialseb/orchids/.claude/worktrees/sidebar-teamwork/tools/sidebar.py`.
+  The operator's own sidebar at `main:2.1` still runs `main`'s copy (pid 993952), which is
+  deliberate: it gives a side-by-side of old and new over identical live data. **No verdict
+  taken on `main:2.1` is a verdict on this branch.**
+- **Fan-out.** Discovery: 8 explorers, 4 short capability probes inline. Build: 8 sowers, 3
+  steps inline (the gardener charter line and two single-function contrast fixes found while
+  verifying — each smaller than its own dispatch). One sower was killed mid-verification by
+  a session crash and was re-dispatched rather than trusted; it had edited three of its four
+  defects and verified none.
+- **Tasks spawned:** none directly. Seven items are returned to the gardener below, one of
+  which (item 0, the squash-merge that dropped the feature-marker writer and the task
+  identity) is more consequential than anything this round fixed.
+
 ### Measurement (bloom round, 2026-07-27)
 
 - **Convergence: overall SE 0.740 — band `lower`.** Seven dimensions; two converged
@@ -419,6 +454,18 @@ Each was found during this feature and is out of its scope. None is fixed here.
    round builds the renderer against the copy that actually runs. This is Decision-112's
    failure mode one layer down: the source being reviewed is not the code being executed,
    and a review of the tracked file reported `task` as missing when the live bus carries it.
+7. **The migration watermark cannot be advanced from this branch, and was deliberately left
+   alone.** The session hook reports migrations pending: watermark
+   `2026-07-25-orchard-role-rename`, latest `2026-07-27-unvendor-self`. The only entry newer
+   than the watermark is `2026-07-27-unvendor-self`, which THIS BRANCH authored, and its net
+   effect is already satisfied inside this worktree — no `.ai/repositories/serialseb/orchids`
+   directory, and `.claude/**` links are relative (`../../tools/sidebar.py`). But the
+   watermark file lives at `.git/the-works/migrated` in the **git common directory, shared
+   with every worktree including the `main` checkout**, and `main` is still vendored: its
+   `.ai/repositories/serialseb/orchids` exists and its links are still absolute into that
+   clone. Advancing the watermark here would tell every session on `main` that the migration
+   is applied when it is not. It becomes true when this branch merges; the groundskeeper or
+   the gardener should advance it at that point, not before.
 
 ## Operator requests
 
@@ -428,7 +475,8 @@ Ledger of everything the operator asked for during this feature, as received.
 |---|---|---|
 | 1 | Marker format is NOT transport — it is a cache of what happened before, and it IS in scope. "I said transport, no touch. That is not the marker format." | **implemented, verified.** The reader in `tools/sidebar_model.py` is cache-correct — a quiet task renders off its persisted terminal state, live events always override the marker, nothing agent-shaped is ever read from it, and a new task revives a collapsed feature beside its finished siblings. Locked by seven tests at `a18632b`, two of them over live-captured fixtures. **Caveat, returned rather than fixed: nothing WRITES a feature marker any more** — the writer was dropped by a squash-merge, so the cache is correct and has nothing to read outside fixtures. See `## Returned to the gardener` item 0. |
 | 2 | Remove the no-animation decision — it was never his ruling, just a one-line remark generalised by an agent. | **implemented.** Staged verbatim in `## Decision entries` for the groundskeeper's mechanical fold. The renderer's band animation, spinner and sweep stand unopposed as a result. |
-| 3 | True colour: use another library or emit escape codes directly, seek the code yourself, just get something that works. | **INTENT met and measured; MECHANISM unchanged — still open, needs his call.** Measured on his own tmux: 3.5a, `default-terminal tmux-direct`, `terminal-features` carrying `xterm-256color:RGB`, `TERM=tmux-direct`, `COLORTERM=truecolor`, and `curses.tigetnum("colors")` returning **16777216** — exact RGB does reach the screen through the existing curses direct-colour path, and this sidecar's earlier "true colour is broken, `RGB: [missing]`" finding is STALE. But the accidental complexity his ruling invites removing is still in `tools/sidebar.py`: the 256-colour cube approximation, the grayscale-ramp special case, palette redefinition via `can_change_color()`, and colour-pair allocation with its exhaustion limits. Replacing curses with direct SGR emission was NOT done. **Returned as a follow-up unless he wants it inside this round.** |
+| 4 | "Not possible to get ncurses to show me true colours but keep it to auto downgrade in the other type of colour environment?" | **answered, no change needed — and it corrected the agent, not the code.** It is possible and it is already what runs: `_ColourCache` walks a four-rung ladder — exact packed RGB via `_rgb_to_direct_colour_id` on a direct-colour terminfo entry (`curses.COLORS >= 1<<24`, the rung his own tmux is on), a redefined palette via `init_color` at 256 colours with `can_change_color()`, the fixed 256-colour cube via `_rgb_to_xterm256` at 256 colours without it, and standard ANSI below that, with a `curses.error` guard so a limited terminal loses colour instead of crashing. The machinery this sidecar had called "accidental complexity" IS that downgrade. Request 3 is closed by this answer; the staged decision entry is amended so the wrong framing never reaches `docs/decisions.md`. |
+| 3 | True colour: use another library or emit escape codes directly, seek the code yourself, just get something that works. | **CLOSED by request 4 — intent met, mechanism deliberately kept.** Measured on his own tmux: 3.5a, `default-terminal tmux-direct`, `terminal-features` carrying `xterm-256color:RGB`, `TERM=tmux-direct`, `COLORTERM=truecolor`, and `curses.tigetnum("colors")` returning **16777216** — exact RGB does reach the screen through the existing curses direct-colour path, and this sidecar's earlier "true colour is broken, `RGB: [missing]`" finding is STALE. But the accidental complexity his ruling invites removing is still in `tools/sidebar.py`: the 256-colour cube approximation, the grayscale-ramp special case, palette redefinition via `can_change_color()`, and colour-pair allocation with its exhaustion limits. Replacing curses with direct SGR emission was NOT done. **Returned as a follow-up unless he wants it inside this round.** |
 
 ## Decision entries
 
