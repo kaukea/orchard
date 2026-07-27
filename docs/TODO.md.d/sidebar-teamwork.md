@@ -25,10 +25,14 @@
   06:49, zero bytes). It did not gate this round. Operator instruction during the round:
   *"The rules have been specified multiple times. read them or build them first with
   me."* — the specification is `docs/decisions.md`, not a new document.
-- **OPEN, needs a ruling before build:** Decision-058 says *"No animation anywhere"*;
-  Decision-078 blesses *"band animation"* and carries the KITT-scanner tail as licensed
-  debt. The live screen shows both a spinner-cycled task glyph and a KITT strip. These
-  cannot both stand. Surfaced rather than quietly dropped, per the scope ruling.
+- ~~Decision-058 "No animation anywhere" vs Decision-078 "band animation".~~ **CLOSED
+  2026-07-27 by operator ruling — the no-animation rule is STRUCK, and it was never his.**
+  *"You can also remove that decision about no animation. I have no idea where it comes
+  from. It's not from me. I probably said that on one line, there shouldn't be an
+  animation. And, helpfully, one of your colleagues decided to make it a general rule."*
+  A narrow remark about ONE line was generalised by an agent into a global prohibition.
+  Decision-078 therefore stands unopposed: band animation, the spinner, and the KITT
+  sweep are all legitimate. See `## Decision entries`.
 
 ## Findings
 
@@ -181,8 +185,16 @@ Decision-058/078 animation contradiction under `## Questions`.
 
 `tools/sidebar.py` and the launch/mount/peek/teardown surface — `tools/sidebar-mount.sh`,
 `tools/peek.sh`, `tools/sidebar_nav.py`, `tools/bloomer-launch.sh` and the window and
-pane conventions they encode. **Not** the courier. **Not** the transport. **Not** the
-on-disk marker format.
+pane conventions they encode. **Not** the courier. **Not** the transport.
+
+**CORRECTED 2026-07-27 by operator ruling — the MARKER FORMAT IS IN SCOPE.** This
+sidecar previously listed it out of scope, deriving that from the courier-out-of-scope
+ruling. That derivation was wrong and the operator struck it: *"I said transport, no
+touch. That is not the marker format. The marker format is supposed to be a cache of
+what happened before, not anything to do with transport."* The marker is the renderer's
+own cache of prior state; the transport is the bus. They are unrelated, and only the
+latter is untouchable. This restores consistency with the round's own earlier ruling
+that *"the marker should contain a cache; the rest is supposed to be realtime reading"*.
 
 ### Shape: extract in place, module by module
 
@@ -207,6 +219,126 @@ full: that round-trip test MUST be accompanied by a static-data test over fixtur
 hand-validated at writing time, ideally captured from the running system — otherwise
 writer and reader only prove they agree with each other, which is precisely how 429 tests
 passed over a dead screen.
+
+## The tree, as ruled by the operator 2026-07-27
+
+This supersedes every earlier reading in this sidecar. It was dictated after three
+successive wrong models were put to the operator, and it is the specification the
+rewrite is built against.
+
+**The tree is assembled from the CONTENT OF THE EVENTS. Session id is a component of
+an agent's identity, never a key to fold on.** Folding by session id is the renderer's
+root defect and the direct cause of the UUID rows, the doubled feature/task pairs and
+the orphan activity lines — one bug presenting as several.
+
+- **project** — the repository; the two words are synonyms. Several run at once.
+  Currently split into three headers by branch (`orchids`, `orchids@f-…`,
+  `orchids@main`); that is one project rendered three times.
+- **feature** — exists in METADATA ONLY. Never a session, never an agent, never
+  derived from either.
+- **task** — from event content. A feature holds a LIST of open tasks.
+- **the five stages** — ideation, scoping, designing, building, releasing. They belong
+  to the TASK, not the feature (Decision-105), and which one is active is derived
+  CLIENT-SIDE from the agent's role (Decision-107). Nothing on the wire names a step.
+- **agent** — identified by the TRIPLE `(session id, parent, agent name)`. Some own
+  their session (gardener, landscaper); others share their PARENT's and arrive via
+  DELEGATION events. A step holds a LIST of agents — more than one on a step is rare
+  but real, so it is not a single-slot field.
+- **the activity line** — a POSITION inside the stage, not an entity. It shows whichever
+  agent is running there now, in one or two words, with its name and model; the next
+  agent to run writes into the same place.
+- **subagents** — from delegation events. They never speak: activated and deactivated
+  is the whole of what they report. No session, no identity, no model, no status text
+  (Decision-109).
+
+**The courier is NOT an agent.** Operator, 2026-07-27: it is transport, and it should
+not be posting identity events at all. That is upstream and out of scope; the renderer
+simply does not treat it as an agent. A session with no agent does not belong on the
+board.
+
+**Known exception, not to be designed around:** clearing a session is supposed to mint a
+new session id with fresh context and currently keeps the old one. It is a bug.
+
+Confirmed against the written specification after the fact — `docs/orchard-bus.md:157`
+states *"a subagent INHERITS its parent's session id, so session id alone cannot
+distinguish a parent's courier from a subagent's"*, and Decision-014 records the
+inheritance as load-bearing rather than defective. The model was documented; the failure
+was not reading it. Operator, verbatim: *"which is why I was saying that the content of
+the events was what mattered to build a correct tree."*
+
+## Operator requests
+
+Ledger of everything the operator asked for during this feature, as received.
+
+| # | Request (as received) | State |
+|---|---|---|
+| 1 | Marker format is NOT transport — it is a cache of what happened before, and it IS in scope. "I said transport, no touch. That is not the marker format." | recorded in `## Proposal`; build pending |
+| 2 | Remove the no-animation decision — it was never his ruling, just a one-line remark generalised by an agent. | recorded in `## Decision entries`; build pending |
+| 3 | True colour: use another library or emit escape codes directly, seek the code yourself, just get something that works. | recorded in `## Decision entries`; build pending |
+
+## Decision entries
+
+Staged for the groundskeeper's mechanical fold into `docs/decisions.md` at close.
+UNNUMBERED by design — the number is assigned at fold time.
+
+### Decision-NNN — The no-animation rule was never a ruling and is struck
+
+Operator, 2026-07-27, direct: the "No animation anywhere" clause carried in
+Decision-058 is **removed**. It did not come from the operator. A narrow remark that one
+specific line should not animate was generalised by an agent into a global prohibition,
+and then stood as though it were a ruling for five days, contradicting Decision-078's
+blessed band animation and leaving the renderer's own KITT sweep and spinner in
+permanent, unresolvable conflict with the decision record.
+
+Decision-058's remaining content — the six static status states (working / waiting /
+idle / awaiting-another-agent / done / failed, with done and failed never sharing a
+glyph and idle distinct from awaiting) — is unaffected and stands. Only the animation
+clause is struck. Decision-078 therefore governs motion without opposition.
+
+The general lesson is the reason this is worth an entry at all: an agent widened a
+specific instruction into a general law. A remark about one line is not a rule about
+every line, and a decision record that cannot distinguish the two will eventually
+paralyse the thing it was meant to govern.
+
+### Decision-NNN — The marker is a cache, and a cache is not transport
+
+Operator, 2026-07-27, direct: the on-disk marker's format is IN scope for renderer work.
+The ruling that put the courier out of scope — *"courier has nothing to do with this,
+its a message bus"* — was subsequently over-extended by an agent into "and therefore the
+marker format is frozen too". It does not follow. The transport is the bus that carries
+events between agents; the marker is the renderer's own durable cache of what already
+happened. They are different artefacts with different owners.
+
+In the operator's words: *"The marker format is supposed to be a cache of what happened
+before, not anything to do with transport."* This is consistent with, and completes,
+Decision-099 (the marker as the durable task node) and the same round's ruling that
+*"the marker should contain a cache; the rest is supposed to be realtime reading"*.
+
+Practical effect: events supply what is happening now, read live; the marker supplies
+what remains when nothing is happening, and its shape may be changed to serve that
+purpose. "No touch" continues to mean the transport, and only the transport.
+
+### Decision-NNN — Exact colour beats the library; emit escape codes if curses will not
+
+Operator, 2026-07-27, direct, superseding the mechanism (not the intent) of
+Decision-102: *"As for things being broken on True Color, then use another library or
+just spit out. Always seek code yourself. Just get something done that works."*
+
+Decision-102's INTENT — the mock's exact RGB values reach the screen without
+approximation — stands and is non-negotiable. Its MECHANISM — negotiating a
+direct-colour terminfo through ncurses so that `curses` accepts RGB as colour numbers —
+is no longer mandatory. The renderer may emit SGR truecolor sequences
+(`ESC[38;2;R;G;Bm`) directly, or use a different library, whichever actually produces
+the right colour on the operator's screen.
+
+This dissolves a large amount of accidental complexity that existed only to satisfy
+ncurses: the 256-colour cube approximation, the grayscale-ramp special case, palette
+redefinition via `can_change_color()`, colour-pair allocation and its exhaustion limits,
+and the Decision-111 trap where `A_DIM` combined with a custom background corrupts
+subsequent rows. None of these are properties of terminals; all are properties of the
+library. Removing the library removes them.
+
+The standard of proof is unchanged and is the operator's screen, not a passing test.
 
 ## EXPLICIT VOLUNTARY DEFERRALS (Decision-027)
 
