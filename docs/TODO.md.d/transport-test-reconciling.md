@@ -66,14 +66,38 @@
 
 ## Proposal
 
-**Superseded by the report — awaiting the operator's ruling before this section is rewritten.** The original proposal (port-or-delete the 36 tests against the merged code) rested on the disproved premise above; acting on it would delete working guarantees rather than restore them.
+**OPERATOR RULING 2026-07-27: revert to the functioning bus, then pull in this morning's fixes.**
+Construction order is the ruling's substance, not a detail — the base is the known-green
+messaging at `1b0ea94`, and the five verified fixes are brought onto it. This is the reverse
+of patching 24 functions back into the merged code, and it is safer: the suite is green at
+every step instead of climbing back from 36 failures, and each fix lands as an isolated,
+individually-testable change.
 
-The shape the evidence points to — for the operator to accept, amend, or reject — is a UNION, not a choice between the two states:
+1. **Restore the working bus** — `tools/courier.py`, `tools/orchard_topic.py` and the
+   transport-reading parts of `tools/sidebar.py` return to their `1b0ea94` state, which
+   honours Decision-098 and Decision-099. Checkpoint: the two transport test files run
+   69 passed / 0 failed, unmodified.
+2. **Bring the five verified fixes onto that base**, one commit each, suite green after every one:
+   - retire the git-directory mailbox (`courier_root`, `inbox`, `deliver`, `envelope_of`,
+     `cmd_list`, the positional-id forms) — this is what fixes the worktree mailbox collision
+     where a second worktree's `teardown` deleted the first's waiting mail;
+   - per-worktree project directory (`<owner>.<repo>@<branch>`), replacing the slug that
+     folded every worktree of a repo onto one path;
+   - the `monitor` command: kernel-filtered wake carrying the parsed envelope, with
+     `skip_replies` so it cannot eat a blocked caller's reply;
+   - deliverable close gate — an unsolicited `:session:` message wakes a standing courier,
+     so a relayed `THAT IS ALL` and a `finished` signal actually arrive;
+   - `operator_origin` carried on orchard sends, so a relayed operator word is provably his.
+3. **Reconcile where restored and new genuinely meet**: the durable task node is keyed under
+   the per-worktree slug; the Decision-091 filename gate admits the `:session:` forms while
+   still rejecting the malformed literal that today produces `:session:<id>.marker`; the
+   session-end hook keeps the full-address form.
+4. **Correct `docs/orchard-bus.md`**, which documents the branch's stale base: the slug shape,
+   the omitted durable task node (Decision-099), and the "[GAP, remaining]" unfiltered wake
+   that `monitor` already fixed.
 
-- **Restore** the 24 functions `2fbc3cc` added and the squash removed: feature-node marker (write + merge-never-truncate + terminal task state), session-role persistence and the launching-process fallback, `init --agent ROLE`, the Decision-091 filename gate, the `signal --to` de-doubling guard, `task_id`/`task_name` in the identity block, the identity fail-open guard, and `orchard_topic`'s rejection-telemetry writer.
-- **Keep** everything the merge legitimately gained: the single transport, the per-worktree project directory, `monitor` with kernel-level wake filtering and `skip_replies`, deliverable close-gate wake, operator-origin provenance, and the retirement of the git-directory mailbox with its `list`/`root`/positional-id commands.
-- **Reconcile** where the two genuinely meet: the restored functions must be re-expressed against the per-worktree slug (`<owner>.<repo>@<branch>`) rather than the shared one, and the filename gate must admit the new `:session:`-addressed forms while still rejecting the malformed literal.
-- Then correct `docs/orchard-bus.md`, which currently documents the branch's stale base: the slug shape, the omitted feature marker, and the "[GAP, remaining]" unfiltered wake the merged `monitor` already fixed.
+Keep from the merge, untouched: `agents/supervisor.md`, and the close-dispatch ownership
+already ruled at the close.
 
 Out of scope: any new transport capability.
 
