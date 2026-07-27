@@ -1,5 +1,7 @@
 - created: 2026-07-24
 - created_by: Sebastien Lambla
+- completed: 2026-07-27
+- completed_during: f/sidebar-titling
 
 ## Blockers
 
@@ -129,3 +131,11 @@ hidden empty projects, truthful icons, the renamed session, and stable
 titles in one look. RENDERER half passed (in main); the TITLE half is
 UNVERIFIED/failing (pane titles still clobbered) and moves to the naming
 rework.
+
+## Close note
+
+Closed as SUPERSEDED 2026-07-27 by operator decision (Decision-079).
+Branch archived at 9752aed. Renderer items (1–4, 7 from proposal) shipped in
+main via bus-message-specifying rewrite. Pane-title tail (items 2, 5) re-homed
+to tmux-naming (active task f/tmux-naming). All work from this feature either
+landed or moved; feature reads as `complete`.
