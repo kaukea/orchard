@@ -1936,14 +1936,26 @@ def _draw_header(
     there; A_REVERSE only appears once the operator has genuinely
     navigated. The title's "thin" look is `_muted_toward`, blended toward
     its own column's background — never `curses.A_DIM` (see that
-    function's docstring for why)."""
+    function's docstring for why).
+
+    The muted title is then run through `ensure_contrast` against its OWN
+    column's background, because the gradient means every column is a
+    different background and a single check would be wrong for most of
+    them. Muting blends the title toward its band, as intended, but never
+    past the point of being readable — the same hard rule (contrast is
+    calculated, never eyeballed) that `_draw_feature_row` and
+    `_draw_step_row` already follow. Omitting it here left the project
+    name, the most important label in the pane, measuring 3.02 against its
+    own band where text wants 4.5."""
     hue = _repo_hue(title)
     text = render_header_line(title, width)
     reverse = curses.A_REVERSE if selected else 0
     for col in range(width):
         bg_rgb = PAUSED_HEADER_GRAY if paused else header_gradient_colour(hue, col, width)
         ch = text[col] if col < len(text) else " "
-        fg = _muted_toward(HEADER_FG, bg_rgb) if ch != " " else HEADER_FG
+        fg = HEADER_FG
+        if ch != " ":
+            fg = ensure_contrast(_muted_toward(fg, bg_rgb), bg_rgb, _CONTRAST_MIN_TEXT)
         attr = colours.pair(fg, bg_rgb) | reverse
         _safe_addch(stdscr, y, col, ch, attr)
 
@@ -2230,7 +2242,8 @@ def _draw_task_row(
     avail = max(width - 2, 0)
     body = _truncate(compose_task_row_text(glyph, row.label, row.progress_glyph, avail), avail)
     text_fg = GREEN if row.status == "done" else MUTED if row.status == "failed" else TEXT
-    _safe_addstr(stdscr, y, 2, body, colours.pair(text_fg) | reverse)
+    text_fg = ensure_contrast(text_fg, bg, _CONTRAST_MIN_TEXT)
+    _safe_addstr(stdscr, y, 2, body, colours.pair(text_fg, bg) | reverse)
     return y + 1
 
 

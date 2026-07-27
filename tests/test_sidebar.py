@@ -20,6 +20,7 @@ open-question badges, phase ticks, tokens/dollars, age/worked.
 
 Runs under both `python3 -m unittest discover` and `pytest`; stdlib only.
 """
+import inspect
 import itertools
 import json
 import os
@@ -2574,6 +2575,72 @@ class FeatureRowContrastIsCalculatedTests(unittest.TestCase):
                 sidebar.contrast_ratio(name_colour, fill_rgb), sidebar._CONTRAST_MIN_TEXT,
                 f"status={status} name colour {name_colour} on fill {fill_rgb} is not legible",
             )
+
+
+class HeaderContrastIsCalculatedTests(unittest.TestCase):
+    """The project header carries a per-repo GRADIENT, so every column is a
+    different background and one contrast check for the whole row would be
+    wrong for most of it. `_draw_header` muted its title toward the band but
+    never checked the result, which left the project name -- the most
+    important label in the pane -- measuring 3.02 against its own band where
+    text wants 4.5. Measured from the bytes the terminal actually received,
+    not from reading the code."""
+
+    def test_title_is_legible_against_every_gradient_column(self):
+        for repo in ("orchids", "widgets", "throwy", "a-repo-with-no-assigned-hue"):
+            hue = sidebar._repo_hue(repo)
+            width = 42
+            for col in range(width):
+                bg = sidebar.header_gradient_colour(hue, col, width)
+                fg = sidebar.ensure_contrast(
+                    sidebar._muted_toward(sidebar.HEADER_FG, bg), bg,
+                    sidebar._CONTRAST_MIN_TEXT,
+                )
+                self.assertGreaterEqual(
+                    sidebar.contrast_ratio(fg, bg), sidebar._CONTRAST_MIN_TEXT,
+                    f"{repo} header column {col}: {fg} on {bg} is not legible",
+                )
+
+    def test_paused_header_is_legible_too(self):
+        bg = sidebar.PAUSED_HEADER_GRAY
+        fg = sidebar.ensure_contrast(
+            sidebar._muted_toward(sidebar.HEADER_FG, bg), bg, sidebar._CONTRAST_MIN_TEXT,
+        )
+        self.assertGreaterEqual(
+            sidebar.contrast_ratio(fg, bg), sidebar._CONTRAST_MIN_TEXT)
+
+
+class TaskRowPaintsItsOwnBackgroundTests(unittest.TestCase):
+    """A task row SITS ON its feature's band (Decision-110). Its name was
+    drawn with a one-argument `colours.pair(fg)`, i.e. no background at all,
+    so it inherited whatever background happened to be emitted last -- the
+    same family of defect as Decision-111's traps, where a row's appearance
+    depends on what was drawn before it rather than on its own state. That
+    also put its contrast outside anyone's control."""
+
+    def test_name_colour_is_legible_against_the_band_for_every_status(self):
+        hue = sidebar._repo_hue("orchids")
+        bg = hue["fill"]
+        for status in ("working", "done", "failed", "idle", "stale", None):
+            text_fg = (
+                sidebar.GREEN if status == "done"
+                else sidebar.MUTED if status == "failed"
+                else sidebar.TEXT
+            )
+            resolved = sidebar.ensure_contrast(text_fg, bg, sidebar._CONTRAST_MIN_TEXT)
+            self.assertGreaterEqual(
+                sidebar.contrast_ratio(resolved, bg), sidebar._CONTRAST_MIN_TEXT,
+                f"task row status={status}: {resolved} on band {bg} is not legible",
+            )
+
+    def test_the_painter_never_calls_pair_without_a_background(self):
+        """A bare `colours.pair(fg)` in a row painter is the bug itself, so
+        guard the shape rather than only the resulting colour."""
+        source = inspect.getsource(sidebar._draw_task_row)
+        self.assertNotIn(
+            "colours.pair(text_fg)", source,
+            "the task row name must name its own background, not inherit one",
+        )
 
 
 if __name__ == "__main__":
