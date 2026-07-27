@@ -10,7 +10,7 @@
 
 ## Questions
 
-- **Was dropping the feature-node marker intended?** No operator ruling exists either way. `docs/orchard-bus.md` omits it from the storage layout, but that document also describes the pre-branch slug shape, so it documents the branch's stale base rather than the merged result — the report declines to read the omission as a ruling. This is the single question whose answer changes what should be built.
+- ~~Was dropping the feature-node marker intended?~~ **CLOSED 2026-07-27 — it was already ruled, twice.** The report recorded this as unruled because it was scoped to the code and to `docs/orchard-bus.md`; the rulings live in the `sidebar-empty-rows` sidecar. **Decision-098** (2026-07-26): agents and subagents are ephemeral, "the task is the one that does not disappear" — once every agent on a task has stopped, the task remains as a single row carrying its terminal state. **Decision-099** (2026-07-26): the orchard marker stops being a zero-byte per-session heartbeat and becomes the durable task node, one file per `(project, feature)`, holding area and task states so a completed task survives without activity; pruning archives it rather than deleting it, so moving the file back rehydrates the feature. The merged code writes only the old zero-byte session heartbeat, which contradicts both. Restoration is required by standing decisions, not a judgement call.
 - Does the restoration land as a fix-forward on `main`, or as a feature branch cut from current `main`? (Branch is the default; the suite is red either way until it lands.)
 
 ## Findings

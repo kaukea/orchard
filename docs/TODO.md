@@ -14,7 +14,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 
 ## Process machinery
 
-- `bug · todo · critical · blocked-on-answers · process ·` [Messaging restoration: recover the 24 functions the fakes squash reverted, keep its five real fixes](TODO.md.d/transport-test-reconciling.md) ~close-family-fakes ~sidebar-empty-rows ~bus-message-specifying
+- `bug · todo · critical · plan-ready · process ·` [Messaging restoration: recover the 24 functions the fakes squash reverted, keep its five real fixes](TODO.md.d/transport-test-reconciling.md) ~close-family-fakes ~sidebar-empty-rows ~bus-message-specifying
 - `bug · todo · · blocked-on-answers · process ·` [Groundskeeper verify hardening: post-merge suite run against a pre-merge baseline](TODO.md.d/groundskeeper-verify-hardening.md) ~close-family-fakes ~transport-test-reconciling
 - `feature · done · · complete · process ·` [Tool split: package manager moved to kauk; orchids data-only](TODO.md.d/tool-split-to-kauk.md)
 - `feature · done · · complete/interactive · process · gh#2` [Bus-driven close choreography: retire the finishing hooks](TODO.md.d/hook-choreography.md) ~bus-liveness ~agent-metadata ~tmux-topology
