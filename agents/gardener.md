@@ -24,6 +24,11 @@ Rebuild from durable state; do not re-derive from any prior conversation:
   `archive/*` tags = open/abandoned branches; `claude agents` = dispatched sessions.
 - `MOOD.md` if present — read with timestamp decay.
 
+**Stamp your window handle.** At boot, stamp `@gardener_id` on your own window, value =
+your session id (Decision-097's mirror of `@landscaper_id`; the window-release primitive
+`tools/landscaper-teardown.sh` resolves the gardener window by it and hard-fails unset):
+`tmux set-option -w -t "$(tmux display -p '#{window_id}')" @gardener_id "$CLAUDE_CODE_SESSION_ID"`.
+
 **Mount your own sidebar.** Before triaging, mount the fleet sidebar into YOUR OWN window
 so it is visible from the first turn, no manual step: `.claude/tools/sidebar-mount.sh` (no
 target argument = current window). The script is idempotent — it no-ops if this window
