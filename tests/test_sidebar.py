@@ -552,6 +552,176 @@ class RepoAssemblyTests(_FixtureTestCase):
 
 
 # --------------------------------------------------------------------------
+# The agent-triple fold (2026-07-27 rebuild) — an agent is identified by
+# (session_id, parent, agent_name), never by session id alone, and the
+# courier is attributed to the session-bearing agent it shares a session id
+# with rather than either creating a second agent or being discarded (the
+# operator's live correction to the original "filter the courier out
+# entirely" instruction: Decision-018, the courier answers identity/status
+# off its parent's transcript precisely so the parent is never woken).
+# --------------------------------------------------------------------------
+
+class AgentIdentityTripleTests(_FixtureTestCase):
+    def test_session_with_no_agent_identity_produces_no_row(self):
+        # No `identity` block at all -- not the courier, just nothing
+        # operator-facing. A session with no qualifying agent does not
+        # belong on the board (operator ruling, 2026-07-27).
+        self._event("own.repo", "s1", "orchard:agent:lifecycle:starting")
+        fleet = self._model()
+        self.assertEqual(fleet.repos[0].features, [])
+
+    def test_session_with_only_courier_events_produces_no_row(self):
+        # The courier posted, but no session-bearing agent ever announced
+        # itself under this session id -- there is nothing unambiguous to
+        # attribute the courier's payload to, so it is dropped rather than
+        # guessed at, and the courier never earns a row of its own either.
+        self._event("own.repo", "s1", "orchard:agent:status",
+                     identity={"agent": "courier"}, body="watching inbox")
+        fleet = self._model()
+        self.assertEqual(fleet.repos[0].features, [])
+
+    def test_courier_status_under_the_same_session_updates_the_named_agents_activity(self):
+        self._landscaper("own.repo", "s1", "feat-a", mtime=1)
+        self._event("own.repo", "s1", "orchard:agent:status",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body="reviewing plan", mtime=2)
+        self._event("own.repo", "s1", "orchard:agent:status",
+                     identity={"agent": "courier"}, body="watching inbox", mtime=3)
+        feature = self._repo().features[0]
+        agent = _sole_agent(_sole_task(feature))
+        self.assertEqual(agent.role, "landscaper")
+        self.assertEqual(agent.activity, "watching inbox")
+
+    def test_courier_identity_snapshot_never_overwrites_the_named_agents_identity(self):
+        # Regression test for the exact defect the operator traced this
+        # rebuild to: under the old session-id-only fold, the courier's
+        # LATER, feature/task-less identity snapshot became the session's
+        # "latest wins" identity, and the real agent's name/feature/task
+        # vanished behind the bare session UUID.
+        sid = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        self._event("own.repo", sid, "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a",
+                               "name": "Feature A"}, mtime=1)
+        self._event("own.repo", sid, "orchard:agent:status",
+                     identity={"agent": "courier"}, body="watching inbox", mtime=2)
+        feature = self._repo().features[0]
+        self.assertEqual(feature.name, "Feature A")
+        agent = _sole_agent(_sole_task(feature))
+        self.assertEqual(agent.role, "landscaper")
+        self.assertEqual(agent.activity, "watching inbox")
+
+    def test_two_named_agents_sharing_one_session_id_both_get_their_own_entry(self):
+        # A genuinely different case from the courier: two REAL agents
+        # (never "courier") sharing one session id -- both must render,
+        # neither may silently absorb the other.
+        self._landscaper("own.repo", "s1", "feat-a", mtime=1)
+        self._event("own.repo", "s1", "orchard:agent:lifecycle:starting",
+                     identity={"agent": "sower", "feature": "feat-a", "parent": "s1"},
+                     mtime=2)
+        feature = self._repo().features[0]
+        agents = _agents_of(_sole_task(feature))
+        self.assertEqual(sorted(a.role for a in agents), ["landscaper", "sower"])
+
+    def test_agent_with_no_live_status_post_shows_the_no_activity_sentinel(self):
+        # Status is transient activity -- absence is an idle condition, not
+        # an empty string reaching the renderer (operator ruling, 2026-07-27).
+        self._landscaper("own.repo", "s1", "feat-a")
+        feature = self._repo().features[0]
+        agent = _sole_agent(_sole_task(feature))
+        self.assertEqual(agent.activity, "no activity")
+        self.assertNotEqual(agent.activity, "")
+
+
+class SidebarSimCourierAttributionTests(unittest.TestCase):
+    """End-to-end against the shared simulator fixture
+    (`tools/sidebar_sim.py --once`), which reproduces the courier/session-id
+    collision on demand (`LANDSCAPER_SID` carries a landscaper identity, then
+    a courier identity, under one session id) — confirms the fold above
+    against the SAME fixture another sower built to drive this defect."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.sim_root = Path(self._tmp.name) / "sim-projects"
+
+    def test_landscaper_survives_the_courier_and_no_courier_row_appears(self):
+        sim = os.path.join(_TOOLS_DIR, "sidebar_sim.py")
+        proc = subprocess.run(
+            [sys.executable, sim, "--once", str(self.sim_root),
+             "--base-ts", "2026-07-27T09:00:00+00:00"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        fleet = sidebar.build_model(self.sim_root, role_step_map={})
+        repo = next(r for r in fleet.repos if r.name == "orchids")
+        feature = next(f for f in repo.features if f.feature_id == "sidebar-teamwork")
+        task = next(t for t in feature.tasks
+                    if t.task_id == "sidebar-teamwork-render-model")
+
+        agents = _agents_of(task)
+        self.assertEqual([a.role for a in agents], ["landscaper"])
+        self.assertNotIn("courier", [a.role for a in agents])
+        # the courier's own later post ("watching inbox") is not discarded --
+        # it becomes the landscaper's own live activity.
+        self.assertEqual(agents[0].activity, "watching inbox")
+
+
+# --------------------------------------------------------------------------
+# The static project registry (~/.config/orchids/sidebar-registry.json) —
+# `build_model()` itself stays registry-agnostic (`watched_names=None` folds
+# everything, matching every fixture test above); `load_watched_repo_names()`
+# is the pure function a production entry point calls to compute the set it
+# passes in, and is what actually keeps a leaked/unrelated project directory
+# from ever being folded at all (operator ruling, 2026-07-27).
+# --------------------------------------------------------------------------
+
+class WatchedRepoNamesTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.registry_path = Path(self._tmp.name) / "sidebar-registry.json"
+
+    def _write(self, data) -> None:
+        self.registry_path.write_text(json.dumps(data), encoding="utf-8")
+
+    def test_missing_registry_file_fails_open_to_unfiltered(self):
+        self.assertIsNone(sidebar.load_watched_repo_names(self.registry_path))
+
+    def test_repos_list_yields_basenames(self):
+        self._write({"repos": ["/home/x/orchids", "/home/x/SignMc"], "hidden": []})
+        self.assertEqual(sidebar.load_watched_repo_names(self.registry_path),
+                          {"orchids", "SignMc"})
+
+    def test_hidden_entries_are_excluded(self):
+        self._write({"repos": ["/home/x/orchids", "/home/x/SignMc"],
+                      "hidden": ["/home/x/SignMc"]})
+        self.assertEqual(sidebar.load_watched_repo_names(self.registry_path), {"orchids"})
+
+    def test_empty_repos_list_fails_open_to_unfiltered(self):
+        self._write({"repos": [], "hidden": []})
+        self.assertIsNone(sidebar.load_watched_repo_names(self.registry_path))
+
+    def test_unparseable_registry_fails_open_to_unfiltered(self):
+        self.registry_path.write_text("not json", encoding="utf-8")
+        self.assertIsNone(sidebar.load_watched_repo_names(self.registry_path))
+
+
+class BuildModelRegistryFilterTests(_FixtureTestCase):
+    def test_unwatched_project_directory_is_never_folded(self):
+        self._landscaper("own.alpha", "s1", "feat-a")
+        self._landscaper("own.beta", "s2", "feat-b")
+        fleet = sidebar.build_model(self.projects_root, role_step_map={},
+                                     watched_names={"alpha"})
+        self.assertEqual([r.name for r in fleet.repos], ["alpha"])
+
+    def test_watched_names_none_folds_every_directory(self):
+        self._landscaper("own.alpha", "s1", "feat-a")
+        fleet = sidebar.build_model(self.projects_root, role_step_map={})
+        self.assertEqual([r.name for r in fleet.repos], ["alpha"])
+
+
+# --------------------------------------------------------------------------
 # Staleness — the ~1h ACTIVE_WINDOW is purely a colour signal now (retention
 # ruling, 2026-07-25, revised same day): nothing is ever dropped from the
 # model for being stale. A session with no event inside the window and no
@@ -882,6 +1052,14 @@ class DumpCLITests(unittest.TestCase):
     def _dump(self):
         env = dict(os.environ)
         env["XDG_RUNTIME_DIR"] = str(self.runtime_dir)
+        # The real `--dump` path now reads the operator's own registry
+        # (`~/.config/orchids/sidebar-registry.json`, `load_watched_repo_names()`)
+        # to decide which projects to fold — isolate HOME so this subprocess
+        # sees no registry at all, which fails OPEN to "fold everything",
+        # matching this class's fixtures and keeping it independent of
+        # whatever repos happen to be registered on the machine running the
+        # test.
+        env["HOME"] = str(self.runtime_dir)
         proc = subprocess.run(
             [sys.executable, _SIDEBAR_PY, "--dump"],
             capture_output=True, text=True, env=env,

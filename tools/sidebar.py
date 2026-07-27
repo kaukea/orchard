@@ -1,49 +1,50 @@
 #!/usr/bin/env python3
-"""Curses fleet sidebar — reads the fleet, renders it, navigates via
+"""Curses fleet sidebar — reads the fleet model, renders it, navigates via
 sidebar_nav. The ONLY sidebar (bus-finishing): the old courier-inbox reader
-(tools/sidebar_model.py) and the plain-text prototype reader
-(tools/sidebar_v3.py) are both retired and folded in here.
+and the plain-text prototype reader (tools/sidebar_v3.py) are both retired.
 
-The fleet model is read straight off the per-session event layout
-orchard_topic.py writes: `$XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/
-<sessionid>.<ts>.json`, one file per event, folded into one record per
-session (latest of each kind wins) — see `_fold_sessions()`, ported from
-sidebar_v3.py's `sessions()`. `build_model()`/`watch()` are this module's own
-now; there is no other backing store.
+The MODEL layer — data classes, event folding, registry reading, tree
+assembly (`build_model()`/`watch()`) — lives in `tools/sidebar_model.py`
+and is owned by that module's own docstring, which is the specification to
+read first. This module owns everything downstream of a `Fleet`: the
+pure-text Row/render pipeline (`flatten()`/`render_lines()`) and the curses
+draw layer, plus the CLI.
 
-SIX-LEVEL HIERARCHY (operator ruling, 2026-07-26 — supersedes the earlier
+SEVEN-LEVEL HIERARCHY (Decision-105, 2026-07-26 — supersedes the earlier
 three-level repo/feature/subagent model, which minted one Feature row PER
-SESSION and could draw one feature twice): project (repo header) -> feature
--> task -> step -> agent -> subagent.
+SESSION and could draw one feature twice; area/component are the taxonomy
+context the renderer doesn't itself draw a row for): project (repo header)
+-> feature -> task -> step -> agent -> subagent.
 
-  - A SESSION IS NOT A ROW: it resolves to an `Agent` sitting on a `Step` of
-    a `Task`. Two sessions on the same feature/task fold into ONE Feature/
-    Task, each carrying a LIST of agents (`Step.agents`) — never a
-    single-slot field (a task can have several open steps' worth of
-    history; more than one agent on one step is rare but real).
+  - A SESSION IS NOT A ROW: an agent is identified by the triple
+    `(session_id, parent, agent_name)`, never by session id alone — see
+    `sidebar_model.py`'s module docstring for why. Two agents on the same
+    feature/task fold into ONE Feature/Task, each carrying a LIST of agents
+    (`Step.agents`) — never a single-slot field.
   - THE ACTIVE STEP IS DERIVED CLIENT-SIDE from each agent's own announced
     role, via `resolve_step()`/`load_role_step_map()` — nothing on the bus
     ever names a step. The map is a FALLBACK only (an explicit `phase` on a
     record would win, were one ever posted) and FAILS OPEN: a missing or
     unmapped role still renders, just without a step (`Task.
-    unstepped_agents`) — see `_agent_from_rec`. A task's five steps render
-    as FIVE LINES, the ACCORDION (`_step_row`, always small caps) — a
-    collapse keeps its own line rather than folding into the previous one
-    (operator correction, 2026-07-26: "collapse keeps the line, it doesn't
-    go to the previous one"), so done/todo steps each stay a single bare
-    line and only the currently active step's agents (and their subagents)
-    nest beneath it, one level deeper.
-  - A SESSION WITH EVENTS ALWAYS RENDERS SOMETHING (operator ruling,
+    unstepped_agents`). A task's five steps render as FIVE LINES, the
+    ACCORDION (`_step_row`, always small caps) — a collapse keeps its own
+    line rather than folding into the previous one (operator correction,
+    2026-07-26: "collapse keeps the line, it doesn't go to the previous
+    one"), so done/todo steps each stay a single bare line and only the
+    currently active step's agents (and their subagents) nest beneath it,
+    one level deeper.
+  - AN AGENT WITH EVENTS ALWAYS RENDERS SOMETHING (operator ruling,
     2026-07-26): missing identity, unknown/unmapped role, absent feature or
-    task — none of these drop a session or orphan the subagents registered
-    under it. The repo header comes from whichever ONE session is
+    task — none of these drop an agent or orphan the subagents registered
+    under it. The repo header comes from whichever ONE agent is
     identifiable as the root — an explicit `agent: "gardener"` identity, or
-    failing that the root of the parent chain (`_root_session_id`: a
-    session named as some other session's `parent` that names no parent of
-    its own — covers a resumed root session, which can no longer announce
-    its own role). That one session is excluded from the feature/task loop
-    so it never also draws a duplicate row for itself; every other session
-    does (see `_assemble_repo`).
+    failing that the root of the parent chain (a session named as some
+    other session's `parent` that names no parent of its own — covers a
+    resumed root session, which can no longer announce its own role). That
+    one session is excluded from the feature/task loop so it never also
+    draws a duplicate row for itself; every other agent does. The COURIER
+    is never an agent, whatever session it rides (operator ruling,
+    2026-07-27) — see `sidebar_model.py`.
   - THREE COLLAPSES, nothing else is ever hidden: a TASK folds to one row
     once it reaches a terminal state (done/failed — `TERMINAL_TASK_
     STATUSES`); a FEATURE folds to one row once ALL its tasks are done — a
@@ -156,23 +157,39 @@ from __future__ import annotations
 
 import colorsys
 import curses
-import functools
-import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 import threading
-import time
 import unicodedata
 import zlib
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sidebar_nav  # noqa: E402
+from sidebar_model import (  # noqa: E402
+    ACTIVE_WINDOW_SECONDS,
+    BRANCH_SEPARATOR,
+    PHASES,
+    TERMINAL_TASK_STATUSES,
+    Agent,
+    Feature,
+    Fleet,
+    Repo,
+    Step,
+    Subagent,
+    Task,
+    _fold_sessions,
+    _is_bare_uuid,
+    _parse_frontmatter,
+    _repo_display_name,
+    build_model,
+    load_role_step_map,
+    load_watched_repo_names,
+    phase_states,
+    watch,
+)
 
 # --------------------------------------------------------------------------
 # Mock-canonical palette and glyph vocabulary (bus-message-specifying B5) —
@@ -219,13 +236,8 @@ MODEL_TIERS = {
     "fable": (0xD6, 0xAC, 0x60),
 }
 
-# Canonical five-phase order (bus-message-specifying B3's phase vocabulary).
-PHASES = ("ideation", "scoping", "designing", "building", "releasing")
-
-# Separates the repo half of an orchard project slug from its branch half:
-# `<owner>.<repo>@<branch>`. Must match courier.py's BRANCH_SEPARATOR, and is
-# duplicated rather than imported because this tool stays stdlib-only.
-BRANCH_SEPARATOR = "@"
+# PHASES/BRANCH_SEPARATOR live in sidebar_model.py (imported above) — both
+# are model-layer vocabulary, not presentation.
 PHASE_MARK = {"done": "●", "active": "⠧", "todo": "○"}
 
 NBSP = "\xa0"
@@ -286,9 +298,13 @@ STATUS_EMOJI = {
 # TaskGlyphTests).
 SUBAGENT_GLYPH = "●"
 
-# A task's terminal states (Decision-058: done and failed never share a
-# glyph or a colour-pair with each other, nor with a still-working task).
-TERMINAL_TASK_STATUSES = {"done", "failed"}
+# Glyph for a subagent's own live state, keyed by the scheduled/doing/done
+# vocabulary (`_DELEGATION_STATE` in sidebar_model.py) — "done" is handled
+# by the shared STATUS_EMOJI/TERMINAL_TASK_STATUSES path instead (see
+# `_row_text`), so only the one non-default live state needs an entry here.
+_SUBAGENT_LIVE_GLYPH = {"scheduled": "○"}
+
+# TERMINAL_TASK_STATUSES lives in sidebar_model.py (imported above).
 
 NO_ACTIVITY_TEXT = "⋮ no activity ⋮"
 ELLIPSIS = "…"
@@ -968,773 +984,6 @@ def role_emoji(role: str | None) -> str | None:
 
 
 # --------------------------------------------------------------------------
-# Fleet model — reads $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/
-# <sessionid>.<ts>.json (see module docstring for what is and isn't ported).
-# --------------------------------------------------------------------------
-
-# A session with no event inside this window, and no terminal outcome,
-# renders "stale" (gray) rather than "working"/"idle" — it is NOT dropped
-# from the model (retention ruling, 2026-07-25, revised same day: nothing
-# ever leaves the sidebar due to staleness; only a session restart, which
-# clears the tmpfs projects tree, resets what is shown). See `_status_for`.
-ACTIVE_WINDOW_SECONDS = 60 * 60
-# schedule/begin/end -> the subagent's own three-state vocabulary (operator
-# ruling, 2026-07-26: a subagent renders as a label plus exactly one of
-# scheduled/doing/done — "done" is a real, visible state now, not a vanish;
-# a subagent only disappears once its owning TASK folds).
-_DELEGATION_STATE = {"schedule": "scheduled", "begin": "doing", "end": "done"}
-# Glyph for a subagent's own live state, keyed by that same vocabulary —
-# "done" is handled by the shared STATUS_EMOJI/TERMINAL_TASK_STATUSES path
-# instead (see `_row_text`), so only the two non-terminal states live here.
-_SUBAGENT_LIVE_GLYPH = {"scheduled": "○"}
-
-_SESSION_UUID_RE = re.compile(
-    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-)
-
-
-def _is_bare_uuid(text: str | None) -> bool:
-    return bool(text) and bool(_SESSION_UUID_RE.match(text))
-
-
-@dataclass
-class Subagent:
-    """A delegation's own row — no model, no status text, no identity of
-    its own (operator ruling, 2026-07-26): a label plus exactly one of
-    scheduled/doing/done, sourced from `orchard:agent:delegation:schedule/
-    begin/end`. Live-only, and folds away only once its owning TASK folds
-    — never persisted to a feature marker."""
-    label: str
-    state: str = "doing"
-
-
-@dataclass
-class Agent:
-    """One session sitting on a step of a task — the identity line
-    ("<doing> ⋮ <role> ⋮ <model>"). `step` is derived client-side from
-    `role` via the role->step map (`resolve_step`); None when the role is
-    missing or unmapped — the agent still renders, just without a step
-    (`Task.unstepped_agents`, fails open, operator ruling 2026-07-26)."""
-    session_id: str
-    role: str | None
-    model: str | None
-    activity: str
-    status: str
-    step: str | None = None
-    subagents: list[Subagent] = field(default_factory=list)
-
-
-@dataclass
-class Step:
-    """One of the five canonical `PHASES` for a task, positioned done/
-    active/todo relative to the task's own active step (`phase_states`).
-    `agents` is populated only for the active step — a done/todo step folds
-    to a plain line (operator ruling, 2026-07-26)."""
-    name: str
-    state: str  # "done" | "active" | "todo"
-    agents: list[Agent] = field(default_factory=list)
-
-
-@dataclass
-class Task:
-    """A TASK is terminal (`status` in `TERMINAL_TASK_STATUSES`) or open —
-    never reopened once terminal; new work is a new task (operator ruling,
-    2026-07-26). `steps` is empty when no live agent's role maps to a step;
-    `unstepped_agents` holds any live agent whose role is missing or
-    unmapped."""
-    task_id: str
-    name: str
-    status: str
-    steps: list[Step] = field(default_factory=list)
-    unstepped_agents: list[Agent] = field(default_factory=list)
-
-
-@dataclass
-class Feature:
-    """A FEATURE holds a list of open (or recently-completed) tasks — NOT
-    terminal and NOT idempotent: a new task revives a fully-collapsed
-    feature, and its completed sibling tasks come back alongside it
-    (operator ruling, 2026-07-26). `status` is the aggregate of `tasks`
-    (see `_combine_status`)."""
-    feature_id: str
-    name: str
-    status: str
-    tasks: list[Task] = field(default_factory=list)
-
-
-@dataclass
-class Repo:
-    name: str
-    activity: str
-    status: str
-    waiting_on_operator: bool
-    paused: bool = False
-    # True when the repo has at least one live session (a gardener session
-    # or any feature). A repo with no live session is skipped by flatten().
-    has_session: bool = True
-    features: list[Feature] = field(default_factory=list)
-    status_word: str = ""
-    # role/model come straight off the gardener session's identity/status
-    # snapshot; tokens/dollars have no source in this grammar and stay None
-    # (see module docstring).
-    role: str | None = None
-    model: str | None = None
-    tokens: str | None = None
-    dollars: str | None = None
-
-
-@dataclass
-class Fleet:
-    repos: list[Repo] = field(default_factory=list)
-
-
-def projects_root() -> Path:
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
-    if not runtime:
-        return Path("/nonexistent")  # build_model()/watch() just see nothing
-    return Path(runtime) / "orchard" / "projects"
-
-
-def _repo_display_name(slug: str) -> str:
-    """`<owner>.<repo>@<branch>` (courier.py's project_slug() format) -> `<repo>`
-    — the bare name sidebar_nav's gardener-window match expects.
-
-    Two components are stripped, each optional:
-    * the `@<branch>` suffix, present since the orchard project directory became
-      one-per-worktree; the match is on the repo, which every worktree shares.
-    * the `<owner>.` prefix, absent when there was no git remote at post time.
-    """
-    repo = slug.partition(BRANCH_SEPARATOR)[0]
-    _owner, sep, name = repo.partition(".")
-    return name if sep else repo
-
-
-def _repo_identity(slug: str) -> str:
-    """`<owner>.<repo>@<branch>` -> `<owner>.<repo>` — what makes two project
-    directories the SAME repo.
-
-    Grouping keys off this and never off the display name. Two unrelated
-    repos can share a bare name under different owners (`kaukea.orchids` and
-    `someoneelse.orchids`); folding those together would merge one repo's
-    features into another's row. The owner is dropped for DISPLAY only, where
-    a collision is merely confusing rather than wrong.
-    """
-    return slug.partition(BRANCH_SEPARATOR)[0]
-
-
-def _group_project_dirs(root: Path) -> list[tuple[str, list[Path]]]:
-    """Every project directory under `root`, grouped by repo identity — one
-    group per repo, spanning however many worktree directories
-    (`<owner>.<repo>@<branch>`) that repo currently has. Groups and the
-    directories within each group are both in sorted order, so the result
-    is deterministic."""
-    groups: dict[str, list[Path]] = {}
-    for d in sorted(root.iterdir()):
-        if not d.is_dir():
-            continue
-        groups.setdefault(_repo_identity(d.name), []).append(d)
-    return sorted(groups.items())
-
-
-def _merge_sessions(dirs: list[Path]) -> dict[str, dict]:
-    """`_fold_sessions()` for each directory, merged into one session map.
-    Session ids are unique per session, so this is a plain union — except
-    on the (unexpected) case of the same session id appearing in two
-    directories, where the record with the more recent `_seen_ts` wins
-    rather than whichever directory was folded last."""
-    merged: dict[str, dict] = {}
-    for d in dirs:
-        for sid, rec in _fold_sessions(d).items():
-            current = merged.get(sid)
-            if current is None or rec["_seen_ts"] >= current["_seen_ts"]:
-                merged[sid] = rec
-    return merged
-
-
-def _latest(rec: dict, key: str, ts: float) -> bool:
-    """True (and records ts) when this event is the newest of its kind for a session."""
-    if ts < rec.get(key, -1.0):
-        return False
-    rec[key] = ts
-    return True
-
-
-_MARKER_ARCHIVE_DIR = "_archived"
-# A task entry's own persisted terminal state maps onto the same outcome
-# vocabulary `_status_for` already understands.
-_MARKER_STATE_OUTCOME = {"done": "success", "failed": "fail"}
-# A task entry's own persisted "working" state maps onto the same lifecycle
-# vocabulary `_status_for`'s working/idle split already understands (any of
-# starting/started/stopping reads "working" there). This is what makes
-# "working" reachable for a marker-only task at all (bug fix, 2026-07-26:
-# this mapping was previously absent, so a marker-only record could never
-# enter that branch — a task whose events had aged out of the tree but
-# whose marker said "working" rendered idle/stale/done/failed, never
-# "working", however fresh its marker).
-_MARKER_STATE_LIFECYCLE = {"working": "started"}
-
-
-def _parse_iso_ts(text: str | None) -> float:
-    """ISO-8601 UTC (courier.py's `datetime.now(timezone.utc).isoformat()`
-    shape) -> epoch seconds; 0.0 — maximally stale, never a crash — on
-    anything unparsable or missing."""
-    if not text:
-        return 0.0
-    try:
-        return datetime.fromisoformat(text).timestamp()
-    except ValueError:
-        return 0.0
-
-
-def _iter_feature_markers(project_dir: Path):
-    """Yield (feature_id, marker) for every on-disk feature-node marker
-    (`<feature-id>.marker`) a project directory holds — the structural
-    source a TASK row survives on even once the archiver has removed its
-    event files (retention ruling, 2026-07-26: a finished task persists
-    until restart). `_archived/` is never scanned; a legacy zero-byte
-    `<session-id>.marker` heartbeat (courier.py's mailbox touch) has no
-    JSON to parse and is skipped. A marker's actual per-task data lives in
-    its `tasks` list (see `_marker_task_rows`) — this function only
-    discovers and parses the file; any legacy `sessions` key a marker still
-    happens to carry is never read."""
-    for f in project_dir.iterdir():
-        if f.name == _MARKER_ARCHIVE_DIR or not f.is_file():
-            continue
-        if not f.name.endswith(".marker") or f.stat().st_size == 0:
-            continue
-        try:
-            marker = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        yield f.name.removesuffix(".marker"), marker
-
-
-def _marker_task_rec(task: dict) -> dict:
-    """A synthetic `_status_for` input for one of a marker's `tasks[]`
-    entries, standing in for a task with no live agent at all. Its own
-    persisted `state` supplies either a terminal outcome (done/failed) or
-    the lifecycle signal that makes `_status_for`'s working/idle split
-    reachable ("working" -> "started", the same value a live "started"
-    lifecycle event carries); any other state, or none at all, leaves
-    `_status_for` to fall through to its own staleness/idle default.
-
-    `_status_for` runs its staleness check BEFORE the lifecycle check, so
-    a marker declaring "working" whose own `updated` has aged past
-    ACTIVE_WINDOW_SECONDS still reads "stale" — staleness is a colour, not
-    a removal, and a marker's word for its own liveness does not override
-    "not heard from in a while" (Decision-094). `done`/`failed` remain
-    terminal and are never demoted by staleness, per `_status_for` itself.
-
-    This stays deliberately narrow: it feeds only `_status_for`'s existing
-    lifecycle/outcome vocabulary. Nothing agent- or subagent-shaped ever
-    comes out of a marker-only record — role, model, activity and all
-    subagent rows stay live-only (operator ruling, 2026-07-26)."""
-    rec = {"subs": {}, "_seen_ts": _parse_iso_ts(task.get("updated"))}
-    state = task.get("state")
-    outcome = _MARKER_STATE_OUTCOME.get(state)
-    if outcome:
-        rec["outcome"] = outcome
-    else:
-        lifecycle = _MARKER_STATE_LIFECYCLE.get(state)
-        if lifecycle:
-            rec["state"] = lifecycle
-    return rec
-
-
-def _marker_task_id(task: dict) -> str | None:
-    """The task's own id from a marker `tasks[]` entry — schema 2's `task`
-    key, falling back to schema 1's `feature` key (today's on-disk shape,
-    where one feature maps to exactly one task and the entry names it via
-    the marker's own top-level feature id instead — DATA CONTRACT, 2026-
-    07-26). An entry with NEITHER key is a rejected earlier shape (e.g. a
-    bare delegation label); it yields None and is skipped outright, never
-    guessed at."""
-    return task.get("task") or task.get("feature")
-
-
-def _fold_sessions(project_dir: Path) -> dict[str, dict]:
-    """Fold one project's event files into one record per session — purely
-    live traffic; a feature marker never seeds one of these any more (see
-    `_iter_feature_markers`/`_marker_task_rows`, and `_assemble_repo`,
-    which reads markers separately to supply the task rows no live session
-    covers) — folded from the retired sidebar_v3.py's sessions(),
-    unchanged: per-session event files are `<sessionid>.<ts>.json`."""
-    found: dict[str, dict] = {}
-    for f in project_dir.iterdir():
-        if f.name.startswith(".") or not f.name.endswith(".json") or not f.is_file():
-            continue
-        try:
-            env = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        sid = env.get("from", "").removeprefix(":session:")
-        if not sid:
-            continue
-        ts = f.stat().st_mtime
-        rec = found.setdefault(sid, {"sid": sid, "subs": {}})
-        # The overall last-heard-from timestamp for this session, independent
-        # of the per-kind "latest wins" bookkeeping below — this is what
-        # `_status_for` compares against ACTIVE_WINDOW_SECONDS to decide
-        # "stale", so it advances on ANY event, recognised or not.
-        rec["_seen_ts"] = max(rec.get("_seen_ts", 0.0), ts)
-        if _latest(rec, "_snap", ts):
-            rec["identity"] = env.get("identity", rec.get("identity", {}))
-            rec["status"] = env.get("status", rec.get("status", {}))
-        subject = env.get("subject", "")
-        if subject.startswith("orchard:agent:lifecycle:") and _latest(rec, "_life", ts):
-            rec["state"] = subject.rsplit(":", 1)[-1]
-        elif subject == "orchard:agent:status" and _latest(rec, "_stat", ts):
-            rec["activity"] = env.get("body", "")
-        elif subject.startswith("orchard:agent:outcome:") and _latest(rec, "_out", ts):
-            rec["outcome"] = subject.rsplit(":", 1)[-1]
-        elif subject.startswith("orchard:task:outcome:") and _latest(rec, "_task", ts):
-            rec["task_outcome"] = subject.rsplit(":", 1)[-1]
-        elif subject in ("orchard:agent:delegation:schedule",
-                          "orchard:agent:delegation:begin",
-                          "orchard:agent:delegation:end"):
-            # EXACT subject match — the subagent id is no longer derived from
-            # the subject tail (there is none any more): it rides the body.
-            action = subject.removeprefix("orchard:agent:delegation:")
-            sub = (env.get("body") or {}).get("subagent")
-            state = _DELEGATION_STATE.get(action)
-            if sub and state and _latest(rec, f"_sub_{sub}", ts):
-                rec["subs"][sub] = state
-    return found
-
-
-def _status_for(rec: dict, now: float) -> str:
-    """working/done/failed/idle/stale, derived from the lifecycle+outcome
-    signals this grammar actually carries, plus `now` for the staleness
-    check. No waiting/awaiting_agent variant exists (no blocked/notify_user
-    post verb), so those STATUS_EMOJI entries are simply never produced
-    here.
-
-    A terminal outcome (done/failed) always wins — it is never demoted to
-    stale, no matter how old (retention ruling, 2026-07-25 revision: a
-    finished task is a permanent green/red one-liner). Absent a terminal
-    outcome, a session with no event inside ACTIVE_WINDOW_SECONDS reads
-    stale (gray) rather than working/idle — checked before the
-    working/idle split, since staleness overrides even a stuck "starting"
-    lifecycle state that never followed up.
-
-    A live session (one folded from real traffic by `_fold_sessions`,
-    always carrying its own "sid") with no surviving lifecycle event still
-    reads "working" once it is not stale — recent traffic of any kind is
-    itself proof of life, so a "started" lifecycle event aging out of the
-    archiver's retention must not silently demote a still-posting session
-    to idle (bug fix, 2026-07-26: the live-session counterpart of the
-    marker-only "working" fix above; see `_marker_task_rec`). An explicit
-    "stopped" lifecycle event is a real signal rather than an absence and
-    still reads idle. A synthetic marker-only record (no "sid") never had
-    live traffic to infer from, so it is unaffected and keeps falling
-    through to idle absent an explicit state."""
-    if rec.get("outcome") == "fail" or rec.get("task_outcome") == "failed":
-        return "failed"
-    if rec.get("outcome") == "success" or rec.get("task_outcome") == "completed":
-        return "done"
-    if now - rec.get("_seen_ts", 0.0) >= ACTIVE_WINDOW_SECONDS:
-        return "stale"
-    state = rec.get("state")
-    if state in ("starting", "started", "stopping"):
-        return "working"
-    if state is None and "sid" in rec:
-        return "working"
-    return "idle"
-
-
-def _row_label(rec: dict) -> str | None:
-    """The identity name/feature to show, or None if there is nothing
-    operator-facing on the identity itself (a bare session-UUID with no
-    announced name or feature). Callers always fall back to the session id
-    on a None here (operator ruling, 2026-07-26: a session with events
-    ALWAYS renders something — missing identity degrades the label, never
-    drops the row; see `_assemble_repo`)."""
-    identity = rec.get("identity") or {}
-    label = identity.get("name") or identity.get("feature")
-    if label:
-        return label
-    return None if _is_bare_uuid(rec["sid"]) else rec["sid"]
-
-
-def _apply_common(repo: Repo, rec: dict, now: float) -> None:
-    """Copy the gardener session's own fields onto the repo header."""
-    identity = rec.get("identity") or {}
-    status = rec.get("status") or {}
-    repo.activity = rec.get("activity", "")
-    repo.status_word = repo.activity
-    repo.status = _status_for(rec, now)
-    repo.waiting_on_operator = False  # no source in this grammar
-    repo.role = identity.get("agent")
-    repo.model = status.get("model")
-
-
-def _live_subagents(subs: dict[str, str]) -> list[Subagent]:
-    """One Subagent row per delegation this session still remembers —
-    sourced purely from its own live traffic (`subs`, from `orchard:agent:
-    delegation:schedule|begin|end`), sorted by label. All three states
-    render (rule 6, 2026-07-26): "done" is not a vanish, only the owning
-    task's own fold removes the row. Nothing is ever unioned in from a
-    feature marker — a subagent is live-only."""
-    return sorted(
-        (Subagent(label=label, state=state) for label, state in subs.items()),
-        key=lambda sub: sub.label,
-    )
-
-
-# role -> step, read from each charter's `step:` frontmatter key. A
-# concurrent branch is adding these keys one charter at a time, so the
-# loader must work whether or not any given one has it yet (operator
-# ruling, 2026-07-26): a charter with no frontmatter, no `name`, no `step`,
-# or a `step` outside `PHASES` simply contributes nothing to the map.
-_AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
-_FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---", re.DOTALL)
-
-
-def _parse_frontmatter(text: str) -> dict[str, str]:
-    match = _FRONTMATTER_RE.match(text)
-    if not match:
-        return {}
-    fields = {}
-    for line in match.group(1).splitlines():
-        key, sep, value = line.partition(":")
-        if sep:
-            fields[key.strip()] = value.strip()
-    return fields
-
-
-def load_role_step_map(agents_dir: Path | None = None) -> dict[str, str]:
-    """role -> one of `PHASES`, from every `agents/*.md` charter's `step:`
-    frontmatter key. Never raises on a missing `agents/` directory or an
-    unreadable file — an empty map just means every agent renders without
-    a step (fails open, see `resolve_step`)."""
-    agents_dir = agents_dir or _AGENTS_DIR
-    role_step_map: dict[str, str] = {}
-    if not agents_dir.is_dir():
-        return role_step_map
-    for charter in sorted(agents_dir.glob("*.md")):
-        try:
-            fields = _parse_frontmatter(charter.read_text(encoding="utf-8"))
-        except OSError:
-            continue
-        name, step = fields.get("name"), fields.get("step")
-        if name and step in PHASES:
-            role_step_map[name] = step
-    return role_step_map
-
-
-@functools.lru_cache(maxsize=1)
-def _default_role_step_map() -> dict[str, str]:
-    return load_role_step_map()
-
-
-def resolve_step(role: str | None, rec: dict, role_step_map: dict[str, str]) -> str | None:
-    """The step an agent is on. An explicit `phase` on the record always
-    wins were one ever posted (none of today's event grammar carries one,
-    but a future addition lands here without a rewrite — operator ruling,
-    2026-07-26: the map is a FALLBACK, not the source of truth); otherwise
-    the role->step map, keyed by the agent's own announced role. Fails
-    open: a missing or unmapped role resolves to None, never a guess."""
-    explicit = rec.get("phase")
-    if explicit in PHASES:
-        return explicit
-    return role_step_map.get(role) if role else None
-
-
-def _agent_from_rec(sid: str, rec: dict, now: float, role_step_map: dict[str, str]) -> Agent:
-    identity = rec.get("identity") or {}
-    status = rec.get("status") or {}
-    role = identity.get("agent")
-    return Agent(
-        session_id=sid, role=role, model=status.get("model"),
-        activity=rec.get("activity", ""), status=_status_for(rec, now),
-        step=resolve_step(role, rec, role_step_map),
-        subagents=_live_subagents(rec.get("subs", {})),
-    )
-
-
-def _task_active_step(agents: list[Agent]) -> str | None:
-    """The task's current step: the furthest-along `PHASES` entry among its
-    mapped agents. Purely positional — nothing on the bus remembers which
-    step a task passed through earlier, so a done step's own agent is never
-    reconstructed, only its position (see `_build_task_steps`)."""
-    indices = [PHASES.index(agent.step) for agent in agents if agent.step in PHASES]
-    return PHASES[max(indices)] if indices else None
-
-
-def _build_task_steps(agents: list[Agent], active_step: str | None) -> list[Step]:
-    """All five `PHASES` positions, always, once a task has an active step
-    (operator ruling, 2026-07-26: steps must not flash in and out as a
-    session's staleness flips) — done/todo ones are plain lines; only the
-    active one carries the agents actually on it."""
-    if active_step is None:
-        return []
-    return [
-        Step(name=name, state=state,
-             agents=[a for a in agents if a.step == name] if state == "active" else [])
-        for name, state in phase_states(active_step)
-    ]
-
-
-_STATUS_PRECEDENCE = ("failed", "working", "stale", "idle")
-
-
-def _combine_status(statuses: list[str]) -> str:
-    """A parent's own status, aggregated from its children's (a feature
-    from its tasks, a task from its live agents): the status most needing
-    attention wins (failed > working > stale > idle); "done" only once
-    EVERY child is done (operator ruling, 2026-07-26: a feature/task is
-    complete only when everything inside it is)."""
-    if not statuses:
-        return "idle"
-    for candidate in _STATUS_PRECEDENCE:
-        if candidate in statuses:
-            return candidate
-    return "done"
-
-
-def _finalize_task(task_id: str, name: str, agents: list[Agent], marker_status: str | None) -> Task:
-    if not agents:
-        return Task(task_id=task_id, name=name, status=marker_status or "idle")
-    mapped = [a for a in agents if a.step is not None]
-    unmapped = [a for a in agents if a.step is None]
-    return Task(
-        task_id=task_id, name=name, status=_combine_status([a.status for a in agents]),
-        steps=_build_task_steps(mapped, _task_active_step(mapped)),
-        unstepped_agents=unmapped,
-    )
-
-
-class _TaskBuilder:
-    def __init__(self, name: str) -> None:
-        self.name = name
-        self.agents: list[Agent] = []
-        self.marker_status: str | None = None
-
-
-class _FeatureBuilder:
-    def __init__(self, name: str | None) -> None:
-        self.name = name
-        self.tasks: dict[str, _TaskBuilder] = {}
-
-    def task(self, task_id: str, name: str) -> _TaskBuilder:
-        builder = self.tasks.setdefault(task_id, _TaskBuilder(name))
-        if not builder.name:
-            builder.name = name
-        return builder
-
-
-def _finalize_feature(feature_id: str, builder: _FeatureBuilder) -> Feature:
-    tasks = [
-        _finalize_task(task_id, task_builder.name or task_id, task_builder.agents,
-                        task_builder.marker_status)
-        for task_id, task_builder in builder.tasks.items()
-    ]
-    return Feature(feature_id=feature_id, name=builder.name or feature_id,
-                    status=_combine_status([t.status for t in tasks]), tasks=tasks)
-
-
-def _root_session_id(sess: dict[str, dict]) -> str | None:
-    """The root of the parent chain: a session that appears as some OTHER
-    session's `identity.parent`, but names no parent of its own.
-
-    A resumed root session (the gardener, notably — `claude --resume` with
-    no `--agent`) loses its own role permanently: CLAUDE_CODE_AGENT is only
-    set for subagent contexts, so its identity block comes out empty and it
-    cannot name itself. Its CHILDREN still name it, though — every identity
-    block already carries the spawning session's id as `parent` — so the
-    root is derived from them instead (operator ruling, 2026-07-26: a
-    UI-side inference over data already on the bus, not a new wire field —
-    "it is a UI concern, not a bus concern").
-
-    An intermediate parent (a landscaper is the parent of its own sowers)
-    is never mistaken for the root: only the session with NO parent of its
-    own qualifies, however many sessions it is itself the parent of."""
-    parent_ids = {(sess[sid].get("identity") or {}).get("parent") for sid in sess}
-    parent_ids.discard(None)
-    roots = sorted(
-        sid for sid in sess
-        if sid in parent_ids and not (sess[sid].get("identity") or {}).get("parent")
-    )
-    return roots[0] if roots else None
-
-
-def _identity_task_keys(identity: dict, label: str | None, sid: str) -> tuple[str, str, str, str]:
-    """(feature_id, feature_name, task_id, task_name) from an agent's
-    identity block, defaulting per the DATA CONTRACT (2026-07-26): `task`
-    absent -> the feature id; `task_name` absent -> the feature name.
-    `feature`/`feature_name` themselves fall back to the announced label,
-    then the bare session id — a session with events always lands
-    somewhere (operator ruling, 2026-07-26), even with no identity at all
-    (the gardener's own root session, notably, posts none)."""
-    feature_id = identity.get("feature") or label or sid
-    feature_name = identity.get("feature_name") or identity.get("name") or label or sid
-    task_id = identity.get("task") or feature_id
-    task_name = identity.get("task_name") or feature_name
-    return feature_id, feature_name, task_id, task_name
-
-
-def _assemble_repo(
-    dir_name: str, project_dir: Path, sess: dict[str, dict], now: float,
-    role_step_map: dict[str, str],
-) -> Repo:
-    repo = Repo(name=_repo_display_name(dir_name), activity="", status="idle",
-                waiting_on_operator=False)
-
-    # Prefer an EXPLICIT "gardener" identity (direct, trustworthy); fall
-    # back to the root of the parent chain (`_root_session_id`) for a
-    # resumed root session that can no longer name itself. Either way,
-    # this one session supplies the repo header and is excluded from the
-    # feature/task loop below, so it never also draws a duplicate row for
-    # itself.
-    header_sid = next(
-        (sid for sid in sorted(sess)
-         if (sess[sid].get("identity") or {}).get("agent") == "gardener"),
-        None,
-    ) or _root_session_id(sess)
-    if header_sid is not None:
-        _apply_common(repo, sess[header_sid], now)
-
-    features: dict[str, _FeatureBuilder] = {}
-    live_task_keys: set[tuple[str, str]] = set()
-
-    for sid in sorted(sess):
-        rec = sess[sid]
-        identity = rec.get("identity") or {}
-        # The header session alone is excluded — it already supplied the
-        # repo header above. Every OTHER session earns a row: missing
-        # identity, an unknown/unmapped role, no announced feature/task —
-        # none of these drop it (operator ruling, 2026-07-26 — the earlier
-        # "no agent -> skip" filter silently orphaned every subagent a
-        # root/gardener session had scheduled, since CLAUDE_CODE_AGENT is
-        # only set for subagent contexts and a root session's identity
-        # block comes out empty).
-        if sid == header_sid:
-            continue
-        feature_id, feature_name, task_id, task_name = _identity_task_keys(
-            identity, _row_label(rec), sid,
-        )
-        builder = features.setdefault(feature_id, _FeatureBuilder(feature_name))
-        if not builder.name:
-            builder.name = feature_name
-        task_builder = builder.task(task_id, task_name)
-        task_builder.agents.append(_agent_from_rec(sid, rec, now, role_step_map))
-        live_task_keys.add((feature_id, task_id))
-
-    # A task with no live agent at all still renders — as a single row
-    # carrying whatever its marker persisted, nothing beneath it (operator
-    # ruling, 2026-07-26: the task is the one thing that doesn't
-    # disappear). Skipped when a live session already supplied this exact
-    # task's row above, so an in-progress task never doubles up.
-    for feature_id, marker in _iter_feature_markers(project_dir):
-        builder = None
-        for task in marker.get("tasks") or []:
-            task_id = _marker_task_id(task)
-            if not task_id or (feature_id, task_id) in live_task_keys:
-                continue
-            if builder is None:
-                builder = features.setdefault(feature_id, _FeatureBuilder(marker.get("name")))
-            task_name = task.get("name") or task_id
-            # Schema 1 markers (still on disk) carry no top-level feature
-            # `name` at all — today one feature maps to exactly one task,
-            # so the degenerate case falls back to that sole task's own
-            # name (DATA CONTRACT, 2026-07-26).
-            if not builder.name:
-                builder.name = task_name
-            task_builder = builder.task(task_id, task_name)
-            task_builder.marker_status = _status_for(_marker_task_rec(task), now)
-
-    repo.features = [_finalize_feature(fid, b) for fid, b in features.items()]
-    repo.has_session = header_sid is not None or bool(repo.features)
-    return repo
-
-
-def build_model(
-    root: Path | None = None, now: float | None = None,
-    role_step_map: dict[str, str] | None = None,
-) -> Fleet:
-    """One snapshot of the fleet: every project directory is folded and
-    assembled into one Repo, unconditionally — nothing is ever excluded by
-    staleness (retention ruling, 2026-07-25 revision: a row leaves the
-    sidebar only when the process restarts and the tmpfs projects tree
-    clears with it). ACTIVE_WINDOW_SECONDS still matters — it is what
-    `_status_for` compares `now` against to decide whether an
-    unfinished session reads "stale" (gray) rather than "working"/"idle" —
-    but it no longer removes anything from this snapshot.
-
-    `now`, when given, stands in for the wall-clock read normally taken at
-    call time — a seam for tests that need the staleness check pinned to a
-    fixed instant relative to a captured fixture's own `updated` timestamp,
-    rather than the real clock racing that fixture's age. Production call
-    sites never pass it, so the default (`time.time()` at call time) is
-    unchanged.
-
-    `role_step_map`, when given, overrides the role->step map read from the
-    real `agents/*.md` charters (`_default_role_step_map()`) — a seam for
-    tests that don't want to depend on this repo's own agents/ directory."""
-    root = root or projects_root()
-    fleet = Fleet()
-    if not root.is_dir():
-        return fleet
-    now = time.time() if now is None else now
-    role_step_map = _default_role_step_map() if role_step_map is None else role_step_map
-    for identity, dirs in _group_project_dirs(root):
-        fleet.repos.append(
-            _assemble_repo(_repo_display_name(identity), dirs[0], _merge_sessions(dirs), now, role_step_map)
-        )
-    return fleet
-
-
-_WATCH_RESTART_BACKOFF_SECONDS = 1.0
-
-
-def watch(on_change, root: Path | None = None) -> None:
-    """Call on_change(fleet) whenever the projects root changes. Never
-    returns while the process lives.
-
-    Prefers `inotifywait -m -r` on the root, supervised for the whole
-    lifetime of the call: a dying inotifywait child is reaped and, as long
-    as the binary is installed, restarted — with a short backoff if it
-    keeps exiting immediately, so a crash loop never busy-spins. While the
-    root doesn't exist (or inotifywait isn't installed at all) this falls
-    back to a 2s re-scan, matching the retired sidebar_model.watch()
-    shape; a root that later reappears is picked back up by inotifywait on
-    the next iteration. build_model() on a missing root is just an empty
-    Fleet, never a crash.
-    """
-    root = root or projects_root()
-    has_inotifywait = shutil.which("inotifywait") is not None
-
-    def rescan_and_notify() -> None:
-        on_change(build_model(root))
-
-    def run_inotify_until_exit() -> None:
-        cmd = [
-            "inotifywait", "-m", "-r",
-            "-e", "create", "-e", "moved_to", "-e", "modify", "-e", "delete",
-            "--format", "%f", str(root),
-        ]
-        proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-        )
-        try:
-            for _ in proc.stdout:
-                rescan_and_notify()
-        finally:
-            proc.terminate()
-            proc.wait()
-
-    while True:
-        rescan_and_notify()
-        if has_inotifywait and root.is_dir():
-            started_at = time.monotonic()
-            run_inotify_until_exit()
-            if time.monotonic() - started_at < _WATCH_RESTART_BACKOFF_SECONDS:
-                time.sleep(_WATCH_RESTART_BACKOFF_SECONDS)
-        else:
-            time.sleep(2)
-
-
-# --------------------------------------------------------------------------
 # Presentation model (pure, no curses)
 # --------------------------------------------------------------------------
 
@@ -2156,7 +1405,7 @@ class _SharedFleet:
 
 def _watch_thread(shared: _SharedFleet) -> None:
     try:
-        watch(shared.set)
+        watch(shared.set, watched_names=load_watched_repo_names())
     except Exception:
         pass  # keep the UI alive on the last snapshot even if the watch dies
 
@@ -3027,7 +2276,7 @@ def main(stdscr) -> None:
 # --------------------------------------------------------------------------
 
 def _run_dump() -> int:
-    fleet = build_model()
+    fleet = build_model(watched_names=load_watched_repo_names())
     for line in render_lines(fleet):
         print(line)
     return 0
@@ -3035,7 +2284,8 @@ def _run_dump() -> int:
 
 def _paint_once(stdscr) -> None:
     colour_pairs, agent_colours, colours = _init_draw_state(stdscr)
-    _draw_frame(stdscr, build_model(), 0, 0, colour_pairs, agent_colours, colours, tick=0, has_moved=False)
+    fleet = build_model(watched_names=load_watched_repo_names())
+    _draw_frame(stdscr, fleet, 0, 0, colour_pairs, agent_colours, colours, tick=0, has_moved=False)
 
 
 def _run_once() -> int:

@@ -247,7 +247,16 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
                     check=True)
         self._tmux("resize-window", "-x", str(self.PANE_WIDTH), "-y", str(self.PANE_HEIGHT))
         self._await_pane_size()
-        command = f"XDG_RUNTIME_DIR={self.runtime_dir} {sys.executable} {_SIDEBAR_PY}"
+        # HOME is isolated too, alongside XDG_RUNTIME_DIR: the real CLI now
+        # reads the operator's own registry (`~/.config/orchids/sidebar-
+        # registry.json`, `load_watched_repo_names()`) to decide which
+        # projects to fold. Without this, "orchids"/"signmc" render or not
+        # depending on what happens to be registered on the machine running
+        # the test rather than on this fixture's own seeded events.
+        command = (
+            f"HOME={self.runtime_dir} XDG_RUNTIME_DIR={self.runtime_dir} "
+            f"{sys.executable} {_SIDEBAR_PY}"
+        )
         self._tmux("send-keys", command, "Enter")
 
     def _capture(self) -> list[str]:
@@ -502,9 +511,13 @@ class SidebarOnceCLITests(unittest.TestCase):
         self._tmux("resize-window", "-x", str(self.PANE_WIDTH), "-y", str(self.PANE_HEIGHT))
         self._await_pane_size()
         self._tmux("pipe-pane", "-o", f"cat >> {self._raw_log}", check=True)
+        # HOME isolated for the same reason as SidebarEmulatorFrameTests
+        # above — this class's "orchids" fixture would otherwise only pass
+        # by coincidence, on a machine whose own registry happens to list a
+        # real repo named "orchids".
         command = (
-            f"XDG_RUNTIME_DIR={self.runtime_dir} {sys.executable} {_SIDEBAR_PY} --once; "
-            "echo ONCE_EXIT:$?"
+            f"HOME={self.runtime_dir} XDG_RUNTIME_DIR={self.runtime_dir} "
+            f"{sys.executable} {_SIDEBAR_PY} --once; echo ONCE_EXIT:$?"
         )
         self._tmux("send-keys", command, "Enter")
 
