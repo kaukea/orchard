@@ -10,7 +10,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 ## Publication
 
 - `housekeeping · todo · · blocked-on-answers · publication · gh#1` [Pre-publication cleanup & public/private split](TODO.md.d/pre-publication-cleanup.md)
-- `housekeeping · todo · critical · queued · publication · gh#280` [Release cut: the package's first versioned release](TODO.md.d/release-cut.md) ~bus-finishing ~sidebar-empty-rows
+- `housekeeping · todo · critical · blocked-on-answers · publication · gh#280` [Release cut: the package's first versioned release](TODO.md.d/release-cut.md) ~bus-finishing ~sidebar-empty-rows
 
 ## Process machinery
 

@@ -4,9 +4,9 @@
 
 ## Blockers
 
-(none — the holding gate, live check (a), passed at the operator's
-2026-07-27 01:26 eyeball and the sidebar-empty-rows close is merged and
-pushed)
+- OPERATOR HOLD (2026-07-27): "no release yet" — said at the opening of the
+  Decision-050 bloom round, before the first question was answered. The cut
+  does not proceed until the operator lifts the hold.
 
 ## Questions
 
@@ -32,11 +32,20 @@ pushed)
   the cutover. That check passed 2026-07-27; sidebar-empty-rows is
   squash-merged as 2fbc3cc and pushed.
 - The operator ordered the cut on 2026-07-27 ("Cut the release").
+- Bloom round of 2026-07-27 (04:54): halted by the operator at the first
+  question ("no release yet") — zero of the four scoped dimensions measured;
+  every entry under Questions remains open. Engine state kept at
+  `.git/the-works/release-cut/bloom-state.json` for a successor round.
+- Scoping facts from that round: the repository carries NO version tag (only
+  `archive/*` tags), so any cut is the first ever; the stopgap kauk CLI has
+  no tag/version awareness — a consumer-facing version pin would be new kauk
+  capability, not configuration.
 
 ## Proposal
 
-(to be converged by the bloom round — WHAT the release delivers, its
-version, and which staged changelog admissions ride it)
+(unconverged — the 2026-07-27 bloom round was halted by the operator hold
+before any measurement; WHAT the release delivers, its version, and which
+staged changelog admissions ride it remain open in Questions)
 
 ## Testing
 
