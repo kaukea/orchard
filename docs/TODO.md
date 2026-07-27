@@ -14,7 +14,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 
 ## Process machinery
 
-- `feature · todo · · queued · process ·` [Sidebar redone fresh: pruned and rewritten, with the standing rulings as its specification](TODO.md.d/sidebar-teamwork.md) ⊘transport-test-reconciling ~sidebar-polish ~sidebar-empty-rows ~fleet-sidebar
+- `feature · todo · · plan-ready · process ·` [Sidebar redone fresh: pruned and rewritten, with the standing rulings as its specification](TODO.md.d/sidebar-teamwork.md) ~sidebar-polish ~sidebar-empty-rows ~fleet-sidebar
 - `bug · todo · critical · plan-ready · process ·` [Messaging restoration: recover the 24 functions the fakes squash reverted, keep its five real fixes](TODO.md.d/transport-test-reconciling.md) ~close-family-fakes ~sidebar-empty-rows ~bus-message-specifying
 - `bug · todo · · blocked-on-answers · process ·` [Groundskeeper verify hardening: post-merge suite run against a pre-merge baseline](TODO.md.d/groundskeeper-verify-hardening.md) ~close-family-fakes ~transport-test-reconciling
 - `feature · done · · complete · process ·` [Tool split: package manager moved to kauk; orchids data-only](TODO.md.d/tool-split-to-kauk.md)
@@ -59,7 +59,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
     - `bug · todo · · queued · process · gh#191` [Sidebar spacing and glyphs: gaps found on the first live pass after sidebar-polish merged](TODO.md.d/sidebar-spacing-and-glyphs.md) ~sidebar-polish
     - `feature · todo · nice-to-have · queued · process · gh#192` [Install detecting: richer orchids-install state beyond .ai.toml presence (upstream kauk)](TODO.md.d/install-detecting.md) ~sidebar-polish ~orchard
     - `bug · done · · complete · process ·` [Sidebar titling: renderer items shipped in main; pane-title tail folds into the naming rework](TODO.md.d/sidebar-titling.md) ~sidebar-polish ~sidebar-spacing-and-glyphs ~orchestrator-identity
-    - `bug · done · critical · process · gh#275` [Sidebar empty rows: header renders, zero session rows off the live orchard tree — check (a) passing](TODO.md.d/sidebar-empty-rows.md) ~bus-finishing ~fleet-sidebar ~pretty-sidebar
+    - `bug · done · critical · complete · process · gh#275` [Sidebar empty rows: header renders, zero session rows off the live orchard tree — check (a) passing](TODO.md.d/sidebar-empty-rows.md) ~bus-finishing ~fleet-sidebar ~pretty-sidebar
     - `bug · todo · · queued · process · gh#194` [Popup adopting: agents bypass the built choice questions and do-not-interrupt](TODO.md.d/popup-adopting.md) ~popup-finishing ~operator-interacting
     - `feature · todo · · blocked-on-answers · process · gh#195` [Pretty sidebar: accordion phases, outcome colours, collapse — on the topic data](TODO.md.d/pretty-sidebar.md) ~bus-transport-v2 ~sidebar-polish ~sidebar-spacing-and-glyphs
   - `bug · done · · complete/interactive · process · gh#34` [Session and feature naming: short, descriptive, visible — sidebar prerequisite](TODO.md.d/session-naming.md)
@@ -157,10 +157,10 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 - `feature · todo · idea · queued · sync · gh#18` [Dynamic skill delivery per role](TODO.md.d/dynamic-skill-delivery.md)
 - `feature · todo · idea · queued · sync · gh#19` [Multi-source namespacing](TODO.md.d/multi-source-namespacing.md)
 - `feature · todo · idea · blocked-on-answers · sync · gh#20` [Agents: external dependencies beyond in-package skills](TODO.md.d/agent-external-deps.md) ~agents-first-class ~multi-source-namespacing
-- `feature · todo · · queued · · gh#232` [Decision-067: Decision-to-issue matching is title-based and stateless](TODO.md.d/decision-067-decision-to-issue-matching-is-title.md)
-- `feature · todo · · queued · · gh#231` [Decision-066: Decision supersession projects as GitHub's native duplicate-of, not a body-note fallback](TODO.md.d/decision-066-decision-supersession-projects-as-g.md)
-- `feature · todo · · queued · · gh#230` [Decision-061: Decision-043 superseded — the sidebar discovers repos via the registry](TODO.md.d/decision-061-decision-043-superseded-the-sidebar.md)
-- `feature · todo · · queued · · gh#229` [Decision-060: Agent self-exit lifecycle — two closing messages, a declared grace, then the orchestrator kills](TODO.md.d/decision-060-agent-self-exit-lifecycle-two-closi.md)
-- `feature · todo · · queued · · gh#228` [Decision-059: Human names are authored at intake, never grammar-converted at runtime](TODO.md.d/decision-059-human-names-are-authored-at-intake-.md)
-- `feature · todo · · queued · · gh#227` [Decision-058: The sidebar status vocabulary is six static states](TODO.md.d/decision-058-the-sidebar-status-vocabulary-is-si.md)
-- `feature · todo · · queued · · gh#226` [Decision-057: The operator's build-gate phrase, translated at the boundary](TODO.md.d/decision-057-the-operator-s-build-gate-phrase-tr.md)
+- `feature · todo · · queued · sync · gh#232` [Decision-067: Decision-to-issue matching is title-based and stateless](TODO.md.d/decision-067-decision-to-issue-matching-is-title.md)
+- `feature · todo · · queued · sync · gh#231` [Decision-066: Decision supersession projects as GitHub's native duplicate-of, not a body-note fallback](TODO.md.d/decision-066-decision-supersession-projects-as-g.md)
+- `feature · todo · · queued · sync · gh#230` [Decision-061: Decision-043 superseded — the sidebar discovers repos via the registry](TODO.md.d/decision-061-decision-043-superseded-the-sidebar.md)
+- `feature · todo · · queued · sync · gh#229` [Decision-060: Agent self-exit lifecycle — two closing messages, a declared grace, then the orchestrator kills](TODO.md.d/decision-060-agent-self-exit-lifecycle-two-closi.md)
+- `feature · todo · · queued · sync · gh#228` [Decision-059: Human names are authored at intake, never grammar-converted at runtime](TODO.md.d/decision-059-human-names-are-authored-at-intake-.md)
+- `feature · todo · · queued · sync · gh#227` [Decision-058: The sidebar status vocabulary is six static states](TODO.md.d/decision-058-the-sidebar-status-vocabulary-is-si.md)
+- `feature · todo · · queued · sync · gh#226` [Decision-057: The operator's build-gate phrase, translated at the boundary](TODO.md.d/decision-057-the-operator-s-build-gate-phrase-tr.md)
