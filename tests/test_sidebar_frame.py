@@ -356,15 +356,19 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         working_idx, idle_step_idx = step_indices
         # The FEATURE row: "sidebar titling" with no task BAR cell
         # (`sidebar._TASK_BAR_GLYPH`, "▎") -- distinguishes it from the task
-        # row below, which also names "sidebar titling" (same-name task/
-        # feature) and carries the now-cycling glyph instead.
+        # row directly below it, which shares the feature's exact name and
+        # so NAME-DROPS its own label (sidebar-teamwork defect 4: a sole
+        # task sharing its feature's name no longer repeats the string --
+        # Decision-106 still requires the row itself to render, with its
+        # own bar cell and now-cycling glyph, just not the redundant text),
+        # found here by its bar cell and position rather than by name.
         feature_idx = next(
             i for i, l in enumerate(stripped_first)
             if "sidebar titling" in l and sidebar._TASK_BAR_GLYPH not in l
         )
         task_idx = next(
             i for i, l in enumerate(stripped_first)
-            if "sidebar titling" in l and sidebar._TASK_BAR_GLYPH in l
+            if i > feature_idx and sidebar._TASK_BAR_GLYPH in l
         )
 
         # Poll for a change rather than compare a single fixed-delay

@@ -171,6 +171,7 @@ import sidebar_nav  # noqa: E402
 from sidebar_model import (  # noqa: E402
     ACTIVE_WINDOW_SECONDS,
     BRANCH_SEPARATOR,
+    NO_LIVE_ACTIVITY,
     PHASES,
     TERMINAL_TASK_STATUSES,
     Agent,
@@ -306,7 +307,14 @@ _SUBAGENT_LIVE_GLYPH = {"scheduled": "○"}
 
 # TERMINAL_TASK_STATUSES lives in sidebar_model.py (imported above).
 
-NO_ACTIVITY_TEXT = "⋮ no activity ⋮"
+# Bookend glyph is the file's own idle/waiting hollow circle
+# (STATUS_EMOJI["idle"]/["waiting"]/["stale"]), not "⋮" (sidebar-teamwork
+# defect 3: "⋮" doubled as both the identity line's field separator — see
+# `compose_identity_line`'s `sep` — and this banner's bookend, an
+# ambiguous reuse of one glyph for two meanings). "○" already means
+# "nothing live here" everywhere else in this vocabulary, so it reads the
+# same way framing an empty fleet.
+NO_ACTIVITY_TEXT = "○ no activity ○"
 ELLIPSIS = "…"
 
 # Separator between repo name and feature name in a feature row's tmux
@@ -444,23 +452,53 @@ def contrast_ratio(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
 
 def ensure_contrast(
     fg: tuple[int, int, int], bg: tuple[int, int, int], min_ratio: float,
-    *, step: float = 0.06, max_steps: int = 16,
+    *, step: float = 0.06, max_steps: int = 24,
 ) -> tuple[int, int, int]:
-    """`fg`, pushed toward WHITE or BLACK (whichever the background is
-    farther from) in small steps until it clears `min_ratio` against `bg`
-    — never raises, never abandons `bg` (operator ruling, 2026-07-26: the
-    derived background carries structural meaning — fix the foreground,
-    not the background). Best-effort (near-white/near-black) if
-    `max_steps` isn't enough, rather than shipping something unreadable."""
+    """`fg`, pushed toward WHITE or BLACK — whichever one can actually
+    reach a HIGHER ratio against `bg` — in small steps until it clears
+    `min_ratio` (never raises, never abandons `bg`: operator ruling,
+    2026-07-26, the derived background carries structural meaning — fix
+    the foreground, not the background). Best-effort (near-white/
+    near-black) if `max_steps` isn't enough, rather than shipping
+    something unreadable.
+
+    The target extreme is picked by comparing `contrast_ratio(WHITE, bg)`
+    against `contrast_ratio(BLACK, bg)` directly — NOT by a `relative_
+    luminance(bg) < 0.5` threshold, which was the bug (found here,
+    2026-07-27): the WCAG ratio formula's own `+0.05` offset makes
+    darkening buy more headroom against a MID-toned background than
+    lightening does, so the true crossover sits near luminance ~0.18, not
+    0.5. Any background between those two — most of this file's derived
+    content/open-stage backgrounds land there — picked WHITE under the old
+    threshold when BLACK was the only extreme that could ever clear a
+    normal-text ratio; the loop then ran its full budget and returned an
+    already-near-white candidate that STILL failed contrast. That silent
+    failure is what read on screen as "the brightest thing in the pane,
+    near-white" — text pushed toward the wrong extreme, not merely too
+    subtle.
+
+    A second, smaller bug travelled with the first: when the loop's
+    `max_steps` budget ran out before reaching `min_ratio`, it used to
+    return whatever PARTIALLY-blended candidate it had reached — visibly
+    short of the promised "near-white/near-black" best effort, and short
+    of `min_ratio` for real (a `TEXT`-family foreground against this
+    file's own open-stage backgrounds needed 17-18 steps at the default
+    6% to actually clear 4.5:1; the old default of 16 fell one or two
+    steps short every time). `max_steps` is raised to comfortably cover
+    that real case, and lerp-ing straight toward `target` only ever moves
+    EVERY channel monotonically closer to it, so if the budget somehow
+    still runs out, `target` itself is provably the best ratio either
+    extreme can reach against `bg` — the fallback below, not a partial
+    step, is what "best-effort" actually means."""
     if contrast_ratio(fg, bg) >= min_ratio:
         return fg
-    target = WHITE if relative_luminance(bg) < 0.5 else (0, 0, 0)
+    target = WHITE if contrast_ratio(WHITE, bg) >= contrast_ratio((0, 0, 0), bg) else (0, 0, 0)
     candidate = fg
     for _ in range(max_steps):
         candidate = lerp(candidate, target, step)
         if contrast_ratio(candidate, bg) >= min_ratio:
-            break
-    return candidate
+            return candidate
+    return target
 
 
 # A feature's own assigned base colour, when one has been decided at
@@ -512,26 +550,6 @@ def _read_feature_base_colour(
     return _parse_hex_colour(fields.get("colour") or fields.get("color"))
 
 
-def feature_colour_base(
-    hue: dict[str, tuple[int, int, int]], feature_id: str | None = None,
-    sidecar_dir: Path | None = None,
-) -> tuple[int, int, int]:
-    """Grade 1 — a feature's own ASSIGNED base colour when its sidecar has
-    one (`_read_feature_base_colour`); otherwise the project's own hue
-    (`_repo_hue`'s `"accent"`, the mock-canonical bright per-repo colour),
-    exactly as before this field existed — the fallback is not a stopgap:
-    every feature renders sensibly whether or not a colour has been
-    assigned (true for all of them today, since nothing writes one yet).
-    The orchid palette is the starting point, not a closed set — any
-    repo's own hue (pinned or hash-derived, see `_repo_hue`), or any
-    feature's own assigned colour, works here identically."""
-    if feature_id is not None:
-        assigned = _read_feature_base_colour(feature_id, sidecar_dir)
-        if assigned is not None:
-            return assigned
-    return hue["accent"]
-
-
 def _hash_unit(key: str, salt: int = 0) -> float:
     """A stable [0, 1) pseudo-random value from `key` (+ `salt`, so a
     perceptual collision can be deterministically re-rolled) — crc32, the
@@ -540,6 +558,79 @@ def _hash_unit(key: str, salt: int = 0) -> float:
     must be identical across every redraw, a restart, and two panes
     rendering the same tree at once, not merely "look random once"."""
     return (zlib.crc32(f"{key}:{salt}".encode("utf-8")) % 10_000) / 10_000
+
+
+def _hls_jitter_point(
+    base: tuple[int, int, int], key: str, salt: int,
+    hue_degrees: float, lightness_jitter: float, saturation_jitter: float,
+) -> tuple[int, int, int]:
+    """A deterministic, UNORDERED point in HLS space near `base` — hashed
+    from `key` (+ `salt`, for a rejection-test reroll), never `random`
+    (see `_hash_unit`). Shared by every grade of the colour lineage that
+    needs "belongs to its container, but not identical to it, and not on a
+    ramp": `feature_colour_base`'s fallback (grade 1 jittered from the
+    project hue) and `task_colour_base` (grade 2 jittered from grade 1)
+    both go through this one formula, so "which grade" only changes WHAT
+    is jittered and by how much, never the jitter mechanics themselves."""
+    r0, g0, b0 = (c / 255 for c in base)
+    h0, l0, s0 = colorsys.rgb_to_hls(r0, g0, b0)
+    h = (h0 + (_hash_unit(key, salt) - 0.5) * (hue_degrees / 360.0)) % 1.0
+    l = min(max(l0 + (_hash_unit(f"{key}:l", salt) - 0.5) * lightness_jitter, 0.0), 1.0)
+    s = min(max(s0 + (_hash_unit(f"{key}:s", salt) - 0.5) * saturation_jitter, 0.0), 1.0)
+    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    return (round(r * 255), round(g * 255), round(b * 255))
+
+
+# A feature's own FALLBACK point (grade 1, no assigned sidecar colour yet —
+# true for every feature today) is jittered from the project's own hue,
+# keyed by `feature_id`, exactly the way a task's own colour is jittered
+# from ITS feature's base (see `task_colour_base` below) — never the
+# project hue verbatim. Decision-110: "derives one from the project hue"
+# when a feature has no colour of its own, not "reuses the project hue" —
+# every unassigned feature in the SAME repo returning the literal same RGB
+# was the direct cause of "both features render their step bands in the
+# identical lavender" (two features share a repo far more often than they
+# share an assigned colour). Wider than the task jitter below: a FEATURE is
+# the top division within a repo's hue and needs more headroom than a task
+# needs within its feature's own, narrower range.
+_FEATURE_HUE_JITTER_DEGREES = 130.0
+_FEATURE_LIGHTNESS_JITTER = 0.12
+_FEATURE_SATURATION_JITTER = 0.16
+
+
+def _fallback_feature_colour(
+    hue: dict[str, tuple[int, int, int]], feature_id: str,
+) -> tuple[int, int, int]:
+    return _hls_jitter_point(
+        hue["accent"], feature_id, 0,
+        _FEATURE_HUE_JITTER_DEGREES, _FEATURE_LIGHTNESS_JITTER, _FEATURE_SATURATION_JITTER,
+    )
+
+
+def feature_colour_base(
+    hue: dict[str, tuple[int, int, int]], feature_id: str | None = None,
+    sidecar_dir: Path | None = None,
+) -> tuple[int, int, int]:
+    """Grade 1 — a feature's own ASSIGNED base colour when its sidecar has
+    one (`_read_feature_base_colour`); otherwise a point jittered from the
+    project's own hue (`_repo_hue`'s `"accent"`), keyed by `feature_id`
+    (`_fallback_feature_colour`) so sibling features in the same repo don't
+    collapse onto the identical RGB — the fallback is not a stopgap: every
+    feature renders sensibly whether or not a colour has been assigned
+    (true for all of them today, since nothing writes one yet). With no
+    `feature_id` to key on at all, the project's own hue is returned
+    verbatim (the one caller that can reach this — `_draw_task_row`'s own
+    last-resort fallback for a task with no `task_colour` — has no feature
+    identity to jitter from either). The orchid palette is the starting
+    point, not a closed set — any repo's own hue (pinned or hash-derived,
+    see `_repo_hue`), or any feature's own assigned colour, works here
+    identically."""
+    if feature_id is not None:
+        assigned = _read_feature_base_colour(feature_id, sidecar_dir)
+        if assigned is not None:
+            return assigned
+        return _fallback_feature_colour(hue, feature_id)
+    return hue["accent"]
 
 
 # "Goes with purple, not ordered by it" (operator, 2026-07-26): a task's
@@ -591,16 +682,14 @@ def task_colour_base(
     assigned Ct in the same feature — until `_TASK_MIN_PERCEPTUAL_
     DISTANCE` is cleared or `_TASK_COLOUR_MAX_REROLLS` is spent (accepts
     the least-close candidate tried rather than looping forever)."""
-    r0, g0, b0 = (c / 255 for c in feature_colour_base(hue, feature_id, sidecar_dir))
-    h0, l0, s0 = colorsys.rgb_to_hls(r0, g0, b0)
+    feature_base = feature_colour_base(hue, feature_id, sidecar_dir)
 
     best_candidate, best_distance = None, -1.0
     for salt in range(_TASK_COLOUR_MAX_REROLLS):
-        h = (h0 + (_hash_unit(task_id, salt) - 0.5) * (_TASK_HUE_JITTER_DEGREES / 360.0)) % 1.0
-        l = min(max(l0 + (_hash_unit(f"{task_id}:l", salt) - 0.5) * _TASK_LIGHTNESS_JITTER, 0.0), 1.0)
-        s = min(max(s0 + (_hash_unit(f"{task_id}:s", salt) - 0.5) * _TASK_SATURATION_JITTER, 0.0), 1.0)
-        r, g, b = colorsys.hls_to_rgb(h, l, s)
-        candidate = (round(r * 255), round(g * 255), round(b * 255))
+        candidate = _hls_jitter_point(
+            feature_base, task_id, salt,
+            _TASK_HUE_JITTER_DEGREES, _TASK_LIGHTNESS_JITTER, _TASK_SATURATION_JITTER,
+        )
         distance = min(
             (_perceptual_distance(candidate, sib) for sib in sibling_colours), default=float("inf"),
         )
@@ -618,8 +707,25 @@ def task_colour_base(
 # quieter still, so it reads as visibly derived from — and lighter than —
 # the section title it sits under, never the plain background.
 _CONTENT_SATURATION_FACTOR = 0.4
-_OPEN_STAGE_LIGHTNESS_LIFT = 0.16
-_OPEN_STAGE_SATURATION_DROP = 0.12
+# PROPORTIONAL, not additive/subtractive (bug found 2026-07-27, defect 2's
+# second half): a fixed "+0.16 lightness" compounds on top of a content
+# colour whose own lightness already sits around 0.6-0.65 for most of this
+# palette (grade 2/3 inherit the task's own lightness unchanged, see
+# `content_colour_base`), landing the open-stage block at L~0.79-0.85 —
+# visually near-white regardless of which task/feature it belongs to, and
+# an absolute "-0.12 saturation" on top of content's ALREADY-reduced
+# saturation routinely hit the floor of 0 — a flat, hue-less gray. Together
+# these were the on-screen "agent identity line and empty rows are the
+# brightest things in the pane, near-white... pulling the eye" and the
+# loss of lineage at exactly the most space-consuming, most-read level (an
+# agent's own line). A FRACTION of the remaining headroom to white, and a
+# FACTOR (not a flat subtraction) on saturation — the same multiplicative
+# shape `_CONTENT_SATURATION_FACTOR` above already uses — keeps the "always
+# lighter, never darker" invariant (Decision-110) while landing consistently
+# around L~0.70-0.78 with enough saturation left to still read as tinted,
+# not gray, whatever the starting lightness/saturation happened to be.
+_OPEN_STAGE_LIGHTNESS_LIFT_FRACTION = 0.30
+_OPEN_STAGE_SATURATION_FACTOR = 0.75
 
 
 def content_colour_base(task_colour: tuple[int, int, int]) -> tuple[int, int, int]:
@@ -652,8 +758,8 @@ def open_stage_colour(content_colour: tuple[int, int, int]) -> tuple[int, int, i
     rendered colour, not an unrelated one), and the whole open region
     still reads as one contiguous, findable block against that title."""
     h, l, s = colorsys.rgb_to_hls(*(c / 255 for c in content_colour))
-    l = min(l + _OPEN_STAGE_LIGHTNESS_LIFT, 1.0)
-    s = max(s - _OPEN_STAGE_SATURATION_DROP, 0.0)
+    l = l + (1.0 - l) * _OPEN_STAGE_LIGHTNESS_LIFT_FRACTION
+    s = s * _OPEN_STAGE_SATURATION_FACTOR
     r, g, b = colorsys.hls_to_rgb(h, l, s)
     return (round(r * 255), round(g * 255), round(b * 255))
 
@@ -850,6 +956,18 @@ def _attribution_line(role: str | None, model: str | None, width: int) -> str:
     return f"— {role_text}{tail}"
 
 
+def _quoted_activity(activity: str) -> str:
+    """The agent's activity, quoted for display — an empty string renders
+    as the words "no activity" rather than a bare pair of smart quotes
+    (sidebar-teamwork defect 5: idle is a legitimate state, Decision-058,
+    not a blank to paper over). The model layer already substitutes
+    `NO_LIVE_ACTIVITY` for every `Agent.activity` it builds, so this is
+    defensive rather than the primary guard — but it is the ONE place
+    every quote-building call site goes through, so the render side never
+    depends on the model never slipping one through."""
+    return f"“{activity or NO_LIVE_ACTIVITY}”"
+
+
 # The floor a squeezed quote is still allowed to shrink to in the tight
 # rung (`tight_line_parts`) before the role is given up on — small enough
 # to still read as "a quote" (opening mark, at least one character,
@@ -866,7 +984,7 @@ def tight_line_parts(activity: str, role: str | None, width: int) -> tuple[str, 
     `_truncate`'s ellipsis, to make room for the role, not the other way
     round). `shown_quote` alone is never truncated below the plain quote
     unless making room for the role actually requires it."""
-    quote = f"“{activity}”"
+    quote = _quoted_activity(activity)
     if not role:
         return _truncate(quote, width), ""
     role_text = _role_text(role)
@@ -892,9 +1010,9 @@ def identity_block(activity: str, role: str | None, model: str | None,
     callers prepend that uniformly; the attribution line's extra
     `_ATTRIBUTION_INDENT` beneath the quote is already baked in."""
     if not role:
-        return [f"“{activity}”"]
+        return [_quoted_activity(activity)]
     if expand:
-        quote = f"“{activity}”"
+        quote = _quoted_activity(activity)
         attribution_width = max(width - len(_ATTRIBUTION_INDENT), 0)
         return [quote, _ATTRIBUTION_INDENT + _attribution_line(role, model, attribution_width)]
     return [tight_line(activity, role, width)]
@@ -1156,6 +1274,18 @@ def _assign_task_colours(
     return assigned
 
 
+def _sole_same_named_task(feature: Feature) -> Task | None:
+    """The feature's one task, when it is the ONLY task and shares the
+    feature's exact name — the case a name-drop applies to (sidebar-
+    teamwork defect 4: with one task of the same name, the feature's own
+    band and the task row directly beneath it repeated the identical
+    string). None otherwise, including when the feature simply has no
+    tasks yet."""
+    if len(feature.tasks) == 1 and feature.tasks[0].name == feature.name:
+        return feature.tasks[0]
+    return None
+
+
 def _feature_rows(feature: Feature, repo_name: str, depth: int) -> list[Row]:
     target = f"{repo_name}{TARGET_SEPARATOR}{feature.name}"
     rows = [Row(depth=depth, kind="feature", target=target, label=feature.name,
@@ -1163,9 +1293,17 @@ def _feature_rows(feature: Feature, repo_name: str, depth: int) -> list[Row]:
     if _feature_collapsed(feature):
         return rows
     task_colours = _assign_task_colours(_repo_hue(repo_name), feature.feature_id, feature.tasks)
+    dropped_name_task = _sole_same_named_task(feature)
     for task in feature.tasks:
-        rows.extend(_task_rows(task, target, depth + 1,
-                                task_colour=task_colours.get(task.task_id)))
+        task_rows = _task_rows(task, target, depth + 1,
+                                task_colour=task_colours.get(task.task_id))
+        if task is dropped_name_task:
+            # NAME-DROP, not a row-drop (Decision-106: nothing is hidden
+            # except by the two collapses) — the task row still carries
+            # its own glyph, progress circle and accordion; only the
+            # string identical to the feature's own name above it drops.
+            task_rows[0].label = ""
+        rows.extend(task_rows)
     return rows
 
 
@@ -1234,12 +1372,33 @@ def _row_text(row: Row) -> str:
 
 
 def _truncate(text: str, width: int) -> str:
-    """Hard-slice to `width`, but a truncated string ends with an ellipsis
-    (sidebar-polish item 8) rather than a hard cut — the ellipsis itself
-    counts toward the width budget, never overflowing it."""
-    if width <= 0 or len(text) <= width:
-        return text[:width] if width > 0 else text
-    return text[:width - 1] + ELLIPSIS
+    """THE single truncation rule for every row kind (feature, task,
+    subagent, header, quote alike — sidebar-teamwork defect 1: a feature
+    row and a task row used to disagree, one cutting bare and one with an
+    ellipsis; every caller now goes through this one function instead).
+
+    `width` is TERMINAL CELLS, not characters — measured via `_cell_width`,
+    never `len()`, because these strings carry role emoji and other
+    East-Asian-Wide glyphs (the ❌ failed glyph is one) that occupy two
+    cells apiece; slicing by character count alone can both overflow the
+    pane edge and land the cut mid-glyph. A string that already fits is
+    returned unchanged; one that doesn't is cut and ends with an ellipsis,
+    which itself counts toward the budget so the result never overflows."""
+    if width <= 0:
+        return ""
+    if _cell_width(text) <= width:
+        return text
+    ellipsis_width = _cell_width(ELLIPSIS)
+    budget = max(width - ellipsis_width, 0)
+    kept: list[str] = []
+    used = 0
+    for ch in text:
+        ch_width = _cell_width(ch)
+        if used + ch_width > budget:
+            break
+        kept.append(ch)
+        used += ch_width
+    return "".join(kept) + ELLIPSIS
 
 
 def _feature_row_layout(
@@ -1258,13 +1417,18 @@ def _feature_row_layout(
     the same as an absent badge. The parameter itself stays (rather than
     being deleted) purely so `FeatureRowLayoutTests` can keep asserting on
     the tail-composition math directly; nothing in the live render path
-    ever passes an int here any more."""
+    ever passes an int here any more.
+
+    Every measurement here is `_cell_width`, not `len()` — `glyph` is
+    often a status emoji (e.g. the failed ❌, East-Asian-Wide, two cells
+    for one character) and undercounting it by one cell is exactly what
+    let a feature row overflow the pane edge (sidebar-teamwork defect 1)."""
     pct_text = f"{pct}%" if pct is not None else ""
     badge_text = f"{badge} " if badge else ""
-    tail_len = len(badge_text) + len(pct_text)
-    budget_for_name = max(width - len(glyph) - 1 - tail_len, 0)
-    shown_name = name if len(name) <= budget_for_name else _truncate(name, budget_for_name)
-    used = len(glyph) + 1 + len(shown_name) + tail_len
+    tail_len = _cell_width(badge_text) + _cell_width(pct_text)
+    budget_for_name = max(width - _cell_width(glyph) - 1 - tail_len, 0)
+    shown_name = name if _cell_width(name) <= budget_for_name else _truncate(name, budget_for_name)
+    used = _cell_width(glyph) + 1 + _cell_width(shown_name) + tail_len
     pad_width = max(width - used, 0)
     return glyph, shown_name, pad_width, badge_text, pct_text
 
@@ -1286,11 +1450,15 @@ def _task_row_layout(
     always survives truncation intact; the NAME is what ellipsises when
     the row is too narrow (operator ruling, 2026-07-26: "a truncated name
     still reads, a truncated number misleads" — the same holds for the
-    progress circle)."""
+    progress circle).
+
+    Measured in `_cell_width`, not `len()` — same reasoning as
+    `_feature_row_layout`, whose glyph vocabulary (STATUS_EMOJI) this row
+    shares."""
     tail = f" {progress}" if progress else ""
-    budget_for_name = max(width - len(glyph) - 1 - len(tail), 0)
-    shown_name = name if len(name) <= budget_for_name else _truncate(name, budget_for_name)
-    used = len(glyph) + 1 + len(shown_name) + len(tail)
+    budget_for_name = max(width - _cell_width(glyph) - 1 - _cell_width(tail), 0)
+    shown_name = name if _cell_width(name) <= budget_for_name else _truncate(name, budget_for_name)
+    used = _cell_width(glyph) + 1 + _cell_width(shown_name) + _cell_width(tail)
     pad_width = max(width - used, 0)
     return glyph, shown_name, pad_width, tail
 
@@ -1823,7 +1991,14 @@ def _feature_row_cell_styles(
     `compose_feature_row_text` can never disagree on where a segment
     starts. A "muted" look (idle/stale body, the tail/badge) is
     `_muted_toward(colour, fill_rgb)` — never `curses.A_DIM` (see that
-    function's docstring for why)."""
+    function's docstring for why). Every colour returned is then run
+    through `ensure_contrast` against `fill_rgb` (operator hard rule,
+    2026-07-27: contrast is calculated, never eyeballed) — muting softens
+    a colour toward the band first, as intended, but never past the point
+    of actually being readable; `_draw_step_row` already did this and
+    `_draw_feature_row` not doing the same was the proximate cause of a
+    feature row reading as dark grey-purple text on a dark purple band, at
+    the limit of legibility."""
     _glyph, shown_name, pad_width, badge_text, pct_text = layout
     muted_body = status not in ("working", "done")
     glyph_colour = _feature_glyph_colour(status, accent)
@@ -1833,6 +2008,10 @@ def _feature_row_cell_styles(
         name_colour = _muted_toward(name_colour, fill_rgb)
     tail_colour = _muted_toward(MUTED, fill_rgb)
     badge_colour = _muted_toward(AMBER, fill_rgb)
+    glyph_colour = ensure_contrast(glyph_colour, fill_rgb, _CONTRAST_MIN_MARK)
+    name_colour = ensure_contrast(name_colour, fill_rgb, _CONTRAST_MIN_TEXT)
+    tail_colour = ensure_contrast(tail_colour, fill_rgb, _CONTRAST_MIN_MARK)
+    badge_colour = ensure_contrast(badge_colour, fill_rgb, _CONTRAST_MIN_MARK)
     return (
         [glyph_colour]
         + [name_colour] * (1 + len(shown_name))
@@ -1953,7 +2132,7 @@ def _draw_identity_block(
                          colours.pair(role_fg, bg, italic=True) | reverse_attr)
         return y + 1
 
-    quote = f"“{row.activity}”"
+    quote = _quoted_activity(row.activity)
     _safe_addstr(stdscr, y, 0, _truncate(indent + quote, width),
                  colours.pair(quote_fg, bg, italic=True) | reverse_attr)
     if not row.role:
