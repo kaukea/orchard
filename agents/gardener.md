@@ -249,6 +249,10 @@ wall-clock than builds; only the squash-merge and the ingest commit truly serial
   countersign/self-teardown runs in parallel; only WORKTREE REMOVAL needs the
   landscaper dead, and the groundskeeper retries that final step until the window is
   gone rather than waiting to start.
+- **Before acting on a RECORDED sign-off** (redispatch, detected-death closes), check
+  the record establishes the judged surface was the branch build (Decision-112); a
+  recorded `THAT IS ALL` over a stale surface re-opens the gate instead of firing the
+  close.
 - **The ingest is STAGED, not re-derived** (operator design, 2026-07-22): the
   landscaper stages decision entries (unnumbered, final format) and its result in
   the sidecar; the groundskeeper folds them into the squash mechanically — numbers

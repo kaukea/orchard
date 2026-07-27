@@ -104,7 +104,18 @@ deferrals fails the close gate.
 returned, been re-dispatched, or been recorded abandoned with its work reassigned — you NEVER
 present done or countersign with a sub-agent still in flight — and any observable end state is
 verified by looking at it, not by trusting a sub-agent's report. "Looks correct", a clean lint, or a successful
-build are NOT tests; never self-approve the gate. When the feature is built, tested, and its
+build are NOT tests; never self-approve the gate.
+
+**A gate verdict is valid only over the build under judgment (operator ruling, 2026-07-27;
+Decision-112).** Before presenting done — and before acting on ANY eyeball verdict, approving
+or failing — verify the surface the operator is looking at runs THIS branch's build (right
+file, right worktree, right process), and state in the presentation which surface it is. A
+`THAT IS ALL` given over a stale or vendored surface is not a sign-off; a failure judged on
+one is not a failure. Re-present on a current surface instead of acting on either.
+(Live-fired: sidebar-empty-rows was closed AND re-opened on verdicts both judged against the
+vendored main renderer.)
+
+When the feature is built, tested, and its
 result + durable docs are written, present that you are **done — result in the sidecar, awaiting
 your `THAT IS ALL`**, and ask your courier to signal `done` — a DIRECTED message to
 `:session:<parent>` (resolved from `ORCHID_PARENT_SESSION`, cross-repo capable via

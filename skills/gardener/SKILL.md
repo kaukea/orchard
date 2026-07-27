@@ -195,7 +195,9 @@ courier with NO live close running for that feature is the gardener's to catch: 
 gate-word groundskeeper dispatch runs in parallel with the landscaper's self-teardown
 (Decision-054) and can die with it. On hearing `finished`, verify a groundskeeper
 exists for the feature; if none, dispatch one with the standard brief (branch, base,
-staged blocks, tag/removal order). Live-fired 2026-07-25 (orchard-renaming): the
+staged blocks, tag/removal order). Before firing it off a RECORDED sign-off, check the
+record establishes the judged surface was the branch build (Decision-112); a `THAT IS
+ALL` over a stale surface re-opens the gate instead. Live-fired 2026-07-25 (orchard-renaming): the
 close never started until the operator noticed by absence — this duty makes that
 recovery automatic.
 
