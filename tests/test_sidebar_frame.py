@@ -114,6 +114,48 @@ def _skip_extended_colour(codes: list[str], i: int) -> int:
     return i + 1
 
 
+def _has_attr_code(raw_line: str, code: str) -> bool:
+    """True when the bare SGR attribute `code` (e.g. "1" bold, "7" reverse)
+    appears as its OWN parameter somewhere on the line -- never a false hit
+    off a matching digit riding inside an extended colour sequence
+    ("38;2;r;g;b"/"48;2;r;g;b"), which `_skip_extended_colour` already
+    knows how to step over (same trap `_has_basic_red` guards against)."""
+    for codes in _sgr_code_lists(raw_line):
+        i = 0
+        while i < len(codes):
+            if codes[i] in ("38", "48"):
+                i = _skip_extended_colour(codes, i)
+                continue
+            if codes[i] == code:
+                return True
+            i += 1
+    return False
+
+
+def _last_truecolor_pair(
+    raw_line: str,
+) -> tuple[tuple[int, int, int] | None, tuple[int, int, int] | None]:
+    """(fg, bg) -- the LAST explicit truecolor foreground/background this
+    line's SGR codes set, walked the same extended-sequence-aware way as
+    `_has_attr_code`. A row generally carries one background for its whole
+    span (a feature band, a task's row, a step's content colour, an
+    open-block); the last-seen value is representative for that."""
+    fg = bg = None
+    for codes in _sgr_code_lists(raw_line):
+        i = 0
+        while i < len(codes):
+            if codes[i] in ("38", "48") and i + 1 < len(codes) and codes[i + 1] == "2":
+                rgb = tuple(int(v) for v in codes[i + 2:i + 5])
+                if codes[i] == "38":
+                    fg = rgb
+                else:
+                    bg = rgb
+                i += 5
+                continue
+            i += 1
+    return fg, bg
+
+
 def _has_basic_red(raw_line: str) -> bool:
     """True only for a literal basic-ANSI red code (31 fg / 41 bg) used as
     its own SGR attribute -- never a false hit off an R/G/B *value* of 31 or
@@ -262,6 +304,10 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
     def _capture(self) -> list[str]:
         return self._tmux("capture-pane", "-e", "-p", check=True).stdout.splitlines()
 
+    def _send_down(self, times: int) -> None:
+        for _ in range(times):
+            self._tmux("send-keys", "Down")
+
     def _looks_complete(self, lines: list[str]) -> bool:
         stripped = [_strip_sgr(line) for line in lines]
         return (any("orchids" in line for line in stripped)
@@ -401,6 +447,92 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
             if i in (working_idx, task_idx):
                 continue
             self.assertEqual(first[i], second[i], f"unexpected change on line {i}")
+
+    def test_dead_space_below_the_last_row_is_painted_not_left_blank(self) -> None:
+        # sidebar-teamwork defect 1: the draw loop used to stop the instant
+        # `rows` ran out, leaving whatever `stdscr.erase()` left behind (an
+        # unstyled void) for the rest of the pane's granted height. This
+        # fixture's own tree is well short of PANE_HEIGHT rows, so real
+        # dead space is guaranteed below the last content line -- every
+        # row in it must now carry an explicit background, painted in the
+        # current repo's own dim FILL hue, not bare terminal default.
+        self._launch()
+        lines = self._capture_when_ready()
+        stripped = [_strip_sgr(line) for line in lines]
+        last_content_idx = max(i for i, l in enumerate(stripped) if l.strip())
+        dead_rows = range(last_content_idx + 1, self.PANE_HEIGHT)
+        self.assertGreater(
+            len(dead_rows), 0,
+            "fixture fills the whole pane -- widen PANE_HEIGHT or trim the "
+            "fixture so this test can actually see dead space",
+        )
+        # `capture-pane -e` reconstructs the MINIMAL escape sequence that
+        # reproduces the pane's visual state, not a byte-for-byte replay of
+        # what curses wrote -- since every dead row shares the exact same
+        # fill colour, only the FIRST one carries its own explicit SGR code
+        # and the rest inherit it by not resetting (confirmed by comparing
+        # against the fix disabled: with the loop removed, NONE of these
+        # rows carry any SGR at all). The joined dead zone is checked as one
+        # continuous stream instead of line-by-line for that reason.
+        dead_zone_raw = "".join(lines[i] for i in dead_rows)
+        self.assertTrue(
+            _has_any_bg(dead_zone_raw),
+            f"no explicit background anywhere in the dead zone (lines "
+            f"{dead_rows.start}-{dead_rows.stop - 1}) -- the dead-space fill regressed",
+        )
+        self.assertFalse(
+            _has_attr_code(dead_zone_raw, "49"),
+            "an explicit reset-to-default background appeared inside the dead zone",
+        )
+
+    def test_selected_row_uses_bold_and_a_lifted_background_not_reverse_video(self) -> None:
+        # sidebar-teamwork defect 4: a selected row used to swap fg/bg via
+        # curses.A_REVERSE -- a straight swap that can do "very little
+        # work" on screen when the two tones already sit close together,
+        # and whose own readability was never checked. It is now a further
+        # LIFT of the row's own background toward white (`_selection_
+        # highlight`) paired with A_BOLD, re-run through the same contrast
+        # machinery every other colour in this file goes through. Measured
+        # on the real emitted SGR bytes of the DONE "bloomer v1" feature
+        # row, not asserted from reading the code.
+        self._launch()
+        before = self._capture_when_ready()
+        before_stripped = [_strip_sgr(line) for line in before]
+        done_idx = next(
+            i for i, l in enumerate(before_stripped) if "✓" in l and "bloomer v1" in l
+        )
+        self._send_down(done_idx)
+        after = self._capture_when_ready()
+        after_stripped = [_strip_sgr(line) for line in after]
+
+        self.assertEqual(
+            before_stripped[done_idx], after_stripped[done_idx],
+            "selecting a row must never change its own displayed TEXT",
+        )
+        self.assertFalse(
+            _has_attr_code(after[done_idx], "7"),
+            "selected row must not use reverse video (A_REVERSE / SGR 7)",
+        )
+        self.assertTrue(
+            _has_attr_code(after[done_idx], "1"),
+            "selected row must carry bold (A_BOLD / SGR 1)",
+        )
+
+        before_fg, before_bg = _last_truecolor_pair(before[done_idx])
+        after_fg, after_bg = _last_truecolor_pair(after[done_idx])
+        self.assertIsNotNone(after_bg, "selected row must paint an explicit background")
+        self.assertIsNotNone(before_bg, "the row must already carry its own band background")
+        self.assertNotEqual(
+            before_bg, after_bg,
+            "selection must visibly lift the row's own background, not leave it untouched",
+        )
+        self.assertIsNotNone(after_fg)
+        ratio = sidebar.contrast_ratio(after_fg, after_bg)
+        self.assertGreaterEqual(
+            ratio, sidebar._CONTRAST_MIN_MARK,
+            f"selected row's own text {after_fg} on lifted background {after_bg} "
+            f"measures {ratio:.3f}, below even the mark-level minimum",
+        )
 
 
 _ONCE_EXIT_RE = re.compile(r"ONCE_EXIT:(\d+)")

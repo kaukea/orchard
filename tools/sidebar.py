@@ -969,28 +969,45 @@ def _quoted_activity(activity: str) -> str:
 
 
 # The floor a squeezed quote is still allowed to shrink to in the tight
-# rung (`tight_line_parts`) before the role is given up on — small enough
-# to still read as "a quote" (opening mark, at least one character,
-# ellipsis/closing mark), never zero.
-_MIN_TIGHT_QUOTE_WIDTH = 3
+# rung (`tight_line_parts`) before the ROLE is given up on instead
+# (sidebar-teamwork defect 2, 2026-07-27: at 29 columns an agent's activity
+# was truncating to almost nothing — "no ac… — 🌿 landscaper" — because the
+# role's emoji+NBSP+word took a fixed share off the top and the quote got
+# whatever was left, unconditionally, down to a near-useless sliver. The
+# quote is the one genuinely LIVE piece of information on the line; the
+# role is stable context already visible via the row's own colour lineage
+# (Decision-110) — so the floor is no longer a bare few cells, it is
+# `_TIGHT_QUOTE_FLOOR`, at least half of the row's own budget. Below that
+# floor the role tail drops instead, same "none" rung `identity_block`'s
+# own docstring already names — this raises how EASILY that rung is
+# reached, it does not invent it.
+_MIN_TIGHT_QUOTE_WIDTH = 8
+
+
+def _tight_quote_floor(width: int) -> int:
+    """The minimum cell budget the quote must keep before the role tail is
+    even considered — half of this row's own width, floored at
+    `_MIN_TIGHT_QUOTE_WIDTH` so a very narrow row still asks for something
+    (never zero, never a single character)."""
+    return max(width // 2, _MIN_TIGHT_QUOTE_WIDTH)
 
 
 def tight_line_parts(activity: str, role: str | None, width: int) -> tuple[str, str]:
     """(shown_quote, tail) for the tight (1-line) rung — `tail` is
-    "" — <role>" once there is room for it, "" only once even a
-    minimally-squeezed quote plus the role still doesn't fit `width`
-    (operator ruling, 2026-07-26: "the role is the LAST thing to drop,
-    never the first" — the ACTIVITY text is what shrinks first, via
-    `_truncate`'s ellipsis, to make room for the role, not the other way
-    round). `shown_quote` alone is never truncated below the plain quote
-    unless making room for the role actually requires it."""
+    " — <role>" once the quote can keep at least `_tight_quote_floor(width)`
+    cells alongside it, "" once giving the role room would crush the quote
+    below that floor (sidebar-teamwork defect 2: the quote is what a reader
+    scans this line for, so it is the role that yields when both can't fit
+    comfortably, not the other way round). `shown_quote` alone is never
+    truncated below the plain quote unless making room for the role
+    actually requires it."""
     quote = _quoted_activity(activity)
     if not role:
         return _truncate(quote, width), ""
     role_text = _role_text(role)
     tail = f" — {role_text}"
     quote_budget = width - _cell_width(tail)
-    if quote_budget >= _MIN_TIGHT_QUOTE_WIDTH:
+    if quote_budget >= _tight_quote_floor(width):
         shown_quote = quote if _cell_width(quote) <= quote_budget else _truncate(quote, quote_budget)
         return shown_quote, tail
     return _truncate(quote, width), ""
@@ -2036,24 +2053,31 @@ def _feature_row_cell_styles(
 def _draw_feature_row(
     stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache,
 ) -> None:
+    """`selected` swaps in `_selection_highlight` for the row's own band
+    colour (sidebar-teamwork defect 4) rather than `curses.A_REVERSE` —
+    `_feature_row_cell_styles` already runs every foreground it returns
+    through `ensure_contrast` against `fill_rgb`, so substituting the
+    lifted band before that call keeps every pair legible automatically."""
     hue = _repo_hue(row.repo_name)
     status = row.status
     glyph = STATUS_EMOJI.get(status, "○")
     layout = _feature_row_layout(glyph, row.label, None, width, None)
     text = compose_feature_row_text(glyph, row.label, None, width)
     fill_rgb = _feature_fill_colour(status, hue)
+    if selected:
+        fill_rgb = _selection_highlight(fill_rgb)
     styles = _feature_row_cell_styles(layout, status, hue["accent"], fill_rgb)
 
-    reverse = curses.A_REVERSE if selected else 0
+    attr_extra = curses.A_BOLD if selected else 0
     for col, ch in enumerate(text[:width]):
         fg = styles[col] if col < len(styles) else _muted_toward(MUTED, fill_rgb)
-        attr = colours.pair(fg, fill_rgb) | reverse
+        attr = colours.pair(fg, fill_rgb) | attr_extra
         _safe_addch(stdscr, y, col, ch, attr)
     # The band covers the FULL row width, including any trailing columns
     # past the composed text (name shorter than the pane) — a feature row
     # reads as a solid band, not a highlighted word.
     for col in range(len(text), width):
-        _safe_addch(stdscr, y, col, " ", colours.pair(_muted_toward(MUTED, fill_rgb), fill_rgb) | reverse)
+        _safe_addch(stdscr, y, col, " ", colours.pair(_muted_toward(MUTED, fill_rgb), fill_rgb) | attr_extra)
 
 
 # --------------------------------------------------------------------------
@@ -2105,8 +2129,29 @@ def _open_block_bg(row: Row) -> tuple[int, int, int] | None:
     return open_stage_colour(content_colour_base(row.task_colour))
 
 
+# The SELECTED row's own highlight (sidebar-teamwork defect 4, 2026-07-27):
+# a further lift toward WHITE from whatever background the row already
+# carries (plain black when it carries none of its own), rather than
+# `curses.A_REVERSE` — a straight foreground/background swap did "very
+# little work" on screen, because on this file's own truecolor bands two
+# already-similar tones can swap onto each other and read as unchanged, and
+# a swapped pair's OWN readability was never separately checked (only the
+# un-swapped direction ever ran through `ensure_contrast`). A colour LIFT
+# is checked exactly the same way every other derived colour in this file
+# already is — every caller re-runs `ensure_contrast` against the LIFTED
+# background it actually painted, so the guarantee holds by construction,
+# not by assuming a swap preserves it. Paired with `curses.A_BOLD` for a
+# second, colour-independent cue — safe over a custom background; Decision-
+# 111 found the corruption specific to `A_DIM`, never bold.
+_SELECTION_LIFT_FRACTION = 0.30
+
+
+def _selection_highlight(bg: tuple[int, int, int] | None) -> tuple[int, int, int]:
+    return lerp(bg if bg is not None else (0, 0, 0), WHITE, _SELECTION_LIFT_FRACTION)
+
+
 def _draw_identity_block(
-    stdscr, y: int, width: int, row: Row, reverse: bool, expand: bool, colours: _ColourCache,
+    stdscr, y: int, width: int, row: Row, selected: bool, expand: bool, colours: _ColourCache,
 ) -> int:
     """Draws the agent's quote + subordinate attribution (see
     `identity_block`'s docstring for the exact ladder) — 1 or 2 curses rows
@@ -2120,11 +2165,17 @@ def _draw_identity_block(
     text on the dimmed background is a hard requirement, achieved by
     adjusting the foreground, never by dimming the content itself — so the
     role/model text below drops its old A_DIM attribute in favour of an
-    explicitly contrast-safe colour)."""
+    explicitly contrast-safe colour). `selected` swaps in `_selection_
+    highlight` for the block's own background (sidebar-teamwork defect 4)
+    rather than `curses.A_REVERSE` — always painted, even when this row had
+    no open-block background of its own, so the pick is unmistakable
+    whatever row kind it lands on."""
     bg = _open_block_bg(row)
+    if selected:
+        bg = _selection_highlight(bg)
     indent = _BLOCK_CONTENT_INDENT
     content_width = max(width - len(indent), 0)
-    reverse_attr = curses.A_REVERSE if reverse else 0
+    attr_extra = curses.A_BOLD if selected else 0
     block_bg = bg if bg is not None else (0, 0, 0)
     quote_fg = ensure_contrast(TEXT, block_bg, _CONTRAST_MIN_TEXT)
     role_fg = ensure_contrast(MUTED, block_bg, _CONTRAST_MIN_TEXT)
@@ -2137,16 +2188,16 @@ def _draw_identity_block(
     if not expand:
         shown_quote, tail = tight_line_parts(row.activity, row.role, content_width)
         _safe_addstr(stdscr, y, 0, _truncate(indent + shown_quote, width),
-                     colours.pair(quote_fg, bg, italic=True) | reverse_attr)
+                     colours.pair(quote_fg, bg, italic=True) | attr_extra)
         if tail:
             x = len(indent) + _cell_width(shown_quote)
             _safe_addstr(stdscr, y, x, _truncate(tail, max(width - x, 0)),
-                         colours.pair(role_fg, bg, italic=True) | reverse_attr)
+                         colours.pair(role_fg, bg, italic=True) | attr_extra)
         return y + 1
 
     quote = _quoted_activity(row.activity)
     _safe_addstr(stdscr, y, 0, _truncate(indent + quote, width),
-                 colours.pair(quote_fg, bg, italic=True) | reverse_attr)
+                 colours.pair(quote_fg, bg, italic=True) | attr_extra)
     if not row.role:
         return y + 1
     y += 1
@@ -2155,16 +2206,16 @@ def _draw_identity_block(
     x = 0
     x += len(indent) + len(_ATTRIBUTION_INDENT)
     prefix = "— "
-    _safe_addstr(stdscr, y, x, prefix, colours.pair(role_fg, bg) | reverse_attr)
+    _safe_addstr(stdscr, y, x, prefix, colours.pair(role_fg, bg) | attr_extra)
     x += len(prefix)
-    _safe_addstr(stdscr, y, x, role_text, colours.pair(role_fg, bg, italic=True) | reverse_attr)
+    _safe_addstr(stdscr, y, x, role_text, colours.pair(role_fg, bg, italic=True) | attr_extra)
     x += _cell_width(role_text)
     if model_text:
         sep = " · "
-        _safe_addstr(stdscr, y, x, sep, colours.pair(role_fg, bg) | reverse_attr)
+        _safe_addstr(stdscr, y, x, sep, colours.pair(role_fg, bg) | attr_extra)
         x += len(sep)
         model_fg = ensure_contrast(model_tier_colour(row.model), block_bg, _CONTRAST_MIN_TEXT)
-        _safe_addstr(stdscr, y, x, model_text, colours.pair(model_fg, bg, italic=True) | reverse_attr)
+        _safe_addstr(stdscr, y, x, model_text, colours.pair(model_fg, bg, italic=True) | attr_extra)
     return y + 1
 
 
@@ -2177,19 +2228,23 @@ def _draw_subagent_row(
     """A subagent's own line — presence glyph (`_row_text`'s existing
     scheduled/doing/done/failed vocabulary) + label, on the owning step's
     open-block background (see `_draw_identity_block`'s docstring for why),
-    full width, contrast-checked."""
-    reverse = curses.A_REVERSE if selected else 0
+    full width, contrast-checked. `selected` swaps in `_selection_highlight`
+    for the block's own background (sidebar-teamwork defect 4), same as
+    `_draw_identity_block`."""
     bg = _open_block_bg(row)
+    if selected:
+        bg = _selection_highlight(bg)
     block_bg = bg if bg is not None else (0, 0, 0)
     fg = ensure_contrast(
         _SUBAGENT_TERMINAL_FG.get(row.status, TEXT), block_bg, _CONTRAST_MIN_TEXT,
     )
+    attr_extra = curses.A_BOLD if selected else 0
     if bg is not None:
         _fill_row_bg(stdscr, y, width, bg, colours)
     glyph = (STATUS_EMOJI[row.status] if row.status in TERMINAL_TASK_STATUSES
              else _SUBAGENT_LIVE_GLYPH.get(row.status, SUBAGENT_GLYPH))
     text = _truncate(f"{_BLOCK_CONTENT_INDENT}{glyph} {row.label}", width)
-    _safe_addstr(stdscr, y, 0, text, colours.pair(fg, bg) | reverse)
+    _safe_addstr(stdscr, y, 0, text, colours.pair(fg, bg) | attr_extra)
     return y + 1
 
 
@@ -2227,9 +2282,15 @@ def _draw_task_row(
     band). A terminal task's own green/"failed" colour always wins over
     its Ct tint, same exclusivity rule as before. The status glyph itself
     is `_task_row_glyph` (operator ruling, 2026-07-27) — cycling while
-    working, static otherwise."""
-    reverse = curses.A_REVERSE if selected else 0
+    working, static otherwise. `selected` swaps in `_selection_highlight`
+    for the row's own background B (sidebar-teamwork defect 4) rather than
+    `curses.A_REVERSE` — every foreground below is already run through
+    `ensure_contrast` against `bg`, so substituting the lifted background
+    before those calls keeps the guarantee automatically."""
     bg = hue["fill"]
+    if selected:
+        bg = _selection_highlight(bg)
+    attr_extra = curses.A_BOLD if selected else 0
     if row.status == "done":
         bar_fg = GREEN
     elif row.status == "failed":
@@ -2237,13 +2298,13 @@ def _draw_task_row(
     else:
         bar_fg = row.task_colour or feature_colour_base(hue)
     bar_fg = ensure_contrast(bar_fg, bg, _CONTRAST_MIN_MARK)
-    _safe_addstr(stdscr, y, 0, _TASK_BAR_GLYPH, colours.pair(bar_fg, bg) | reverse)
+    _safe_addstr(stdscr, y, 0, _TASK_BAR_GLYPH, colours.pair(bar_fg, bg) | attr_extra)
     glyph = _task_row_glyph(row.status, tick)
     avail = max(width - 2, 0)
     body = _truncate(compose_task_row_text(glyph, row.label, row.progress_glyph, avail), avail)
     text_fg = GREEN if row.status == "done" else MUTED if row.status == "failed" else TEXT
     text_fg = ensure_contrast(text_fg, bg, _CONTRAST_MIN_TEXT)
-    _safe_addstr(stdscr, y, 2, body, colours.pair(text_fg, bg) | reverse)
+    _safe_addstr(stdscr, y, 2, body, colours.pair(text_fg, bg) | attr_extra)
     return y + 1
 
 
@@ -2307,15 +2368,21 @@ def _draw_step_row(
     SAME content colour rather than a separately-darkened one. No room/no
     motion just means a static (but still correctly coloured) block
     (ANIMATION CAVEAT: a missing animation must never mean a missing
-    step)."""
-    reverse = curses.A_REVERSE if selected else 0
+    step). `selected` swaps in `_selection_highlight` for the step's own
+    content colour (sidebar-teamwork defect 4) rather than `curses.
+    A_REVERSE` — every foreground below is already run through `ensure_
+    contrast` against `content`/the sweep's own `bg`, so substituting the
+    lifted colour before those calls keeps the guarantee automatically."""
     content = content_colour_base(row.task_colour or MUTED)
+    if selected:
+        content = _selection_highlight(content)
+    attr_extra = curses.A_BOLD if selected else 0
     text = _step_row_display_text(row, width)
 
     if row.status != "active":
         fg = ensure_contrast(_STEP_LINE_COLOUR.get(row.status, MUTED), content, _CONTRAST_MIN_TEXT)
         for col, ch in enumerate(text):
-            _safe_addch(stdscr, y, col, ch, colours.pair(fg, content) | reverse)
+            _safe_addch(stdscr, y, col, ch, colours.pair(fg, content) | attr_extra)
         return y + 1
 
     if row.live:
@@ -2324,11 +2391,11 @@ def _draw_step_row(
         for col, ch in enumerate(text):
             bg = band_column_colour(col, pos, width, content) or content
             fg = ensure_contrast(TEXT, bg, _CONTRAST_MIN_TEXT)
-            _safe_addch(stdscr, y, col, ch, colours.pair(fg, bg) | reverse)
+            _safe_addch(stdscr, y, col, ch, colours.pair(fg, bg) | attr_extra)
     else:
         fg = ensure_contrast(TEXT, content, _CONTRAST_MIN_TEXT)
         for col, ch in enumerate(text):
-            _safe_addch(stdscr, y, col, ch, colours.pair(fg, content) | reverse)
+            _safe_addch(stdscr, y, col, ch, colours.pair(fg, content) | attr_extra)
     return y + 1
 
 
@@ -2384,6 +2451,20 @@ def _draw(
             attr |= curses.A_REVERSE
         _safe_addstr(stdscr, y, 0, text, attr)
         y += 1
+
+    # DEAD-SPACE FILL (sidebar-teamwork defect 1): the loop above only ever
+    # stops short of `max_y` once `rows` itself has run out — the slice
+    # `rows[offset:offset + max_y]` already claims every row the viewport
+    # can hold, so reaching here with `y < max_y` means there is genuinely
+    # nothing further to show, never a row scrolled past. `stdscr.erase()`
+    # already blanked those remaining rows to nothing; paint them in the
+    # current repo's own dim FILL hue instead (the same tone a feature row's
+    # band and a task row's own bar background already use) so the pane's
+    # surface claims the full height it was granted rather than stopping in
+    # a bare, unstyled void the moment its content does.
+    for fill_y in range(y, max_y):
+        _fill_row_bg(stdscr, fill_y, max_x, hue["fill"], colours)
+
     stdscr.refresh()
 
 

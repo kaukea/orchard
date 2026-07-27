@@ -313,6 +313,20 @@ serves every caller, replacing two that disagreed about the ellipsis. A feature 
 identically-named task keeps both rows but prints the name once. An agent with no status says
 it is doing nothing rather than showing an empty pair of quotes.
 
+The pane now earns the height it is given, and a narrow one stops sacrificing the only live
+thing on the line. Rows below the last one were left as bare terminal default, so the surface
+simply stopped where its content did; they are painted in the repository's own dim tone
+instead. At twenty-nine columns an agent's activity was being crushed to almost nothing —
+`"scaffoldi… — landscaper` — because the role took a fixed share off the top and the activity
+got whatever remained; the activity now keeps at least half the row and it is the role that
+drops instead, since the role is already visible in the row's colour. The selected row was
+inverted, which on this renderer's own bands could swap two similar tones onto each other and
+read as no change at all; it now lifts its own background toward white and adds bold, and
+because the lift happens before every contrast check rather than after, legibility is
+preserved by construction. That was measured rather than assumed: every row kind's colours
+were swept in both states, and the worst case found was 4.50 for text and 3.01 for marks,
+both above the minimums the sidebar enforces everywhere else.
+
 Separately, and more seriously: this repository had been listing itself as a package source,
 so it installed a clone of itself and every agent, skill, hook and tool under `.claude/`
 resolved into that clone rather than into the repository. The clone sat several commits
