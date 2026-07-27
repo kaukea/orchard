@@ -266,15 +266,155 @@ inheritance as load-bearing rather than defective. The model was documented; the
 was not reading it. Operator, verbatim: *"which is why I was saying that the content of
 the events was what mattered to build a correct tree."*
 
+## Changelog entry
+
+Staged verbatim for the gardener to place at ingest (Decision-034). Not written to
+`CHANGELOG.md` by this branch.
+
+### The fleet sidebar shows the real tree, and the repo stops running yesterday's code
+
+The sidebar built its display by folding events on session id. A subagent inherits its
+parent's session id verbatim — deliberately, since that is how a message sidecar resolves to
+its parent's mailbox without being told who its parent is — so folding on it collapsed
+distinct things into one record, last writer winning. That single mistake produced the raw
+session UUIDs where names belong, every feature and task pair printed twice, and activity
+lines with no owner. They looked like three defects and were one.
+
+The tree is now assembled from the content of the events, as the operator specified it: a
+project is the repository; a feature exists in metadata only and is never a session or an
+agent; a feature holds many tasks; a task runs through five stages; an agent is identified by
+its session id, its parent and its name together, and a stage holds a list of agents rather
+than a single slot. The line showing what an agent is doing is a position in the stage, not an
+entity — the next agent to run writes into the same place. Subagents come from delegation
+events, have no session of their own, and report only that they were planned, are running, or
+are done. The message courier is not an agent and never earns a row; it answers identity and
+status for its parent so the parent is never woken, so its posts are its parent's data and
+merge into it.
+
+Colour now carries lineage. The fallback that assigns a feature its colour returned the
+project's own accent unchanged, so every feature in a repository resolved to the same base and
+the tree read flat; sibling features measured three units apart where they want forty. Colour
+is derived in three grades — feature, then task, then content — deterministically from
+identity so it never changes as the pane repaints, and carries identity alone: no ramp, no
+ladder, nothing implying sequence or priority.
+
+Every foreground and background pair on screen is now measurably legible. The contrast helper
+chose between white and black by testing whether the background's luminance fell below one
+half, but the contrast formula is asymmetric and its real crossover sits near 0.18, so for
+most derived backgrounds it picked the wrong extreme and returned a colour that still failed.
+The feature row never called it at all, the project header never called it at all, and the
+task row's name was drawn with no background at all — inheriting whatever had been drawn
+before it. All three are fixed and the result measured off the bytes the terminal received:
+twenty-four text pairs, none below the 4.5 minimum; thirty marks, none below 3.0.
+
+Rows no longer overflow their pane. The layout charged an emoji one cell while it occupies
+two, so a row exceeded its width by exactly one column. One width-aware truncation rule now
+serves every caller, replacing two that disagreed about the ellipsis. A feature with a single
+identically-named task keeps both rows but prints the name once. An agent with no status says
+it is doing nothing rather than showing an empty pair of quotes.
+
+Separately, and more seriously: this repository had been listing itself as a package source,
+so it installed a clone of itself and every agent, skill, hook and tool under `.claude/`
+resolved into that clone rather than into the repository. The clone sat several commits
+behind, across a whole transport rewrite, so editing the code here changed nothing about what
+actually ran until somebody happened to sync. Because those links were absolute, no worktree
+could run its own code either. A source repository consuming a vendored copy of its own output
+is circular; it is removed rather than pinned, the links now point at this repository's own
+files, and a migration converges any other clone.
+
+## Readme delta
+
+None. Everything in this round is internal fleet tooling — the sidebar renderer, its model
+layer, an event simulator, and the package-installation wiring. No user-facing behaviour, no
+new command, no changed flag or build step. `README.md` describes the repository as a data
+package of agents, skills and rule files, and that description is still exactly true.
+
+## Architecture determination
+
+`ARCHITECTURE.md` DOES require an edit; three triggers fired and each is evidenced in the
+diff:
+
+- **A component was added.** `tools/sidebar_model.py` (the model layer, 1111 lines) and
+  `tools/sidebar_sim.py` (the fleet event simulator, 594 lines). `tools/sidebar.py` drops
+  from 3056 lines on `main` to **2579** — the measured figure, not this sidecar's earlier
+  "~2300" estimate.
+- **A module boundary changed.** The renderer was one file doing event folding, model
+  building, text composition, colour and curses drawing; the model is now a separate module
+  the renderer imports, one-directionally (`tools/sidebar.py:171`). The model layer never
+  imports curses and never formats a string for a screen; the renderer owns everything
+  downstream of a `Fleet`. **Nuance worth recording: `tools/sidebar_model.py` is not simply
+  "extracted" as though the name were new** — a module of that exact name existed before as
+  the old courier-inbox reader and was deleted in the bus-finishing rewrite (`e4e3841`). The
+  current file reuses a freed name for a different job.
+- **How components connect changed.** `.claude/**` no longer resolves into a vendored clone
+  of this repository; every agent, skill, hook and tool now resolves to this repository's own
+  files, and the repository is no longer a source of itself.
+
+The edit is made on this branch, not staged — architecture stays with the branch.
+
+## Returned to the gardener (NOT fixed in this round)
+
+Each was found during this feature and is out of its scope. None is fixed here.
+
+1. **`orchard:agent:status` events carry `repo: null` and `project: null`.** Status is the
+   one family the operator's own specification scopes to the PROJECT, and it is the one
+   family arriving without a project on it. Observed directly in the live runtime tree.
+   Producer-side; transport is out of scope by ruling.
+2. **The test suite writes into the live runtime tree.** `$XDG_RUNTIME_DIR/orchard/projects/`
+   held 1094 directories, of which 1091 were `tmp*` leakage from test runs. The operator's
+   sidebar walks all of them on every model rebuild. Test isolation defect.
+3. **No agent charter maps a role to the `ideation` stage.** Only bloomer, groomer, sower,
+   landscaper and groundskeeper carry a `step:` key in their frontmatter. Decision-107
+   states "gardener in ideation" as the worked example of the role→step derivation, but the
+   gardener charter does not carry it, so the first of the five stages is unreachable from
+   any role that exists today.
+4. **`tools/message.schema.json` is stale relative to the real writer.** It marks `id` and
+   `ts` as required on every envelope, but topic posts do not carry them, as the captured
+   fixtures in `tests/fixtures/` show. Those fixtures are ground truth per their own
+   `PROVENANCE.md`, so the schema is the party that is wrong.
+5. **The courier posts identity events at all.** Operator ruling this round: the courier is
+   not an agent, it is transport, and it should not be announcing identity. The renderer
+   filters it out, which fixes the display; the producer behaviour is untouched.
+0. **A SQUASH-MERGE DROPPED TWO IMPLEMENTED FEATURES, and their tests are the only surviving
+   evidence.** This is the most consequential finding of the round and it is not a sidebar
+   defect at all.
+   - `courier.merge_feature_marker` / `write_feature_marker` — the durable feature-marker
+     WRITER — existed at `adcc44f` ("Give each feature a durable marker node") and are absent
+     today. Nothing writes a feature marker during a real session, so a completed task can
+     never survive going quiet, which is the entire purpose of Decision-099's durable node.
+     The READER is present, correct and now tested; it has nothing to read.
+   - `identity_of()`'s `task_id` / `task_name` — Decision-108's "messaging carries which task
+     an agent is on" — likewise implemented once and absent now. Without it an agent cannot
+     be placed on the right task once a feature has more than one, which Decision-105 says is
+     the normal case.
+   Both were lost in the same rewrite (`2fbc3cc` / `dd9586a`). **27 of the suite's 36
+   standing failures are `AttributeError` from tests still calling the missing writer** —
+   they are not flaky, not unrelated, and not "transport being broken"; they are a deleted
+   feature's tests still standing. Restoring both is transport-scoped work and was left
+   undone here by the operator's no-touch ruling, but neither is a new feature: both are
+   recoveries of code that already passed review once.
+6. **The repo source and the running code have DIVERGED, and the producer and consumer are
+   on different sides of the split.** `tools/courier.py` (tracked, identical in `main` and
+   in this worktree) has no `task_id`; `.claude/tools/courier.py` (vendored, and the copy
+   agents actually execute) is ahead — it carries `_task_identity()` reading
+   `ORCHID_TASK_ID`/`ORCHID_TASK_NAME`, returns `task_id`/`task_name`, and implements
+   `_merge_feature_task()` which writes the feature marker's task list. Decision-108 is
+   therefore implemented in the running copy and absent from the tracked one. Meanwhile the
+   sidebar pane executes `tools/sidebar.py` — the OLD side — so the producer is new and the
+   consumer is old. Which copy is canonical is a repo-hygiene call for the operator; this
+   round builds the renderer against the copy that actually runs. This is Decision-112's
+   failure mode one layer down: the source being reviewed is not the code being executed,
+   and a review of the tracked file reported `task` as missing when the live bus carries it.
+
 ## Operator requests
 
 Ledger of everything the operator asked for during this feature, as received.
 
 | # | Request (as received) | State |
 |---|---|---|
-| 1 | Marker format is NOT transport — it is a cache of what happened before, and it IS in scope. "I said transport, no touch. That is not the marker format." | recorded in `## Proposal`; build pending |
-| 2 | Remove the no-animation decision — it was never his ruling, just a one-line remark generalised by an agent. | recorded in `## Decision entries`; build pending |
-| 3 | True colour: use another library or emit escape codes directly, seek the code yourself, just get something that works. | recorded in `## Decision entries`; build pending |
+| 1 | Marker format is NOT transport — it is a cache of what happened before, and it IS in scope. "I said transport, no touch. That is not the marker format." | **implemented, verified.** The reader in `tools/sidebar_model.py` is cache-correct — a quiet task renders off its persisted terminal state, live events always override the marker, nothing agent-shaped is ever read from it, and a new task revives a collapsed feature beside its finished siblings. Locked by seven tests at `a18632b`, two of them over live-captured fixtures. **Caveat, returned rather than fixed: nothing WRITES a feature marker any more** — the writer was dropped by a squash-merge, so the cache is correct and has nothing to read outside fixtures. See `## Returned to the gardener` item 0. |
+| 2 | Remove the no-animation decision — it was never his ruling, just a one-line remark generalised by an agent. | **implemented.** Staged verbatim in `## Decision entries` for the groundskeeper's mechanical fold. The renderer's band animation, spinner and sweep stand unopposed as a result. |
+| 3 | True colour: use another library or emit escape codes directly, seek the code yourself, just get something that works. | **INTENT met and measured; MECHANISM unchanged — still open, needs his call.** Measured on his own tmux: 3.5a, `default-terminal tmux-direct`, `terminal-features` carrying `xterm-256color:RGB`, `TERM=tmux-direct`, `COLORTERM=truecolor`, and `curses.tigetnum("colors")` returning **16777216** — exact RGB does reach the screen through the existing curses direct-colour path, and this sidecar's earlier "true colour is broken, `RGB: [missing]`" finding is STALE. But the accidental complexity his ruling invites removing is still in `tools/sidebar.py`: the 256-colour cube approximation, the grayscale-ramp special case, palette redefinition via `can_change_color()`, and colour-pair allocation with its exhaustion limits. Replacing curses with direct SGR emission was NOT done. **Returned as a follow-up unless he wants it inside this round.** |
 
 ## Decision entries
 
@@ -331,14 +471,30 @@ is no longer mandatory. The renderer may emit SGR truecolor sequences
 (`ESC[38;2;R;G;Bm`) directly, or use a different library, whichever actually produces
 the right colour on the operator's screen.
 
-This dissolves a large amount of accidental complexity that existed only to satisfy
-ncurses: the 256-colour cube approximation, the grayscale-ramp special case, palette
-redefinition via `can_change_color()`, colour-pair allocation and its exhaustion limits,
-and the Decision-111 trap where `A_DIM` combined with a custom background corrupts
-subsequent rows. None of these are properties of terminals; all are properties of the
-library. Removing the library removes them.
+**The permission was not exercised, and the reason is the operator's own follow-up
+question: can ncurses show true colour and still auto-downgrade in a lesser colour
+environment?** It can, and it already does. Measured in `tools/sidebar.py`: the renderer
+selects a direct-colour terminfo entry at process start, and `_ColourCache` then walks a
+four-rung ladder — exact packed RGB via `_rgb_to_direct_colour_id` when the terminal
+reports a direct-colour entry (`curses.COLORS >= 1<<24`, which is what the operator's own
+tmux reports); a redefined palette via `init_color` when the terminal offers 256 colours
+and `can_change_color()`; the fixed 256-colour cube via `_rgb_to_xterm256` when it offers
+256 colours but no custom RGB; and the standard ANSI fallback below that. Every rung is
+also wrapped so a limited terminal loses colour rather than crashing.
 
-The standard of proof is unchanged and is the operator's screen, not a passing test.
+An earlier draft of this entry called that ladder "accidental complexity that existed only
+to satisfy ncurses" and argued that removing the library removes it. **That was an agent's
+inference and it is wrong, so it is struck from this entry before it can be folded into the
+decision record.** The cube approximation, the grayscale-ramp special case and the palette
+redefinition are not artefacts of ncurses — they ARE the graceful degradation, and emitting
+SGR sequences directly would delete them, not dissolve them. The one item in that list which
+genuinely is a library artefact is the Decision-111 trap, where `A_DIM` over a custom
+background corrupts the following row; it is avoided by not using `A_DIM`, at no cost.
+
+The standing position is therefore: the permission to leave curses remains open and
+unexercised, to be taken only if curses is ever measured failing to put the exact colour on
+the screen. It is not failing today. The standard of proof is unchanged and is the
+operator's screen, not a passing test.
 
 ## EXPLICIT VOLUNTARY DEFERRALS (Decision-027)
 
