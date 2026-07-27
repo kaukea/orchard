@@ -1,1 +1,1 @@
-/home/sudoku/src/serialseb/orchids/.ai/repositories/serialseb/orchids/agents/landscaper.md
+../../agents/landscaper.md

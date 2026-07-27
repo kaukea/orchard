@@ -1,1 +1,1 @@
-/home/sudoku/src/serialseb/orchids/.ai/repositories/serialseb/orchids/agents/groundskeeper.md
+../../agents/groundskeeper.md

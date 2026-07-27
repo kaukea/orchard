@@ -4,8 +4,10 @@
 # Delivery per role: [dev] [infra] [org], or ["*"] for defaults, with
 #   skillname = "exclude" | "copy" | "link" | "local"
 
+# This repo is the SOURCE of the orchids package. It does not install itself:
+# a source consuming a vendored clone of its own output runs yesterday's code
+# against today's tree, and every edit here is invisible until a sync happens.
+# `.claude/**` links point at this repo's own files directly.
+
 [sources."serialseb/kauk"]
 origin = "/home/sudoku/src/serialseb/kauk"
-
-[sources."serialseb/orchids"]
-origin = "/home/sudoku/src/serialseb/orchids"

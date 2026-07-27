@@ -1,1 +1,1 @@
-/home/sudoku/src/serialseb/orchids/.ai/repositories/serialseb/orchids/tools/board_lint.py
+../../tools/board_lint.py

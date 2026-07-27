@@ -1,1 +1,1 @@
-/home/sudoku/src/serialseb/orchids/.ai/repositories/serialseb/orchids/tools/bloomer-teardown.sh
+../../tools/bloomer-teardown.sh
