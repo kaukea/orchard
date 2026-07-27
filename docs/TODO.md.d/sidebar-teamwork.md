@@ -2,7 +2,7 @@
 - created_by: fable-5
 - created_during: main
 
-# Sidebar round: aesthetics, teamwork functionality, and a refactor of the renderer
+# Sidebar redone fresh: pruned and rewritten, with the standing rulings as its specification
 
 ## Blockers
 
@@ -25,7 +25,30 @@
 
 ## Proposal
 
-- **Awaiting the operator's own specification** in `docs/SPECIFICATIONS.md.d/Flow.md`. Three axes named at intake: aesthetics, teamwork functionality, refactoring. That file is folded in here as the Proposal once he has written it.
+**OPERATOR SCOPE RULING 2026-07-27 — this is a fresh rebuild, not another incremental round.**
+Prune what needs pruning and redo the sidebar fresh. In his words, what is fresh is "code,
+colouring layout adjustments and tmux integration refactorings" — and "rulings stay".
+
+- **The standing rulings ARE the specification and are not re-opened.** Decision-098 (five
+  display levels — project, feature, task, agents, subagents; agents and subagents ephemeral;
+  only the task persists, remaining as a single row carrying its terminal state),
+  Decision-099 (the durable task node, one file per project-and-feature, archived rather than
+  deleted so a feature rehydrates), Decision-081 (exit-grace and `signal --on-behalf-of`
+  deliberately removed — they do not come back), Decision-102 (exact hue via direct-colour
+  terminfo), and the solid per-repo hue headers with one circle glyph family. The rewrite is
+  judged against these, and any of them it cannot meet is surfaced rather than quietly dropped.
+- **Fresh: the code.** `tools/sidebar.py` is rewritten rather than patched — 3,056 lines and
+  135 functions accreted across six rounds, absorbing the deleted `tools/sidebar_model.py`.
+  Accumulated dead paths are pruned as part of the rebuild.
+- **Fresh: colouring and layout adjustments.** Within the standing visual contract, not a new one.
+- **Fresh: the tmux integration, refactored.** The launch, mount, peek and teardown surfaces
+  (`tools/sidebar-mount.sh`, `tools/peek.sh`, `tools/sidebar_nav.py`, `tools/bloomer-launch.sh`
+  and the window/pane conventions they encode) are refactored as part of this work.
+- **Teamwork functionality** remains the one axis with no standing ruling behind it — the
+  bloom round and the operator's own `docs/SPECIFICATIONS.md.d/Flow.md` define it.
+- Close the producer/consumer test gap in the rewrite rather than inheriting it: today no test
+  writes through `courier` and reads through the renderer, which is why 429 tests passed while
+  the task rows were dead on screen.
 
 ## Testing
 
