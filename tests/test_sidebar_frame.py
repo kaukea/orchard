@@ -114,6 +114,61 @@ def _skip_extended_colour(codes: list[str], i: int) -> int:
     return i + 1
 
 
+def _has_attr_code(raw_line: str, code: str) -> bool:
+    """True when the bare SGR attribute `code` (e.g. "1" bold, "7" reverse)
+    appears as its OWN parameter somewhere on the line -- never a false hit
+    off a matching digit riding inside an extended colour sequence
+    ("38;2;r;g;b"/"48;2;r;g;b"), which `_skip_extended_colour` already
+    knows how to step over (same trap `_has_basic_red` guards against)."""
+    for codes in _sgr_code_lists(raw_line):
+        i = 0
+        while i < len(codes):
+            if codes[i] in ("38", "48"):
+                i = _skip_extended_colour(codes, i)
+                continue
+            if codes[i] == code:
+                return True
+            i += 1
+    return False
+
+
+def _last_truecolor_pair(
+    raw_line: str,
+) -> tuple[tuple[int, int, int] | None, tuple[int, int, int] | None]:
+    """(fg, bg) -- the LAST explicit truecolor foreground/background this
+    line's SGR codes set, walked the same extended-sequence-aware way as
+    `_has_attr_code`. A row generally carries one background for its whole
+    span (a feature band, a task's row, a step's content colour, an
+    open-block); the last-seen value is representative for that.
+
+    Pure black (`30`/`40`) is recognised alongside the full `38;2`/`48;2`
+    form (found here, header/feature falling-block step): a direct-colour
+    terminfo entry, given an EXACT (0, 0, 0), may canonicalise it down to
+    the short classic-ANSI SGR code rather than restating it as `38;2;0;0;
+    0` — observed against this tmux build's own captured bytes once
+    `ensure_contrast`'s black/white extreme genuinely lands on pure black
+    (the header/feature "most emphasized" text does this routinely now).
+    Not a parser rewrite, just the one extra case this collapse needs."""
+    fg = bg = None
+    for codes in _sgr_code_lists(raw_line):
+        i = 0
+        while i < len(codes):
+            if codes[i] in ("38", "48") and i + 1 < len(codes) and codes[i + 1] == "2":
+                rgb = tuple(int(v) for v in codes[i + 2:i + 5])
+                if codes[i] == "38":
+                    fg = rgb
+                else:
+                    bg = rgb
+                i += 5
+                continue
+            if codes[i] == "30":
+                fg = (0, 0, 0)
+            elif codes[i] == "40":
+                bg = (0, 0, 0)
+            i += 1
+    return fg, bg
+
+
 def _has_basic_red(raw_line: str) -> bool:
     """True only for a literal basic-ANSI red code (31 fg / 41 bg) used as
     its own SGR attribute -- never a false hit off an R/G/B *value* of 31 or
@@ -247,11 +302,24 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
                     check=True)
         self._tmux("resize-window", "-x", str(self.PANE_WIDTH), "-y", str(self.PANE_HEIGHT))
         self._await_pane_size()
-        command = f"XDG_RUNTIME_DIR={self.runtime_dir} {sys.executable} {_SIDEBAR_PY}"
+        # HOME is isolated too, alongside XDG_RUNTIME_DIR: the real CLI now
+        # reads the operator's own registry (`~/.config/orchids/sidebar-
+        # registry.json`, `load_watched_repo_names()`) to decide which
+        # projects to fold. Without this, "orchids"/"signmc" render or not
+        # depending on what happens to be registered on the machine running
+        # the test rather than on this fixture's own seeded events.
+        command = (
+            f"HOME={self.runtime_dir} XDG_RUNTIME_DIR={self.runtime_dir} "
+            f"{sys.executable} {_SIDEBAR_PY}"
+        )
         self._tmux("send-keys", command, "Enter")
 
     def _capture(self) -> list[str]:
         return self._tmux("capture-pane", "-e", "-p", check=True).stdout.splitlines()
+
+    def _send_down(self, times: int) -> None:
+        for _ in range(times):
+            self._tmux("send-keys", "Down")
 
     def _looks_complete(self, lines: list[str]) -> bool:
         stripped = [_strip_sgr(line) for line in lines]
@@ -280,10 +348,21 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         lines = self._capture_when_ready()
         stripped = [_strip_sgr(line) for line in lines]
 
-        header_idx = next(i for i, l in enumerate(stripped) if l.strip() == "orchids")
+        # The header row is a FALLING BLOCK (operator spec, 2026-07-28,
+        # superseding the earlier symmetric two/three-cell ramp reaching
+        # BOTH pane edges: "the gradient should only be on the left...
+        # falling towards the end of the screen"): the title's own core
+        # sits solid at column 0, falling away toward SECONDARY over the
+        # rest of the row via the eighth-resolution block ladder. This
+        # pane is wide enough (PANE_WIDTH=60) for the fade to actually
+        # show.
+        header_idx = next(i for i, l in enumerate(stripped) if "orchids" in l)
         self.assertTrue(_has_any_bg(lines[header_idx]))
-        leading_spaces = len(stripped[header_idx]) - len(stripped[header_idx].lstrip(" "))
-        self.assertGreater(leading_spaces, 0)
+        self.assertTrue(stripped[header_idx].startswith(" orchids"))
+        self.assertTrue(
+            any(ch in stripped[header_idx] for ch in sidebar._LEFT_EIGHTHS[1:-1]),
+            f"no fade glyph found in the header row: {stripped[header_idx]!r}",
+        )
 
         done_idx = next(
             i for i, l in enumerate(stripped)
@@ -292,9 +371,15 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         self.assertTrue(_has_fg(lines[done_idx], sidebar.GREEN)
                          or _has_fg(lines[done_idx], sidebar.GREEN_SOFT))
 
+        # The "working" feature row's own glyph now CYCLES through
+        # `SPINNER_FRAMES` by tick (operator ruling, 2026-07-28: "the
+        # spinner doesn't spin" — it was frozen on a single fixed frame
+        # everywhere `STATUS_EMOJI["working"]` was drawn) rather than
+        # staying statically "⠧" — any spinner frame is a valid capture,
+        # never just that one.
         working_idx = next(
             i for i, l in enumerate(stripped)
-            if "⠧" in l and "sidebar titling" in l
+            if any(f in l for f in sidebar.SPINNER_FRAMES) and "sidebar titling" in l
         )
         self.assertLess(done_idx, working_idx)
         self.assertTrue(_has_any_bg(lines[working_idx]))
@@ -310,7 +395,7 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         )
         self.assertIn("landscaper", stripped[quote_idx])
 
-        signmc_header_idx = next(i for i, l in enumerate(stripped) if l.strip() == "signmc")
+        signmc_header_idx = next(i for i, l in enumerate(stripped) if "signmc" in l)
         signmc_feature_idx = next(
             i for i, l in enumerate(stripped)
             if i > signmc_header_idx and "focus returning" in l
@@ -345,18 +430,18 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         step_indices = [i for i, l in enumerate(stripped_first) if active_step_text in l]
         self.assertEqual(len(step_indices), 2, stripped_first)
         working_idx, idle_step_idx = step_indices
-        # The FEATURE row: "sidebar titling" with no task BAR cell
-        # (`sidebar._TASK_BAR_GLYPH`, "▎") -- distinguishes it from the task
-        # row below, which also names "sidebar titling" (same-name task/
-        # feature) and carries the now-cycling glyph instead.
-        feature_idx = next(
-            i for i, l in enumerate(stripped_first)
-            if "sidebar titling" in l and sidebar._TASK_BAR_GLYPH not in l
-        )
-        task_idx = next(
-            i for i, l in enumerate(stripped_first)
-            if "sidebar titling" in l and sidebar._TASK_BAR_GLYPH in l
-        )
+        # The FEATURE row: "sidebar titling" -- its sole task shares the
+        # feature's exact name and so NAME-DROPS its own label (sidebar-
+        # teamwork defect 4: a sole task sharing its feature's name no
+        # longer repeats the string -- Decision-106 still requires the row
+        # itself to render, with its own status glyph, just not the
+        # redundant text). Neither row carries a task-bar cell any more
+        # (operator ruling, 2026-07-28: the quarter block is gone), so the
+        # task row is found by POSITION instead -- it always renders
+        # directly below its feature row (`_feature_rows`), never by text
+        # it may no longer carry.
+        feature_idx = next(i for i, l in enumerate(stripped_first) if "sidebar titling" in l)
+        task_idx = feature_idx + 1
 
         # Poll for a change rather than compare a single fixed-delay
         # snapshot: the tick-driven band sweep advances roughly every
@@ -388,6 +473,92 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
             if i in (working_idx, task_idx):
                 continue
             self.assertEqual(first[i], second[i], f"unexpected change on line {i}")
+
+    def test_dead_space_below_the_last_row_is_painted_not_left_blank(self) -> None:
+        # sidebar-teamwork defect 1: the draw loop used to stop the instant
+        # `rows` ran out, leaving whatever `stdscr.erase()` left behind (an
+        # unstyled void) for the rest of the pane's granted height. This
+        # fixture's own tree is well short of PANE_HEIGHT rows, so real
+        # dead space is guaranteed below the last content line -- every
+        # row in it must now carry an explicit background, painted in the
+        # current repo's own dim FILL hue, not bare terminal default.
+        self._launch()
+        lines = self._capture_when_ready()
+        stripped = [_strip_sgr(line) for line in lines]
+        last_content_idx = max(i for i, l in enumerate(stripped) if l.strip())
+        dead_rows = range(last_content_idx + 1, self.PANE_HEIGHT)
+        self.assertGreater(
+            len(dead_rows), 0,
+            "fixture fills the whole pane -- widen PANE_HEIGHT or trim the "
+            "fixture so this test can actually see dead space",
+        )
+        # `capture-pane -e` reconstructs the MINIMAL escape sequence that
+        # reproduces the pane's visual state, not a byte-for-byte replay of
+        # what curses wrote -- since every dead row shares the exact same
+        # fill colour, only the FIRST one carries its own explicit SGR code
+        # and the rest inherit it by not resetting (confirmed by comparing
+        # against the fix disabled: with the loop removed, NONE of these
+        # rows carry any SGR at all). The joined dead zone is checked as one
+        # continuous stream instead of line-by-line for that reason.
+        dead_zone_raw = "".join(lines[i] for i in dead_rows)
+        self.assertTrue(
+            _has_any_bg(dead_zone_raw),
+            f"no explicit background anywhere in the dead zone (lines "
+            f"{dead_rows.start}-{dead_rows.stop - 1}) -- the dead-space fill regressed",
+        )
+        self.assertFalse(
+            _has_attr_code(dead_zone_raw, "49"),
+            "an explicit reset-to-default background appeared inside the dead zone",
+        )
+
+    def test_selected_row_uses_bold_and_a_lifted_background_not_reverse_video(self) -> None:
+        # sidebar-teamwork defect 4: a selected row used to swap fg/bg via
+        # curses.A_REVERSE -- a straight swap that can do "very little
+        # work" on screen when the two tones already sit close together,
+        # and whose own readability was never checked. It is now a further
+        # LIFT of the row's own background toward white (`_selection_
+        # highlight`) paired with A_BOLD, re-run through the same contrast
+        # machinery every other colour in this file goes through. Measured
+        # on the real emitted SGR bytes of the DONE "bloomer v1" feature
+        # row, not asserted from reading the code.
+        self._launch()
+        before = self._capture_when_ready()
+        before_stripped = [_strip_sgr(line) for line in before]
+        done_idx = next(
+            i for i, l in enumerate(before_stripped) if "✓" in l and "bloomer v1" in l
+        )
+        self._send_down(done_idx)
+        after = self._capture_when_ready()
+        after_stripped = [_strip_sgr(line) for line in after]
+
+        self.assertEqual(
+            before_stripped[done_idx], after_stripped[done_idx],
+            "selecting a row must never change its own displayed TEXT",
+        )
+        self.assertFalse(
+            _has_attr_code(after[done_idx], "7"),
+            "selected row must not use reverse video (A_REVERSE / SGR 7)",
+        )
+        self.assertTrue(
+            _has_attr_code(after[done_idx], "1"),
+            "selected row must carry bold (A_BOLD / SGR 1)",
+        )
+
+        before_fg, before_bg = _last_truecolor_pair(before[done_idx])
+        after_fg, after_bg = _last_truecolor_pair(after[done_idx])
+        self.assertIsNotNone(after_bg, "selected row must paint an explicit background")
+        self.assertIsNotNone(before_bg, "the row must already carry its own band background")
+        self.assertNotEqual(
+            before_bg, after_bg,
+            "selection must visibly lift the row's own background, not leave it untouched",
+        )
+        self.assertIsNotNone(after_fg)
+        ratio = sidebar.contrast_ratio(after_fg, after_bg)
+        self.assertGreaterEqual(
+            ratio, sidebar._CONTRAST_MIN_MARK,
+            f"selected row's own text {after_fg} on lifted background {after_bg} "
+            f"measures {ratio:.3f}, below even the mark-level minimum",
+        )
 
 
 _ONCE_EXIT_RE = re.compile(r"ONCE_EXIT:(\d+)")
@@ -436,6 +607,15 @@ def _raw_has_colour(raw: bytes, rgb: tuple[int, int, int]) -> bool:
         [b"38", b"2", r, g, b], [b"48", b"2", r, g, b],
         [b"38", b"5", index], [b"48", b"5", index],
     ]
+    if rgb == (0, 0, 0):
+        # A direct-colour terminfo entry, given an EXACT (0, 0, 0), may
+        # canonicalise it down to the short classic-ANSI SGR code ("30"/
+        # "40") rather than restating it as "38;2;0;0;0" -- observed
+        # against this tmux build's own captured bytes once `ensure_
+        # contrast`'s black/white extreme genuinely lands on pure black
+        # (the header/feature "most emphasized" text does this routinely
+        # now, see `_last_truecolor_pair`'s own matching note).
+        patterns += [[b"30"], [b"40"]]
     return any(
         _raw_has_subsequence(params, pattern)
         for params in _raw_param_lists(raw) for pattern in patterns
@@ -502,9 +682,13 @@ class SidebarOnceCLITests(unittest.TestCase):
         self._tmux("resize-window", "-x", str(self.PANE_WIDTH), "-y", str(self.PANE_HEIGHT))
         self._await_pane_size()
         self._tmux("pipe-pane", "-o", f"cat >> {self._raw_log}", check=True)
+        # HOME isolated for the same reason as SidebarEmulatorFrameTests
+        # above — this class's "orchids" fixture would otherwise only pass
+        # by coincidence, on a machine whose own registry happens to list a
+        # real repo named "orchids".
         command = (
-            f"XDG_RUNTIME_DIR={self.runtime_dir} {sys.executable} {_SIDEBAR_PY} --once; "
-            "echo ONCE_EXIT:$?"
+            f"HOME={self.runtime_dir} XDG_RUNTIME_DIR={self.runtime_dir} "
+            f"{sys.executable} {_SIDEBAR_PY} --once; echo ONCE_EXIT:$?"
         )
         self._tmux("send-keys", command, "Enter")
 
@@ -535,8 +719,16 @@ class SidebarOnceCLITests(unittest.TestCase):
         text = _raw_strip_escapes(raw)
         self.assertIn(b"orchids", text)
         self.assertIn(b"once check", text)
-        self.assertTrue(_raw_has_colour(raw, sidebar.HEADER_FG))
-        self.assertTrue(_raw_has_colour(raw, sidebar.REPO_HUES["orchids"]["header"]))
+        # The header's core now sits on the repo's PRIMARY (`hue["accent"]`,
+        # operator spec 2026-07-28 — the old per-column gradient's "header"
+        # hue field and the raw, uncontrasted HEADER_FG constant it leaked
+        # into blank padding columns are both gone from this row now: every
+        # core column, blank or not, gets the one contrast-derived title
+        # colour computed the same way `_draw_header` computes it).
+        primary = sidebar.repo_colour_roles(sidebar.REPO_HUES["orchids"]).primary
+        title_fg = sidebar.header_emphasis_colour(primary)
+        self.assertTrue(_raw_has_colour(raw, primary))
+        self.assertTrue(_raw_has_colour(raw, title_fg))
 
 
 if __name__ == "__main__":

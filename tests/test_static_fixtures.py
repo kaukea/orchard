@@ -100,7 +100,7 @@ class MarkerFixtureTests(unittest.TestCase):
         row = feature_rows[0]
         self.assertEqual(
             row.label,
-            "Sidebar empty rows: header renders, zero session rows off the "
+            "🧩/Sidebar empty rows: header renders, zero session rows off the "
             "live orchard tree — check (a) failing",
         )
         self.assertEqual(row.status, "working")
@@ -149,7 +149,7 @@ class MarkerFixtureTests(unittest.TestCase):
 
         self.assertEqual(len(feature_rows), 1, f"expected exactly one feature row, got {feature_rows!r}")
         self.assertEqual(len(task_rows), 1, f"expected exactly one task row, got {task_rows!r}")
-        self.assertEqual(feature_rows[0].label, "Sidebar empty rows: header renders, zero session rows")
+        self.assertEqual(feature_rows[0].label, "🧩/Sidebar empty rows: header renders, zero session rows")
         self.assertEqual(task_rows[0].label, "Sidebar empty rows")
         self.assertNotEqual(feature_rows[0].label, "verify-task-persist")
         self.assertNotEqual(task_rows[0].label, "verify-task-persist")

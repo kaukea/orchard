@@ -20,9 +20,11 @@ open-question badges, phase ticks, tokens/dollars, age/worked.
 
 Runs under both `python3 -m unittest discover` and `pytest`; stdlib only.
 """
+import inspect
 import itertools
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -42,6 +44,7 @@ if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
 import sidebar  # noqa: E402
+import sidebar_curses_colour  # noqa: E402
 
 from support import make_repo  # noqa: E402
 
@@ -552,6 +555,176 @@ class RepoAssemblyTests(_FixtureTestCase):
 
 
 # --------------------------------------------------------------------------
+# The agent-triple fold (2026-07-27 rebuild) — an agent is identified by
+# (session_id, parent, agent_name), never by session id alone, and the
+# courier is attributed to the session-bearing agent it shares a session id
+# with rather than either creating a second agent or being discarded (the
+# operator's live correction to the original "filter the courier out
+# entirely" instruction: Decision-018, the courier answers identity/status
+# off its parent's transcript precisely so the parent is never woken).
+# --------------------------------------------------------------------------
+
+class AgentIdentityTripleTests(_FixtureTestCase):
+    def test_session_with_no_agent_identity_produces_no_row(self):
+        # No `identity` block at all -- not the courier, just nothing
+        # operator-facing. A session with no qualifying agent does not
+        # belong on the board (operator ruling, 2026-07-27).
+        self._event("own.repo", "s1", "orchard:agent:lifecycle:starting")
+        fleet = self._model()
+        self.assertEqual(fleet.repos[0].features, [])
+
+    def test_session_with_only_courier_events_produces_no_row(self):
+        # The courier posted, but no session-bearing agent ever announced
+        # itself under this session id -- there is nothing unambiguous to
+        # attribute the courier's payload to, so it is dropped rather than
+        # guessed at, and the courier never earns a row of its own either.
+        self._event("own.repo", "s1", "orchard:agent:status",
+                     identity={"agent": "courier"}, body="watching inbox")
+        fleet = self._model()
+        self.assertEqual(fleet.repos[0].features, [])
+
+    def test_courier_status_under_the_same_session_updates_the_named_agents_activity(self):
+        self._landscaper("own.repo", "s1", "feat-a", mtime=1)
+        self._event("own.repo", "s1", "orchard:agent:status",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     body="reviewing plan", mtime=2)
+        self._event("own.repo", "s1", "orchard:agent:status",
+                     identity={"agent": "courier"}, body="watching inbox", mtime=3)
+        feature = self._repo().features[0]
+        agent = _sole_agent(_sole_task(feature))
+        self.assertEqual(agent.role, "landscaper")
+        self.assertEqual(agent.activity, "watching inbox")
+
+    def test_courier_identity_snapshot_never_overwrites_the_named_agents_identity(self):
+        # Regression test for the exact defect the operator traced this
+        # rebuild to: under the old session-id-only fold, the courier's
+        # LATER, feature/task-less identity snapshot became the session's
+        # "latest wins" identity, and the real agent's name/feature/task
+        # vanished behind the bare session UUID.
+        sid = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+        self._event("own.repo", sid, "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a",
+                               "name": "Feature A"}, mtime=1)
+        self._event("own.repo", sid, "orchard:agent:status",
+                     identity={"agent": "courier"}, body="watching inbox", mtime=2)
+        feature = self._repo().features[0]
+        self.assertEqual(feature.name, "Feature A")
+        agent = _sole_agent(_sole_task(feature))
+        self.assertEqual(agent.role, "landscaper")
+        self.assertEqual(agent.activity, "watching inbox")
+
+    def test_two_named_agents_sharing_one_session_id_both_get_their_own_entry(self):
+        # A genuinely different case from the courier: two REAL agents
+        # (never "courier") sharing one session id -- both must render,
+        # neither may silently absorb the other.
+        self._landscaper("own.repo", "s1", "feat-a", mtime=1)
+        self._event("own.repo", "s1", "orchard:agent:lifecycle:starting",
+                     identity={"agent": "sower", "feature": "feat-a", "parent": "s1"},
+                     mtime=2)
+        feature = self._repo().features[0]
+        agents = _agents_of(_sole_task(feature))
+        self.assertEqual(sorted(a.role for a in agents), ["landscaper", "sower"])
+
+    def test_agent_with_no_live_status_post_shows_the_no_activity_sentinel(self):
+        # Status is transient activity -- absence is an idle condition, not
+        # an empty string reaching the renderer (operator ruling, 2026-07-27).
+        self._landscaper("own.repo", "s1", "feat-a")
+        feature = self._repo().features[0]
+        agent = _sole_agent(_sole_task(feature))
+        self.assertEqual(agent.activity, "no activity")
+        self.assertNotEqual(agent.activity, "")
+
+
+class SidebarSimCourierAttributionTests(unittest.TestCase):
+    """End-to-end against the shared simulator fixture
+    (`tools/sidebar_sim.py --once`), which reproduces the courier/session-id
+    collision on demand (`LANDSCAPER_SID` carries a landscaper identity, then
+    a courier identity, under one session id) — confirms the fold above
+    against the SAME fixture another sower built to drive this defect."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.sim_root = Path(self._tmp.name) / "sim-projects"
+
+    def test_landscaper_survives_the_courier_and_no_courier_row_appears(self):
+        sim = os.path.join(_TOOLS_DIR, "sidebar_sim.py")
+        proc = subprocess.run(
+            [sys.executable, sim, "--once", str(self.sim_root),
+             "--base-ts", "2026-07-27T09:00:00+00:00"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        fleet = sidebar.build_model(self.sim_root, role_step_map={})
+        repo = next(r for r in fleet.repos if r.name == "orchids")
+        feature = next(f for f in repo.features if f.feature_id == "sidebar-teamwork")
+        task = next(t for t in feature.tasks
+                    if t.task_id == "sidebar-teamwork-render-model")
+
+        agents = _agents_of(task)
+        self.assertEqual([a.role for a in agents], ["landscaper"])
+        self.assertNotIn("courier", [a.role for a in agents])
+        # the courier's own later post ("watching inbox") is not discarded --
+        # it becomes the landscaper's own live activity.
+        self.assertEqual(agents[0].activity, "watching inbox")
+
+
+# --------------------------------------------------------------------------
+# The static project registry (~/.config/orchids/sidebar-registry.json) —
+# `build_model()` itself stays registry-agnostic (`watched_names=None` folds
+# everything, matching every fixture test above); `load_watched_repo_names()`
+# is the pure function a production entry point calls to compute the set it
+# passes in, and is what actually keeps a leaked/unrelated project directory
+# from ever being folded at all (operator ruling, 2026-07-27).
+# --------------------------------------------------------------------------
+
+class WatchedRepoNamesTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.registry_path = Path(self._tmp.name) / "sidebar-registry.json"
+
+    def _write(self, data) -> None:
+        self.registry_path.write_text(json.dumps(data), encoding="utf-8")
+
+    def test_missing_registry_file_fails_open_to_unfiltered(self):
+        self.assertIsNone(sidebar.load_watched_repo_names(self.registry_path))
+
+    def test_repos_list_yields_basenames(self):
+        self._write({"repos": ["/home/x/orchids", "/home/x/SignMc"], "hidden": []})
+        self.assertEqual(sidebar.load_watched_repo_names(self.registry_path),
+                          {"orchids", "SignMc"})
+
+    def test_hidden_entries_are_excluded(self):
+        self._write({"repos": ["/home/x/orchids", "/home/x/SignMc"],
+                      "hidden": ["/home/x/SignMc"]})
+        self.assertEqual(sidebar.load_watched_repo_names(self.registry_path), {"orchids"})
+
+    def test_empty_repos_list_fails_open_to_unfiltered(self):
+        self._write({"repos": [], "hidden": []})
+        self.assertIsNone(sidebar.load_watched_repo_names(self.registry_path))
+
+    def test_unparseable_registry_fails_open_to_unfiltered(self):
+        self.registry_path.write_text("not json", encoding="utf-8")
+        self.assertIsNone(sidebar.load_watched_repo_names(self.registry_path))
+
+
+class BuildModelRegistryFilterTests(_FixtureTestCase):
+    def test_unwatched_project_directory_is_never_folded(self):
+        self._landscaper("own.alpha", "s1", "feat-a")
+        self._landscaper("own.beta", "s2", "feat-b")
+        fleet = sidebar.build_model(self.projects_root, role_step_map={},
+                                     watched_names={"alpha"})
+        self.assertEqual([r.name for r in fleet.repos], ["alpha"])
+
+    def test_watched_names_none_folds_every_directory(self):
+        self._landscaper("own.alpha", "s1", "feat-a")
+        fleet = sidebar.build_model(self.projects_root, role_step_map={})
+        self.assertEqual([r.name for r in fleet.repos], ["alpha"])
+
+
+# --------------------------------------------------------------------------
 # Staleness — the ~1h ACTIVE_WINDOW is purely a colour signal now (retention
 # ruling, 2026-07-25, revised same day): nothing is ever dropped from the
 # model for being stale. A session with no event inside the window and no
@@ -882,6 +1055,14 @@ class DumpCLITests(unittest.TestCase):
     def _dump(self):
         env = dict(os.environ)
         env["XDG_RUNTIME_DIR"] = str(self.runtime_dir)
+        # The real `--dump` path now reads the operator's own registry
+        # (`~/.config/orchids/sidebar-registry.json`, `load_watched_repo_names()`)
+        # to decide which projects to fold — isolate HOME so this subprocess
+        # sees no registry at all, which fails OPEN to "fold everything",
+        # matching this class's fixtures and keeping it independent of
+        # whatever repos happen to be registered on the machine running the
+        # test.
+        env["HOME"] = str(self.runtime_dir)
         proc = subprocess.run(
             [sys.executable, _SIDEBAR_PY, "--dump"],
             capture_output=True, text=True, env=env,
@@ -1137,6 +1318,60 @@ class FlattenTests(unittest.TestCase):
         self.assertEqual(rows[agent_row_idx].kind, "agent")
         self.assertEqual(rows[agent_row_idx].depth, active_row.depth + 1)
 
+    def test_two_agents_on_the_same_open_step_each_keep_their_own_subagents_in_order(self):
+        # sidebar-teamwork defect 3: a task's open step is not limited to
+        # one agent (two sowers on the same "building" step is the real,
+        # committed sidebar_sim.py scenario, not a hypothetical) -- every
+        # agent on the step must render, each immediately followed by its
+        # OWN subagents (never another agent's), in the step's own agent
+        # list order, and the NEXT step's row must follow the last agent's
+        # last subagent directly, not get interleaved between two agents.
+        agent_a = _agent(session_id="s1", role="sower", activity="extracting model",
+                          subagents=[sidebar.Subagent(label="grep-scan", state="done")])
+        agent_b = _agent(session_id="s2", role="sower", activity="writing tests",
+                          subagents=[sidebar.Subagent(label="docs-audit", state="scheduled"),
+                                     sidebar.Subagent(label="test-runner", state="doing")])
+        building = sidebar.Step(name="building", state="active", agents=[agent_a, agent_b])
+        releasing = sidebar.Step(name="releasing", state="todo")
+        task = sidebar.Task(task_id="t", name="a task", status="working",
+                             steps=[building, releasing])
+        feature = sidebar.Feature(feature_id="f", name="a feature", status="working",
+                                   tasks=[task])
+        fleet = sidebar.Fleet(repos=[
+            sidebar.Repo(name="r", activity="", status="working",
+                         waiting_on_operator=False, features=[feature]),
+        ])
+        rows = sidebar.flatten(fleet)
+        # Exact order: building's own row, then agent A immediately followed
+        # by ITS subagent, then agent B immediately followed by BOTH of ITS
+        # subagents, then releasing's own row -- never A/B interleaved, and
+        # releasing never sneaks in before B's own subagents are done.
+        self.assertEqual(
+            [(r.kind, r.activity or r.label) for r in rows if r.kind in ("accordion", "agent", "subagent")],
+            [
+                ("accordion", sidebar._step_row(building, "t", 0, None, None).label),
+                ("agent", "extracting model"),
+                ("subagent", "grep-scan"),
+                ("agent", "writing tests"),
+                ("subagent", "docs-audit"),
+                ("subagent", "test-runner"),
+                ("accordion", sidebar._step_row(releasing, "t", 0, None, None).label),
+            ],
+        )
+        # every row belonging to the open step's agents/subagents sits ONE
+        # level deeper than the step row itself sits at.
+        building_row = next(r for r in rows if r.kind == "accordion" and r.status == "active")
+        for r in rows:
+            if r.kind in ("agent", "subagent"):
+                self.assertEqual(r.depth, building_row.depth + 1)
+        # both agents' rows carry the SAME task_colour as the step and task
+        # rows around them -- colour is what carries depth/lineage here
+        # (Decision-110), so it must not fork between sibling agents.
+        task_colour = next(r for r in rows if r.kind == "task").task_colour
+        for r in rows:
+            if r.kind in ("accordion", "agent", "subagent"):
+                self.assertEqual(r.task_colour, task_colour)
+
     def test_feature_row_carries_no_owning_repo_progress_pct(self):
         # progress_pct has no source in this grammar and stays None — the
         # field is still carried on Row (kind == "feature" only) so the
@@ -1181,6 +1416,63 @@ class FlattenTests(unittest.TestCase):
             [r.label for r in feature_rows],
             ["b-done", "d-done", "a-working", "c-idle"],
         )
+
+    def test_name_drop_rule_is_retired(self):
+        # A feature and its sole task sharing the identical NAME used to
+        # trigger a NAME-DROP (the task row fell back to its own status
+        # word instead of repeating the string). Retired (operator,
+        # 2026-07-28: "neither are correct" -- rejecting both the blank and
+        # the status-word drafts): the actual fix is upstream, in
+        # `_identity_task_keys` deriving genuinely different feature/task
+        # names from `identity.feature_name` or an `f/<feature>/<task>`
+        # identifier's own segments, so the two rows carry different text
+        # BY CONSTRUCTION rather than by a downstream patch. This test
+        # builds the model directly (bypassing that upstream resolution,
+        # same as a real Feature/Task pair that happens to share a name)
+        # to confirm the rows now show their own labels PLAINLY, with no
+        # special-casing left in `sidebar_rows.py`.
+        task = sidebar.Task(task_id="t", name="Close family fakes", status="working",
+                             steps=[sidebar.Step(name="building", state="active")])
+        feature = sidebar.Feature(feature_id="f", name="Close family fakes",
+                                   status="working", tasks=[task])
+        fleet = sidebar.Fleet(repos=[
+            sidebar.Repo(name="r", activity="", status="working",
+                         waiting_on_operator=False, features=[feature]),
+        ])
+        rows = sidebar.flatten(fleet)
+        feature_row = next(r for r in rows if r.kind == "feature")
+        task_row = next(r for r in rows if r.kind == "task")
+        self.assertEqual(feature_row.label, "🧩/Close family fakes")
+        self.assertEqual(task_row.label, "Close family fakes")
+        # the row itself, its progress circle and its accordion are all
+        # still there -- only the redundant string is gone.
+        self.assertIsNotNone(task_row.progress_glyph)
+        self.assertTrue(any(r.kind == "accordion" for r in rows))
+
+    def test_task_keeps_its_name_when_the_feature_has_a_second_task(self):
+        # the drop is specific to "the ONLY task" -- a second task, even a
+        # done one, means the shared name is no longer redundant on its own.
+        same_name = sidebar.Task(task_id="t1", name="shared name", status="working")
+        other = sidebar.Task(task_id="t2", name="a different task", status="done")
+        feature = sidebar.Feature(feature_id="f", name="shared name", status="working",
+                                   tasks=[same_name, other])
+        fleet = sidebar.Fleet(repos=[
+            sidebar.Repo(name="r", activity="", status="working",
+                         waiting_on_operator=False, features=[feature]),
+        ])
+        task_rows = [r for r in sidebar.flatten(fleet) if r.kind == "task"]
+        self.assertEqual([r.label for r in task_rows], ["shared name", "a different task"])
+
+    def test_task_keeps_its_name_when_it_differs_from_the_feature_name(self):
+        task = sidebar.Task(task_id="t", name="a specific task", status="working")
+        feature = sidebar.Feature(feature_id="f", name="a feature", status="working",
+                                   tasks=[task])
+        fleet = sidebar.Fleet(repos=[
+            sidebar.Repo(name="r", activity="", status="working",
+                         waiting_on_operator=False, features=[feature]),
+        ])
+        task_row = next(r for r in sidebar.flatten(fleet) if r.kind == "task")
+        self.assertEqual(task_row.label, "a specific task")
 
 
 class RenderLinesTests(unittest.TestCase):
@@ -1410,6 +1702,25 @@ class FeatureRowLayoutTests(unittest.TestCase):
         used = len(glyph) + 1 + len(shown_name) + pad_width + len(badge_text) + len(pct_text)
         self.assertEqual(used, 27)
 
+    def test_wide_status_glyph_never_overflows_the_row_width(self):
+        # sidebar-teamwork defect 1: STATUS_EMOJI["failed"] is "❌", an
+        # East-Asian-Wide glyph occupying two cells for one character --
+        # `_feature_row_layout` used to budget it as one cell (`len()`),
+        # so a failed feature/task row overflowed its pane by exactly one
+        # cell. Reproduced directly here at the widths the operator runs.
+        for width in (29, 42):
+            text = sidebar.compose_feature_row_text(
+                sidebar.STATUS_EMOJI["failed"], "Sidebar teamwork: render model layer", None, width,
+            )
+            self.assertLessEqual(sidebar._cell_width(text), width)
+
+    def test_wide_status_glyph_never_overflows_the_task_row_width(self):
+        for width in (29, 42):
+            text = sidebar.compose_task_row_text(
+                sidebar.STATUS_EMOJI["failed"], "Flaky test fix", "◕", width,
+            )
+            self.assertLessEqual(sidebar._cell_width(text), width)
+
 
 class FillColsTests(unittest.TestCase):
     def test_zero_percent_fills_nothing(self):
@@ -1459,6 +1770,74 @@ class BandSweepTests(unittest.TestCase):
         self.assertEqual(sidebar.lifted_fill_colour(fill), sidebar.lerp(fill, sidebar.WHITE, 0.18))
 
 
+class QuotedActivityTests(unittest.TestCase):
+    """sidebar-teamwork defect 5: an agent with no live activity used to
+    render as a bare pair of smart quotes ("" — role) -- idle is a
+    legitimate state (Decision-058), not a blank to paper over."""
+
+    def test_empty_activity_renders_as_the_words_no_activity(self):
+        self.assertEqual(sidebar._quoted_activity(""), "“no activity”")
+
+    def test_empty_activity_uses_the_models_own_no_live_activity_constant(self):
+        self.assertEqual(
+            sidebar._quoted_activity(""), f"“{sidebar.NO_LIVE_ACTIVITY}”",
+        )
+
+    def test_real_activity_is_unaffected(self):
+        self.assertEqual(sidebar._quoted_activity("measuring intake"), "“measuring intake”")
+
+    def test_idle_agent_row_never_renders_empty_quotes(self):
+        # integration-level: an agent whose activity is "" end to end,
+        # through flatten() -> render_lines(), never produces the bare
+        # `“”` the operator saw on screen.
+        agent = sidebar.Agent(session_id="s1", role="landscaper", model=None,
+                               activity="", status="idle", step="building")
+        step = sidebar.Step(name="building", state="active", agents=[agent])
+        task = sidebar.Task(task_id="t", name="idle task", status="working", steps=[step])
+        feature = sidebar.Feature(feature_id="f", name="idle task", status="working",
+                                   tasks=[task])
+        fleet = sidebar.Fleet(repos=[
+            sidebar.Repo(name="r", activity="", status="idle",
+                         waiting_on_operator=False, features=[feature]),
+        ])
+        lines = sidebar.render_lines(fleet, width=64)
+        quote_line = next(l for l in lines if "landscaper" in l)
+        self.assertNotIn("“”", quote_line)
+        self.assertIn(sidebar.NO_LIVE_ACTIVITY, quote_line)
+
+
+class BranchDisplayTests(unittest.TestCase):
+    """sidebar-teamwork defect 2: a worktree's project directory encodes
+    its branch with a hyphen in place of the slash (courier.py's
+    `_sanitise_branch`, filesystem-safe, LOSSY) -- a storage detail. The
+    operator's ruling: the project IS the repository, so a header shows
+    the repo alone, never a repo-plus-mangled-branch string; wherever a
+    branch is genuinely shown, it is shown honestly, slash intact, never
+    re-mangled by the render layer itself."""
+
+    def test_repo_display_name_strips_the_branch_entirely_for_the_header(self):
+        # the model-layer half of the contract (sidebar_model.py, out of
+        # this step's scope, unchanged by it) -- exercised here too so a
+        # render-facing regression test exists, not only the model's own.
+        display = sidebar._repo_display_name("kaukea.orchids@f-close-family-fakes")
+        self.assertEqual(display, "orchids")
+        self.assertNotIn("@", display)
+        self.assertNotIn("-close-family-fakes", display)
+
+    def test_repo_row_label_is_never_mangled_by_the_render_layer_itself(self):
+        # the render side's own half: whatever label it is handed, it
+        # draws verbatim -- it never substitutes a hyphen for a slash of
+        # its own, so a genuine branch (were one ever attached to a label)
+        # would keep its slash intact rather than being flattened again.
+        fleet = sidebar.Fleet(repos=[
+            sidebar.Repo(name="f/close-family-fakes", activity="", status="idle",
+                         waiting_on_operator=False),
+        ])
+        row = sidebar.flatten(fleet)[0]
+        self.assertEqual(row.label, "f/close-family-fakes")
+        self.assertNotIn("f-close-family-fakes", row.label)
+
+
 class SmallCapsTests(unittest.TestCase):
     def test_building_matches_the_mocks_literal_small_caps(self):
         self.assertEqual(sidebar.small_caps("building"), "ʙᴜɪʟᴅɪɴɢ")
@@ -1502,6 +1881,63 @@ class IdentityLineTests(unittest.TestCase):
         self.assertEqual(sidebar.model_tier_colour("sonnet-5"), sidebar.MODEL_TIERS["sonnet"])
         self.assertEqual(sidebar.model_tier_colour(None), sidebar.TEXT)
         self.assertEqual(sidebar.model_tier_colour("unknown-model"), sidebar.TEXT)
+
+
+class TightQuoteFloorTests(unittest.TestCase):
+    """sidebar-teamwork defect 2: at 29 columns an agent's activity used to
+    truncate to almost nothing -- "no ac… — 🌿 landscaper" -- because the
+    role's own fixed-size tail was given room unconditionally and the quote
+    got whatever was left. `_tight_quote_floor` now guards at least half the
+    row's own budget (floored at `_MIN_TIGHT_QUOTE_WIDTH`) for the quote
+    before the role tail is even considered; below that floor the role
+    drops instead, per `tight_line_parts`'s own docstring."""
+
+    def test_floor_is_half_the_width_floored_at_the_minimum(self):
+        self.assertEqual(sidebar._tight_quote_floor(40), 20)
+        self.assertEqual(sidebar._tight_quote_floor(20), 10)
+        # below double the minimum, the floor stops shrinking further --
+        # never below _MIN_TIGHT_QUOTE_WIDTH itself.
+        self.assertEqual(sidebar._tight_quote_floor(10), sidebar._MIN_TIGHT_QUOTE_WIDTH)
+        self.assertEqual(sidebar._tight_quote_floor(0), sidebar._MIN_TIGHT_QUOTE_WIDTH)
+
+    def test_role_regression_case_no_longer_crushes_the_quote_at_29_columns(self):
+        # the exact motivating regression, reproduced directly: a row's
+        # real content width at a 29-column pane (2-cell indent already
+        # subtracted by the caller) is 27; an idle agent's "no activity"
+        # quote plus a landscaper's role tail no longer fit together, so
+        # the OLD floor of 3 let the quote crush to "no ac…" -- the new
+        # floor makes the ROLE drop instead, and the full quote survives.
+        quote, tail = sidebar.tight_line_parts("", "landscaper", 27)
+        self.assertEqual(quote, sidebar._quoted_activity(""))
+        self.assertEqual(tail, "")
+        self.assertNotIn("…", quote)
+
+    def test_role_tail_still_rides_the_line_when_the_quote_keeps_its_floor(self):
+        # a wide enough row keeps both -- the role is never dropped just
+        # because it CAN be, only when it must be.
+        quote, tail = sidebar.tight_line_parts("scaffolding screens", "landscaper", 42)
+        self.assertNotEqual(tail, "")
+        self.assertIn("landscaper", tail)
+
+    def test_quote_is_truncated_before_the_role_is_dropped_when_it_still_fits_the_floor(self):
+        # a quote long enough to need shrinking, but not below its own
+        # floor, keeps the role rather than dropping it outright.
+        long_quote_activity = "reviewing the wireframes for the new onboarding flow"
+        quote, tail = sidebar.tight_line_parts(long_quote_activity, "groomer", 30)
+        self.assertNotEqual(tail, "")
+        self.assertIn("…", quote)
+        self.assertGreaterEqual(sidebar._cell_width(quote), sidebar._tight_quote_floor(30))
+
+    def test_no_role_never_reaches_the_floor_logic_at_all(self):
+        quote, tail = sidebar.tight_line_parts("anything", None, 5)
+        self.assertEqual(tail, "")
+        self.assertEqual(quote, sidebar._truncate(sidebar._quoted_activity("anything"), 5))
+
+    def test_identity_block_tight_rung_matches_tight_line_parts(self):
+        lines = sidebar.identity_block("no activity", "landscaper", None, 27, expand=False)
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0], sidebar.tight_line("no activity", "landscaper", 27))
+        self.assertNotIn("…", lines[0].split(" — ")[0])
 
 
 class PhaseChecklistTests(unittest.TestCase):
@@ -1727,6 +2163,23 @@ class HeaderLineTests(unittest.TestCase):
         self.assertTrue(line.endswith(sidebar.ELLIPSIS))
 
 
+class GlyphAmbiguityTests(unittest.TestCase):
+    """sidebar-teamwork defect 3: "⋮" used to double as both the agent
+    identity line's field separator (`compose_identity_line`'s `sep`) and
+    the empty-fleet banner's bookend (`NO_ACTIVITY_TEXT`) -- one glyph,
+    two unrelated meanings. The banner now uses the file's own idle/
+    waiting hollow circle instead, freeing "⋮" back to its one remaining
+    meaning."""
+
+    def test_no_activity_banner_no_longer_uses_the_identity_line_separator_glyph(self):
+        identity_sep = sidebar.NBSP + "⋮" + sidebar.NBSP
+        self.assertNotIn(identity_sep, sidebar.NO_ACTIVITY_TEXT)
+        self.assertNotIn("⋮", sidebar.NO_ACTIVITY_TEXT)
+
+    def test_no_activity_banner_uses_the_idle_status_glyph(self):
+        self.assertIn(sidebar.STATUS_EMOJI["idle"], sidebar.NO_ACTIVITY_TEXT)
+
+
 class DirectColourTests(unittest.TestCase):
     """`_select_display_term` and friends -- the TERM upgrade that lets
     ncurses accept exact RGB as colour numbers on a direct-colour terminal,
@@ -1751,8 +2204,12 @@ class DirectColourTests(unittest.TestCase):
             self.assertFalse(sidebar._truecolor_advertised())
 
     def test_select_display_term_upgrades_when_truecolor_and_entry_exists(self):
+        # Patched on sidebar_curses_colour, not sidebar -- `_select_display_
+        # term` is DEFINED there (module split, 2026-07-28) and resolves
+        # `_terminfo_has_direct_colour` against its OWN module globals, not
+        # whatever `sidebar` re-exports the name as.
         with mock.patch.dict(os.environ, {"COLORTERM": "truecolor"}), \
-             mock.patch.object(sidebar, "_terminfo_has_direct_colour", return_value=True):
+             mock.patch.object(sidebar_curses_colour, "_terminfo_has_direct_colour", return_value=True):
             self.assertEqual(sidebar._select_display_term("tmux-256color"), "tmux-direct")
 
     def test_select_display_term_unchanged_without_truecolor(self):
@@ -1761,7 +2218,7 @@ class DirectColourTests(unittest.TestCase):
 
     def test_select_display_term_unchanged_when_entry_missing(self):
         with mock.patch.dict(os.environ, {"COLORTERM": "truecolor"}), \
-             mock.patch.object(sidebar, "_terminfo_has_direct_colour", return_value=False):
+             mock.patch.object(sidebar_curses_colour, "_terminfo_has_direct_colour", return_value=False):
             self.assertEqual(sidebar._select_display_term("tmux-256color"), "tmux-256color")
 
 
@@ -1926,65 +2383,39 @@ class StepRowMarkAlignmentTests(unittest.TestCase):
         self.assertEqual(len(text), width)
 
 
-class TaskColourExclusivityTests(unittest.TestCase):
-    """sidebar-empty-rows step 7 / operator colour-lineage spec, 2026-07-26:
-    a terminal subagent's own done/failed colour always wins over the
-    generic block tint -- the exclusivity rule now lives in
-    `_SUBAGENT_TERMINAL_FG` rather than a curses colour-pair id, since a
-    subagent row's real background is now the RGB open-block colour
-    (`_open_block_bg`), painted through `_ColourCache` -- which needs a
-    real initscr()'d terminal, so exact curses attrs are asserted by the
-    tmux frame tests (test_sidebar_frame.py) instead; this class covers
-    the exclusivity DECISION as a pure function."""
-
-    def test_done_and_failed_subagent_colours_are_distinct(self):
-        self.assertNotEqual(sidebar._SUBAGENT_TERMINAL_FG["done"],
-                             sidebar._SUBAGENT_TERMINAL_FG["failed"])
-
-    def test_done_subagent_uses_the_done_task_colour(self):
-        self.assertEqual(sidebar._SUBAGENT_TERMINAL_FG["done"], sidebar.GREEN)
-
-    def test_working_subagent_has_no_terminal_override(self):
-        # a live (scheduled/doing) subagent falls through to the generic
-        # TEXT colour, not done's green nor failed's muted -- it hasn't
-        # reached either terminal state.
-        self.assertNotIn("working", sidebar._SUBAGENT_TERMINAL_FG)
-        self.assertNotIn("scheduled", sidebar._SUBAGENT_TERMINAL_FG)
-        self.assertNotIn("doing", sidebar._SUBAGENT_TERMINAL_FG)
-
-
 class OpenBlockColourTests(unittest.TestCase):
-    """`_open_block_bg` -- the subdued background an agent/subagent row
-    nested under an OPEN step shares with that step's own line (operator
-    ruling, 2026-07-26, colour direction corrected 2026-07-27: "the whole
-    open region... shares that [subdued] background... as one contiguous
-    block" -- LIGHTER than the section title it sits under, never darker;
-    "dimmer" throughout this feature's spec meant subdued (lighter, less
-    saturated, or a harmonising hue), never darker toward black -- the
-    darker reading was an earlier agent inference, not the operator's)."""
+    """`_open_block_bg` -- the open step's own block background an agent/
+    subagent row shares with that step's own title line: the SAME FOURTH
+    tone (`task_chain_roles(hue, row.feature_colour).fourth`), not a
+    separately-derived tone of its own (operator ruling, 2026-07-28: "the
+    background colour of the currently active items inside a stage is the
+    same colour as the titles of the stages themselves... to avoid having
+    colours just bleeding everywhere" -- supersedes the 2026-07-26/27
+    FIFTH-toned `open_stage_colour(content_colour_base(...))` reading,
+    which stays defined and tested below via `open_stage_colour` directly
+    since it has no live caller left but is not deleted)."""
 
     def test_none_task_colour_yields_no_block_background(self):
         row = sidebar.Row(depth=4, kind="agent", target="t", label="x", status="working",
                            task_colour=None)
-        self.assertIsNone(sidebar._open_block_bg(row))
+        hue = sidebar._repo_hue("orchids")
+        self.assertIsNone(sidebar._open_block_bg(row, hue))
 
-    def test_task_colour_yields_a_block_background_lighter_than_its_section_title(self):
+    def test_task_colour_yields_the_same_fourth_tone_as_the_step_title(self):
         task_colour = (0xAC, 0x88, 0xD6)
         row = sidebar.Row(depth=4, kind="agent", target="t", label="x", status="working",
-                           task_colour=task_colour)
-        bg = sidebar._open_block_bg(row)
+                           task_colour=task_colour, feature_colour=None)
+        hue = sidebar._repo_hue("orchids")
+        bg = sidebar._open_block_bg(row, hue)
         self.assertIsNotNone(bg)
-        # LIGHTER than the flat (non-open) content colour a collapsed step
-        # uses for its own title -- a child reads as visibly DERIVED from
-        # (lighter than) its parent, never reverting to a darker or plain
-        # background (operator ruling, 2026-07-27, supersedes the earlier
-        # "dimmer means darker" reading).
-        content = sidebar.content_colour_base(task_colour)
-        self.assertGreater(sidebar.relative_luminance(bg), sidebar.relative_luminance(content))
-        # still distinct from raw white/the plain background -- a findable
-        # bounding box, not a wash-out (operator ruling, 2026-07-26: "a dim
-        # so subtle it cannot be located defeats the entire purpose").
-        self.assertLess(sidebar.relative_luminance(bg), sidebar.relative_luminance(sidebar.WHITE))
+        # ONE tone, not a separately-derived one -- the exact FOURTH a step
+        # row's own title paints itself on (`_draw_step_row`), so an agent/
+        # subagent row nested under an open step reads as part of the SAME
+        # block as the step's own line, never a lighter or darker relative
+        # of it (operator ruling, 2026-07-28, supersedes the earlier
+        # "lighter than its section title" reading).
+        roles = sidebar.task_chain_roles(hue, row.feature_colour)
+        self.assertEqual(bg, roles.fourth)
 
     def test_content_colour_is_a_subdued_not_darkened_task_colour(self):
         # "dimmer" meant desaturated at the SAME lightness, never pushed
@@ -2011,6 +2442,469 @@ class OpenBlockColourTests(unittest.TestCase):
                 self.assertNotEqual(
                     sidebar.open_stage_colour(content), sidebar.open_stage_colour(other_content),
                 )
+
+
+class ColourLineageTests(unittest.TestCase):
+    """Decision-110: colour is derived in three GRADES -- feature base,
+    then task base, then content base -- so which feature a task belongs
+    to, and which task a block of content belongs to, are both legible
+    without reading a word. Defect found this round (2026-07-27): every
+    unassigned feature in a repo fell back to the SAME grade-1 colour
+    (`_repo_hue(...)["accent"]` verbatim), so two different features'
+    tasks/step-bands drew from the identical range and read as flat --
+    `feature_colour_base`'s fallback now jitters from the project hue,
+    keyed by `feature_id` (`_fallback_feature_colour`), the same way a
+    task's own colour already jittered from its feature's."""
+
+    def setUp(self):
+        self.hue = sidebar._repo_hue("orchids")
+
+    def test_two_features_in_the_same_repo_resolve_to_different_base_colours(self):
+        a = sidebar.feature_colour_base(self.hue, "feature-alpha")
+        b = sidebar.feature_colour_base(self.hue, "feature-beta")
+        self.assertNotEqual(a, b)
+
+    def test_feature_base_colour_is_deterministic(self):
+        first = sidebar.feature_colour_base(self.hue, "feature-alpha")
+        second = sidebar.feature_colour_base(self.hue, "feature-alpha")
+        self.assertEqual(first, second)
+
+    def test_tasks_in_different_features_are_pulled_toward_different_centres(self):
+        # Two tasks with UNRELATED ids, one under each of two different
+        # features -- before the fix, both jittered around the identical
+        # grade-1 point, so which feature a task belonged to carried no
+        # colour signal at all (a task from feature A could land closer to
+        # a task from feature B than to its OWN sibling). Distance here is
+        # informational -- the real assertion is that the two features'
+        # own base colours (which every task under them is jittered
+        # from) differ, proven above; this just demonstrates the
+        # consequence carries through to actual task colours.
+        a1 = sidebar.task_colour_base(self.hue, "feature-alpha", "task-1")
+        b1 = sidebar.task_colour_base(self.hue, "feature-beta", "task-99")
+        feature_a = sidebar.feature_colour_base(self.hue, "feature-alpha")
+        feature_b = sidebar.feature_colour_base(self.hue, "feature-beta")
+        # each task lands closer to its OWN feature's base than to the
+        # other feature's base -- the point of grade 1 existing at all.
+        self.assertLess(
+            sidebar._perceptual_distance(a1, feature_a),
+            sidebar._perceptual_distance(a1, feature_b),
+        )
+        self.assertLess(
+            sidebar._perceptual_distance(b1, feature_b),
+            sidebar._perceptual_distance(b1, feature_a),
+        )
+
+    def test_two_tasks_within_one_feature_are_different_but_related(self):
+        base = sidebar.feature_colour_base(self.hue, "feature-alpha")
+        t1 = sidebar.task_colour_base(self.hue, "feature-alpha", "task-1")
+        t2 = sidebar.task_colour_base(self.hue, "feature-alpha", "task-2", [t1])
+        self.assertNotEqual(t1, t2)
+        # "related" -- both sit closer to their shared feature's own base
+        # than either sits to an unrelated feature's base (grade 2 is a
+        # JITTER around grade 1, never an independent draw).
+        unrelated = sidebar.feature_colour_base(self.hue, "feature-unrelated")
+        self.assertLess(sidebar._perceptual_distance(t1, base), sidebar._perceptual_distance(t1, unrelated))
+        self.assertLess(sidebar._perceptual_distance(t2, base), sidebar._perceptual_distance(t2, unrelated))
+
+
+class TaskColourDeterminismTests(unittest.TestCase):
+    """Decision-110: a task's colour must be STABLE for its whole life --
+    derived deterministically from its identity, never sampled at render
+    time. A task that changed colour as it repainted, or two panes
+    disagreeing about a task's colour, would both read as defects."""
+
+    def test_same_identity_yields_the_same_colour_twice(self):
+        hue = sidebar._repo_hue("orchids")
+        first = sidebar.task_colour_base(hue, "feature-a", "task-1")
+        second = sidebar.task_colour_base(hue, "feature-a", "task-1")
+        self.assertEqual(first, second)
+
+    def test_stable_across_a_fresh_hue_lookup_too(self):
+        # a real render re-derives `_repo_hue` on every frame (it is a
+        # pure function of the repo name, never cached across frames) --
+        # determinism must survive that, not merely a shared `hue` object.
+        first = sidebar.task_colour_base(sidebar._repo_hue("orchids"), "feature-a", "task-1")
+        second = sidebar.task_colour_base(sidebar._repo_hue("orchids"), "feature-a", "task-1")
+        self.assertEqual(first, second)
+
+
+class TaskColourSiblingSeparationTests(unittest.TestCase):
+    """Decision-110: separation between sibling tasks comes from choosing
+    well -- a candidate too close to an already-assigned sibling is
+    REDRAWN (deterministically re-rolled, never left colliding) -- not
+    from an ordinal scheme."""
+
+    def _salt_candidates(self, feature_base, task_id):
+        """Every candidate `task_colour_base` would try, in order -- the
+        exact reroll ladder (`salt` 0..`_TASK_COLOUR_MAX_REROLLS - 1`), so
+        a test can assert on WHICH one won without depending on luck."""
+        return [
+            sidebar._hls_jitter_point(
+                feature_base, task_id, salt,
+                sidebar._TASK_HUE_JITTER_DEGREES, sidebar._TASK_LIGHTNESS_JITTER,
+                sidebar._TASK_SATURATION_JITTER,
+            )
+            for salt in range(sidebar._TASK_COLOUR_MAX_REROLLS)
+        ]
+
+    def test_a_colliding_candidate_is_redrawn_away_from_its_sibling(self):
+        # a concrete, verified case: "task-x"'s salt=0 candidate collides
+        # with `siblings[0]` (distance ~31, under the ~40 floor) -- the
+        # function must reroll past it. salt=1 is the first candidate in
+        # its own ladder that clears the floor against BOTH siblings, so
+        # that -- not salt=0 -- is what must come back.
+        hue = sidebar._repo_hue("orchids")
+        feature_base = sidebar.feature_colour_base(hue, "feature-x")
+        siblings = [(120, 90, 200), (200, 150, 100)]
+        candidates = self._salt_candidates(feature_base, "task-x")
+        salt0, salt1 = candidates[0], candidates[1]
+        self.assertLess(
+            min(sidebar._perceptual_distance(salt0, s) for s in siblings),
+            sidebar._TASK_MIN_PERCEPTUAL_DISTANCE,
+        )
+        self.assertGreaterEqual(
+            min(sidebar._perceptual_distance(salt1, s) for s in siblings),
+            sidebar._TASK_MIN_PERCEPTUAL_DISTANCE,
+        )
+
+        result = sidebar.task_colour_base(hue, "feature-x", "task-x", siblings)
+        self.assertEqual(result, salt1)
+        self.assertNotEqual(result, salt0)
+
+    def test_a_candidate_within_budget_is_never_rejected_in_favour_of_a_worse_one(self):
+        # whatever the function DOES return, it must be at least as far
+        # from every sibling as the naive salt=0 draw would have been --
+        # "redrawn" never means "redrawn to something worse."
+        hue = sidebar._repo_hue("orchids")
+        feature_base = sidebar.feature_colour_base(hue, "feature-a")
+        siblings = [(180, 90, 60), (60, 180, 90), (90, 60, 180)]
+        for task_id in ("alpha", "beta", "gamma", "delta"):
+            candidates = self._salt_candidates(feature_base, task_id)
+            salt0_distance = min(sidebar._perceptual_distance(candidates[0], s) for s in siblings)
+            result = sidebar.task_colour_base(hue, "feature-a", task_id, siblings)
+            result_distance = min(sidebar._perceptual_distance(result, s) for s in siblings)
+            self.assertGreaterEqual(result_distance, salt0_distance)
+
+
+class ContrastGuaranteeTests(unittest.TestCase):
+    """Decision-110's hard rule: contrast is CALCULATED, not eyeballed --
+    where a derived pair fails, the FOREGROUND moves, the background never
+    does. Bug found this round (2026-07-27): the old target-selection
+    threshold (`relative_luminance(bg) < 0.5`) could pick the extreme that
+    could never actually clear the ratio, and the loop's old step budget
+    could exhaust before reaching it even with the right target -- both
+    silently shipped a still-non-compliant "near-white" foreground."""
+
+    def _assert_background_untouched(self, bg, fg_result):
+        # the background is never abandoned or substituted -- only ever
+        # read back unchanged by the caller.
+        self.assertIsInstance(bg, tuple)
+        self.assertIsInstance(fg_result, tuple)
+
+    def test_result_always_clears_the_requested_ratio(self):
+        # a spread of real derived backgrounds this file actually produces
+        # (open-stage/content colours for a range of hues), plus a few
+        # synthetic mid-tone greys near the WCAG crossover where the old
+        # threshold heuristic picked the wrong extreme.
+        backgrounds = [
+            (192, 188, 187), (186, 186, 200), (183, 190, 198), (187, 175, 194),
+            (166, 159, 156), (128, 128, 128), (160, 160, 160), (100, 100, 115),
+        ]
+        for bg in backgrounds:
+            for fg in (sidebar.TEXT, sidebar.MUTED, (200, 200, 200), (10, 10, 10)):
+                result = sidebar.ensure_contrast(fg, bg, sidebar._CONTRAST_MIN_TEXT)
+                self._assert_background_untouched(bg, result)
+                self.assertGreaterEqual(
+                    sidebar.contrast_ratio(result, bg), sidebar._CONTRAST_MIN_TEXT,
+                    f"fg={fg} bg={bg} -> {result} never cleared the minimum ratio",
+                )
+
+    def test_an_already_compliant_pair_is_returned_unchanged(self):
+        fg, bg = (255, 255, 255), (0, 0, 0)
+        self.assertEqual(sidebar.ensure_contrast(fg, bg, sidebar._CONTRAST_MIN_TEXT), fg)
+
+    def test_the_foreground_is_what_moves_not_the_background(self):
+        # `ensure_contrast` has no background parameter to return -- its
+        # signature itself enforces "the background never moves"; this
+        # asserts the RETURNED colour is a foreground adjustment (distinct
+        # from the original fg whenever the original failed), never `bg`.
+        bg = (186, 186, 200)
+        fg = sidebar.TEXT
+        self.assertLess(sidebar.contrast_ratio(fg, bg), sidebar._CONTRAST_MIN_TEXT)
+        result = sidebar.ensure_contrast(fg, bg, sidebar._CONTRAST_MIN_TEXT)
+        self.assertNotEqual(result, fg)
+        self.assertNotEqual(result, bg)
+
+    def test_target_extreme_is_picked_by_achievable_ratio_not_a_luminance_threshold(self):
+        # the exact bug: a background whose own luminance sits just under
+        # 0.5 but well above the true ~0.18 crossover, where BLACK is the
+        # only extreme that can ever reach a normal-text ratio.
+        bg = (186, 186, 200)
+        self.assertLess(sidebar.relative_luminance(bg), 0.5)
+        self.assertLess(sidebar.contrast_ratio(sidebar.WHITE, bg), sidebar._CONTRAST_MIN_TEXT)
+        result = sidebar.ensure_contrast(sidebar.TEXT, bg, sidebar._CONTRAST_MIN_TEXT)
+        self.assertGreaterEqual(sidebar.contrast_ratio(result, bg), sidebar._CONTRAST_MIN_TEXT)
+
+    def test_feature_row_falling_block_text_now_clears_contrast(self):
+        # the falling-block redesign's own equivalent (operator, 2026-07-28:
+        # the feature row shares the header's PRIMARY/SECONDARY background,
+        # differing only in font colour) -- `feature_emphasis_colour` must
+        # still clear the plain text floor against that shared PRIMARY.
+        hue = sidebar._repo_hue("orchids")
+        primary = sidebar.repo_colour_roles(hue).primary
+        fg = sidebar.feature_emphasis_colour(primary)
+        self.assertGreaterEqual(sidebar.contrast_ratio(fg, primary), sidebar._CONTRAST_MIN_TEXT)
+
+
+class FeatureRowContrastIsCalculatedTests(unittest.TestCase):
+    """`_draw_feature_row`'s falling-block core (operator, 2026-07-28)
+    shares the header's own PRIMARY background and text-colour mechanism
+    (`feature_emphasis_colour`/`header_emphasis_colour`) rather than the
+    retired per-status muted cell styles -- every repo's PRIMARY must still
+    produce a compliant feature-row text colour, DONE's own separate flat
+    green band included."""
+
+    def test_every_repo_produces_a_compliant_falling_block_text_colour(self):
+        for repo in ("orchids", "signmc", "widgets", "throwy"):
+            hue = sidebar._repo_hue(repo)
+            primary = sidebar.repo_colour_roles(hue).primary
+            fg = sidebar.feature_emphasis_colour(primary)
+            self.assertGreaterEqual(
+                sidebar.contrast_ratio(fg, primary), sidebar._CONTRAST_MIN_TEXT,
+                f"{repo}: feature text {fg} on primary {primary} is not legible",
+            )
+
+    def test_done_status_keeps_its_own_compliant_green_band(self):
+        fg = sidebar.ensure_contrast(sidebar.GREEN, sidebar.FILL_GREEN, sidebar._CONTRAST_MIN_TEXT)
+        self.assertGreaterEqual(sidebar.contrast_ratio(fg, sidebar.FILL_GREEN), sidebar._CONTRAST_MIN_TEXT)
+
+
+class HeaderContrastIsCalculatedTests(unittest.TestCase):
+    """The project header's core sits on a single, uniform PRIMARY
+    background, so one contrast check IS the whole row's title check now
+    -- but `_draw_header` still must not skip it. The title is now the
+    MOST emphasized text in the sidebar rather than the least (operator
+    ruling, 2026-07-28: "the project is rendered as the least readable,
+    least emphasized text of the whole sidebar... I think that the project
+    header's text should become the MOST emphasized") -- `header_emphasis_
+    colour` runs `TEXT` straight through `ensure_contrast` at the higher
+    `_CONTRAST_MIN_CONTENT` floor, never muted toward the background first
+    (that muting-before-checking is what produced the original defect: a
+    title that cleared a low WCAG floor and still measured near-zero on
+    APCA against a typical repo accent)."""
+
+    def test_title_is_legible_against_the_primary_core(self):
+        for repo in ("orchids", "signmc", "widgets", "throwy", "a-repo-with-no-assigned-hue"):
+            hue = sidebar._repo_hue(repo)
+            bg = sidebar.repo_colour_roles(hue).primary
+            fg = sidebar.header_emphasis_colour(bg)
+            self.assertGreaterEqual(
+                sidebar.contrast_ratio(fg, bg), sidebar._CONTRAST_MIN_CONTENT,
+                f"{repo} header core: {fg} on {bg} is not legible",
+            )
+
+    def test_ramp_steps_tame_from_primary_to_secondary_without_restating_primary(self):
+        """`colour_ramp_steps` is the reusable primitive both the header
+        ramp and a future ownership-tracking consumer share (operator,
+        2026-07-28) -- it must taper monotonically channel-by-channel
+        TOWARD `secondary` (never overshoot, never brighten back toward a
+        highlight), never repeat `primary` itself, and land exactly on
+        `secondary` at its last step."""
+        for repo in ("orchids", "signmc"):
+            hue = sidebar._repo_hue(repo)
+            roles = sidebar.repo_colour_roles(hue)
+            steps = sidebar.colour_ramp_steps(roles.primary, roles.secondary, 6)
+            self.assertEqual(len(steps), 6)
+            self.assertEqual(steps[-1], roles.secondary)
+            self.assertNotEqual(steps[0], roles.primary)
+            distances = [
+                sum((a - b) ** 2 for a, b in zip(step, roles.secondary))
+                for step in [roles.primary] + steps
+            ]
+            self.assertEqual(distances, sorted(distances, reverse=True))
+
+    def test_paused_header_is_legible_too(self):
+        bg = sidebar.PAUSED_HEADER_GRAY
+        fg = sidebar.ensure_contrast(
+            sidebar._muted_toward(sidebar.HEADER_FG, bg), bg, sidebar._CONTRAST_MIN_TEXT,
+        )
+        self.assertGreaterEqual(
+            sidebar.contrast_ratio(fg, bg), sidebar._CONTRAST_MIN_TEXT)
+
+
+class FallingBlockRowTests(unittest.TestCase):
+    """The header/feature "falling block" layout (operator, 2026-07-28,
+    superseding the earlier `SIDEBAR_HEADER_RAMP_VARIANT` two/three-cell
+    A/B switch entirely — that mechanism and its tests are retired along
+    with the symmetric ramp they governed): a solid PRIMARY core flush
+    left, falling away to SECONDARY over however many columns the pane
+    has left, via the eighth-resolution `_LEFT_EIGHTHS` block ladder."""
+
+    def test_core_width_is_text_plus_one_space_each_side(self):
+        self.assertEqual(sidebar.falling_block_core_width("orchids"), len("orchids") + 2)
+
+    def test_fade_uses_only_the_two_named_colours(self):
+        primary, secondary = (172, 136, 214), (40, 31, 54)
+        cells = sidebar.falling_block_fade_colours(primary, secondary, 5)
+        self.assertEqual(len(cells), 5)
+        for _ch, fg, bg in cells:
+            self.assertIn(fg, (primary, secondary))
+            self.assertIn(bg, (primary, secondary))
+
+    def test_fade_is_monotonic_from_primary_toward_secondary(self):
+        # cell 0 (adjacent to the core) must be at least as "primary" as
+        # the last cell (adjacent to the pane edge) -- verified via the
+        # glyph's own eighths fill level, not a colour distance, since
+        # every cell draws from just the two named colours.
+        cells = sidebar.falling_block_fade_colours((200, 200, 200), (0, 0, 0), 8)
+        fill_levels = [sidebar._LEFT_EIGHTHS.index(ch) if ch in sidebar._LEFT_EIGHTHS else None
+                       for ch, _fg, _bg in cells]
+        # a solid "primary" cell (space, fg==bg==primary) reads as fully
+        # filled; a solid "secondary" cell reads as empty -- normalise both
+        # space cases by their actual colour instead of the shared glyph.
+        def _level(cell):
+            ch, fg, bg = cell
+            if ch == " ":
+                return 8 if fg == (200, 200, 200) else 0
+            return sidebar._LEFT_EIGHTHS.index(ch)
+        levels = [_level(c) for c in cells]
+        self.assertEqual(levels, sorted(levels, reverse=True))
+
+    def test_no_fade_when_width_is_exactly_the_core(self):
+        self.assertEqual(sidebar.falling_block_fade_colours((1, 2, 3), (4, 5, 6), 0), [])
+
+
+class TaskRowPaintsItsOwnBackgroundTests(unittest.TestCase):
+    """A task row SITS ON its feature's band (Decision-110). Its name was
+    drawn with a one-argument `colours.pair(fg)`, i.e. no background at all,
+    so it inherited whatever background happened to be emitted last -- the
+    same family of defect as Decision-111's traps, where a row's appearance
+    depends on what was drawn before it rather than on its own state. That
+    also put its contrast outside anyone's control."""
+
+    def test_name_colour_is_legible_against_the_band_for_every_status(self):
+        # "done" no longer carries GREEN (operator ruling, 2026-07-28: "the
+        # green is not green enough... remove the green from that" -- the
+        # row's own checkmark carries done-ness instead, same drop already
+        # made for the subagent line).
+        hue = sidebar._repo_hue("orchids")
+        bg = hue["fill"]
+        for status in ("working", "done", "failed", "idle", "stale", None):
+            text_fg = sidebar.MUTED if status == "failed" else sidebar.TEXT
+            resolved = sidebar.ensure_contrast(text_fg, bg, sidebar._CONTRAST_MIN_TEXT)
+            self.assertGreaterEqual(
+                sidebar.contrast_ratio(resolved, bg), sidebar._CONTRAST_MIN_TEXT,
+                f"task row status={status}: {resolved} on band {bg} is not legible",
+            )
+
+    def test_the_painter_never_calls_pair_without_a_background(self):
+        """A bare `colours.pair(fg)` in a row painter is the bug itself, so
+        guard the shape rather than only the resulting colour."""
+        source = inspect.getsource(sidebar._draw_task_row)
+        self.assertNotIn(
+            "colours.pair(text_fg)", source,
+            "the task row name must name its own background, not inherit one",
+        )
+
+
+class SelectionHighlightTests(unittest.TestCase):
+    """sidebar-teamwork defect 4: a selected row used to swap in
+    `curses.A_REVERSE`, a straight fg/bg swap that could do "very little
+    work" on screen when the two tones already sat close together, and
+    whose OWN readability (the swapped direction) was never checked by
+    `ensure_contrast` -- only the un-swapped pair ever was.
+    `_selection_highlight` replaces it with a further LIFT toward WHITE of
+    whatever background the row already carries, re-run through the same
+    `ensure_contrast` machinery every other derived colour in this file
+    goes through, so the guarantee holds by construction rather than by
+    assuming a swap preserves it."""
+
+    def test_lifts_a_background_toward_white_by_the_declared_fraction(self):
+        bg = (40, 31, 54)
+        expected = sidebar.lerp(bg, sidebar.WHITE, sidebar._SELECTION_LIFT_FRACTION)
+        self.assertEqual(sidebar._selection_highlight(bg), expected)
+
+    def test_a_missing_background_lifts_from_black_rather_than_raising(self):
+        # an agent/subagent row with no open-block background of its own
+        # (`_open_block_bg` can return None) still gets an unmistakable
+        # highlight -- lifted from black, never left uncoloured.
+        expected = sidebar.lerp((0, 0, 0), sidebar.WHITE, sidebar._SELECTION_LIFT_FRACTION)
+        self.assertEqual(sidebar._selection_highlight(None), expected)
+
+    def test_the_lift_always_moves_strictly_toward_white(self):
+        for bg in [(0, 0, 0), (40, 31, 54), (211, 208, 207), (255, 255, 255)]:
+            lifted = sidebar._selection_highlight(bg)
+            for channel in range(3):
+                self.assertGreaterEqual(lifted[channel], bg[channel])
+
+    def test_selected_text_and_mark_pairs_stay_compliant_against_the_lifted_background(self):
+        # the concrete thing nobody had checked before this step: every row
+        # kind's own foreground/background derivation, RE-RUN against the
+        # LIFTED background a selected row actually paints, still clears
+        # its declared minimum -- feature, task, step and open-block
+        # (agent/subagent) backgrounds alike, across a spread of real
+        # per-repo/per-task hues this file actually produces.
+        hue = sidebar._repo_hue("orchids")
+        task_colour = sidebar.task_colour_base(hue, "feature-x", "task-x")
+        content = sidebar.content_colour_base(task_colour)
+        open_stage = sidebar.open_stage_colour(content)
+        backgrounds_needing_text = [
+            sidebar.repo_colour_roles(hue).primary,  # feature row falling-block core
+            hue["fill"],  # task row band
+            content,  # step row
+            open_stage,  # agent/subagent open block
+        ]
+        for bg in backgrounds_needing_text:
+            lifted = sidebar._selection_highlight(bg)
+            fg = sidebar.ensure_contrast(sidebar.TEXT, lifted, sidebar._CONTRAST_MIN_TEXT)
+            self.assertGreaterEqual(
+                sidebar.contrast_ratio(fg, lifted), sidebar._CONTRAST_MIN_TEXT,
+                f"selected TEXT against lifted {bg} -> {lifted} fell short",
+            )
+            mark_fg = sidebar.ensure_contrast(task_colour, lifted, sidebar._CONTRAST_MIN_MARK)
+            self.assertGreaterEqual(
+                sidebar.contrast_ratio(mark_fg, lifted), sidebar._CONTRAST_MIN_MARK,
+                f"selected MARK against lifted {bg} -> {lifted} fell short",
+            )
+
+    @staticmethod
+    def _code_only(fn):
+        """`fn`'s source with its docstring AND its `#` comments stripped --
+        prose explaining a fix ("...rather than `curses.A_REVERSE`...",
+        "...drops its old A_DIM attribute...") would otherwise
+        false-positive a plain substring search; only the executable body is
+        what these guards care about.
+
+        The comment half of that was added after a real false positive: a
+        comment in `_draw_task_row` naming the very bug the code avoids
+        ("Decision-111's A_DIM bug") failed this guard, which is the guard
+        punishing a function for documenting itself. Stripped via a
+        regex over the RAW source rather than a `fn.__doc__` substring
+        match -- Python 3.13 dedents `__doc__` at compile time, so it no
+        longer appears verbatim inside `inspect.getsource`'s raw text."""
+        source = inspect.getsource(fn)
+        without_docstring = re.sub(r'""".*?"""', "", source, count=1, flags=re.DOTALL)
+        return re.sub(r"#[^\n]*", "", without_docstring)
+
+    def test_never_A_DIM_on_a_selected_custom_background(self):
+        # Decision-111: A_DIM combined with a custom background corrupts
+        # the NEXT row on this tmux+ncurses build -- the selected-row
+        # painters must use A_BOLD, never A_DIM, to stay clear of it.
+        for fn in (sidebar._draw_feature_row, sidebar._draw_identity_block,
+                   sidebar._draw_subagent_row, sidebar._draw_task_row, sidebar._draw_step_row):
+            self.assertNotIn("A_DIM", self._code_only(fn), f"{fn.__name__} must never use A_DIM")
+
+    def test_selected_row_painters_use_bold_not_reverse_video(self):
+        # the shape of the fix itself, guarded directly (mirrors
+        # TaskRowPaintsItsOwnBackgroundTests' own "guard the shape, not
+        # just the resulting colour" rationale) -- A_REVERSE is what
+        # defect 4 replaces, so its reappearance in any of these five
+        # painters is the regression, not just a colour drifting.
+        for fn in (sidebar._draw_feature_row, sidebar._draw_identity_block,
+                   sidebar._draw_subagent_row, sidebar._draw_task_row, sidebar._draw_step_row):
+            self.assertNotIn(
+                "A_REVERSE", self._code_only(fn), f"{fn.__name__} must not use A_REVERSE any more",
+            )
 
 
 if __name__ == "__main__":

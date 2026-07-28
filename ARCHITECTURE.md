@@ -180,15 +180,42 @@ $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
                                                                 └─> sidebar_nav ──> tmux switch
 ```
 
-- **Consolidated into `tools/sidebar.py`** — the ONLY sidebar. It reads the
-  `projects/<repo>.<project>/` event layout directly; `sidebar_model.py` (the
-  old courier-inbox reader) and `sidebar_v3.py` (the topic-only prototype) are
-  DELETED. `build_model()` folds each project directory's event files into one
-  record per session (latest of each kind wins), then assembles the
-  Fleet/Repo/Feature/Subagent model — identity and role/model come off the
-  identity/status snapshot every `orchard_topic.py` event carries, not a
-  separate observation step. Updates are event-driven (inotify on the
-  projects root), polling-fallback otherwise.
+- **`tools/sidebar.py` renders; `tools/sidebar_model.py` builds the model it
+  renders.** The renderer owns the pure-text Row/render pipeline, the curses
+  draw layer, and the CLI; it imports `build_model()`/`watch()` and every data
+  class (`Fleet`/`Repo`/`Feature`/`Subagent`) from `sidebar_model.py`, never
+  the other way round. `sidebar_model.py` reads the `projects/<repo>.
+  <project>/` event layout directly, folds each project directory's event
+  files into one record per session (latest of each kind wins), and
+  assembles the Fleet/Repo/Feature/Subagent model — identity and role/model
+  come off the identity/status snapshot every `orchard_topic.py` event
+  carries, not a separate observation step. It never imports curses and
+  never formats a string for a screen. A module of this name existed once
+  before, as the old courier-inbox reader, and was deleted in the
+  bus-finishing rewrite; this is a new module with a different job,
+  extracted back out of `sidebar.py` so the renderer is no longer also the
+  model builder. `sidebar_v3.py` (the topic-only prototype) stays deleted.
+  `tools/sidebar_sim.py` is a fleet-event simulator: it writes a
+  deterministic multi-project event tree, in the same on-disk shape
+  `orchard_topic.py` produces, into an isolated runtime directory, so the
+  sidebar can be developed and judged against a populated fleet instead of
+  sparse live data; it refuses outright to write into the live runtime tree.
+  Updates are event-driven (inotify on the projects root), polling-fallback
+  otherwise.
+- **`tools/sidebar-live.sh` is the acceptance surface for a sidebar branch under
+  development, and it is a supervisor rather than a renderer.** A sidebar cannot
+  be judged from inside the branch that changes it, and it cannot be judged from
+  a pane opened before the change either; both its behaviour and its appearance
+  are only visible while it runs. The script occupies a pane, follows its
+  checkout's HEAD, and on each new commit exports that exact commit to a clean
+  tree and runs the renderer from there. Two properties are the reason for the
+  indirection. It tracks COMMITS, never the working tree, because a running
+  renderer goes blank when its own source file changes underneath it — the
+  process survives, nothing is logged, the display simply empties — so a
+  half-saved file would otherwise present as a rendering fault. And the pane
+  title names the commit on display, which is what makes a verdict given on the
+  pane a verdict on known code (Decision-112). The renderer is unmodified and
+  knows nothing about the supervisor.
 - **Retention is COLOUR, not removal.** Nothing ever ages off the bar: a
   working session renders normally; a terminal outcome (success/fail, or the
   gardener-only task outcome) becomes a PERSISTENT one-liner — green for
@@ -246,14 +273,18 @@ $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
   broker reads `:session:operator` mailboxes directly — it is a CONSUMER of
   the message transport, not a subject or a field on the sidebar's own event
   grammar.
-- Components in `tools/`: `sidebar.py` (the ONLY renderer — folds the model
-  and draws it, `sidebar_model.py`/`sidebar_v3.py` deleted), `sidebar_nav.py`
-  (navigation), `sidebar-mount.sh` (mount), `feature_name.py` (ledger name
-  resolution), `orchard-question-broker.py` + `orchard-question-broker-mount.sh`
-  (the ask popup broker, above). Hide/show visibility is retired (operator
-  ruling, 2026-07-25): `sidebar.py`'s `build_model()` folds every directory
-  under the projects root unconditionally, filtered only by whether it has a
-  live session (see Retention above).
+- Components in `tools/`: `sidebar.py` (the ONLY renderer — draws the model,
+  `sidebar_v3.py` stays deleted), `sidebar_model.py` (the model layer: event
+  folding, registry reading, tree assembly, imported by `sidebar.py`),
+  `sidebar_sim.py` (fleet-event simulator for development and testing),
+  `sidebar_nav.py` (navigation), `sidebar-mount.sh` (mount), `sidebar-live.sh`
+  (per-commit acceptance surface for a branch under development), `feature_name.py`
+  (ledger name resolution), `orchard-question-broker.py` +
+  `orchard-question-broker-mount.sh` (the ask popup broker, above). Hide/show
+  visibility is retired (operator ruling, 2026-07-25): `build_model()` (in
+  `sidebar_model.py`) folds every directory under the projects root
+  unconditionally, filtered only by whether it has a live session (see
+  Retention above).
 
 ## The sidecar contract
 
@@ -289,6 +320,18 @@ resolves the repo on GitHub and follows `Agent-installation.md`. In short:
    existing files (byte-identical → symlink; project-only → adopted; diverged
    → preserved in history), and lays entries per `manifest.conf`.
 4. `kauk sync` runs at workflow start and end.
+
+This repository is also the package's own SOURCE, and does not install
+itself as one of its own consumers: `.ai.toml` here carries no
+`[sources."serialseb/orchids"]` entry, and every `.claude/**` link resolves
+directly to this repository's own files. It did once, from `5fee5a7` until
+2026-07-27, which meant every agent, skill, hook and tool executed a
+vendored clone of the repository rather than the repository itself — the
+clone sat several commits behind, across a whole transport rewrite, so
+editing this repo's own code changed nothing about what actually ran until
+somebody happened to sync, and no worktree could run its own code either,
+since the links were absolute. `migrations/2026-07-27-unvendor-self.md`
+converges any other clone still carrying the old self-referential entry.
 
 `manifest.conf` line types: `skill <name> <role>` (delivery tuned per-repo in
 `.ai.toml` by role section: `exclude|copy|link|local`), `link` (absolute
