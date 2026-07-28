@@ -631,6 +631,34 @@ Ledger of everything the operator asked for during this feature, as received.
 | 14 | 2026-07-28, superseding the previous instruction minutes later: *"tell it to stop what it's doing and just do the splits by modules and make the modules as small and cohesive as is possible. In doubt, ask."* | **relayed and in force.** Feature work on the colour chain and the citation is **STOPPED**, not paused for later polish — whatever was coherent is committed, anything broken reverted, and nothing further is added to it. The sower's sole remaining job is the module split. **Small and cohesive is the goal, not "fewer files"**: the earlier sketch of colour / text composition / row painting / curses I/O is a starting point rather than a target, and where a boundary is open the smaller module wins. The working test is that a module can be described in one sentence without the word "and". **"In doubt, ask" is carried as an instruction rather than an offer** — an ambiguous boundary, a function two modules both have a claim on, or a cycle that would need breaking, stops the sower and comes to the operator, instead of being guessed and then documented as though decided. That guess-and-document habit is the one this round has paid most for. Method unchanged: extract in place, prune dead paths as each piece comes out, tests green between steps, each extraction its own commit. Budget and its checkpoint rule unchanged at 500,000. |
 | 15 | 2026-07-28: *"I think the rule should go, uh, fleet wide. However, you must have a must close. Do not, under any circumstance, estimate without any information when launching a fleet of agents. If you do not have enough data to do a statistically accurate estimate, Ask the operator if a round of discovery should be done."* | **staged as a DECISION ENTRY** — see `## Decision entries`, first block, unnumbered for the groundskeeper's mechanical fold. Promoted from a feature-local working rule to a fleet-wide one at his instruction, with the must-clause he asked for: a budget is never invented to satisfy the requirement, because a fabricated number launders a guess into something that later reads as evidence. Where the data for a defensible estimate does not exist, the operator is asked whether a discovery round should size the work first — discovery is fundable, fabrication is not. **Self-applied immediately and honestly:** the 500,000 given to the live sower rests on real data for *a sower working in this file* (195k, 236k, 258k for single assignments; 364k and 418k across resumed ones), but there is **no** data for *splitting this file*, which is a different job. That gap was put to him rather than papered over. |
 
+### Why so much data is "on the bus and never drawn" — it is withheld on purpose
+
+Operator, 2026-07-28, explaining something this sidecar has recorded more than once as though
+it were an oversight: *"there is status information in every response or every message, but
+we don't give it to you for two reasons. The first one is to avoid agents going mad and
+starting to invent shit based on it. Don't tell me it won't happen because it will.
+Secondly, because we want to make sure that you only get the bit of information that you need
+and no more so the context doesn't blur."*
+
+Status information rides every message. It is deliberately NOT surfaced into an agent's
+context, for two reasons: agents fabricate from ambient data, and unbounded context blurs the
+signal an agent actually needs.
+
+**The distinction that matters here: the withholding is from an AGENT'S CONTEXT, not from the
+on-disk record.** The sidebar is not an agent — it reads the event files directly — so it is
+a legitimate consumer of what those envelopes carry. Earlier notes treating unrendered fields
+as a defect ("data already on the bus and discarded at fold time") conflate the two: some of
+it is undrawn because nobody wired it up, and some is simply not an agent's to see. Establish
+which before calling anything a defect.
+
+His first reason is not hypothetical, and this feature is its evidence. An agent generalised
+a remark about one line into a global prohibition on animation. Another widened a
+courier-out-of-scope ruling into freezing the marker format. A third filed its own framing of
+the colour ladder as "accidental complexity" into the decision record, where it would have
+licensed a later agent to delete the operator's own downgrade path. And this landscaper
+invented a 16-colour support requirement and propagated it into three step specifications.
+Four fabrications from ambient context inside one feature.
+
 ## Decision entries
 
 Staged for the groundskeeper's mechanical fold into `docs/decisions.md` at close.
