@@ -2321,7 +2321,16 @@ def _draw_task_row(
     bar_fg = ensure_contrast(bar_fg, bg, _CONTRAST_MIN_MARK)
     _safe_addstr(stdscr, y, 0, _TASK_BAR_GLYPH, colours.pair(bar_fg, bg) | attr_extra)
     glyph = _task_row_glyph(row.status, tick)
-    avail = max(width - 2, 0)
+    # One column short of the window's TRUE last column (`width - 1`),
+    # never `width - 2` — the same reservation `_step_row_display_text`
+    # and `_draw_feature_row` already make. `_safe_addstr` (unlike
+    # `_safe_addch`) never special-cases that edge: a body long enough to
+    # reach it would `addstr` straight onto it, and this build's terminal
+    # auto-wraps the cursor off that write, desyncing the colour-pair
+    # state for whatever draws on the ROW BELOW next — a row depending on
+    # what was drawn before it, Decision-111's `A_DIM` bug reached through
+    # a different attribute path (sidebar-teamwork defect (b)).
+    avail = max(width - 3, 0)
     body = _truncate(compose_task_row_text(glyph, row.label, row.progress_glyph, avail), avail)
     text_fg = GREEN if row.status == "done" else MUTED if row.status == "failed" else TEXT
     text_fg = ensure_contrast(text_fg, bg, _CONTRAST_MIN_TEXT)
