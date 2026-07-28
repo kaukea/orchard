@@ -69,7 +69,27 @@ mechanical rename/split/grep work. Launch at `claude-sonnet-5`, effort `medium`
 4. Sweep for other cross-references broken by the renames.
 
 ## Testing
-`kauk sync` on a scratch consuming repo: renamed skills appear under the new name, old
+
+**METHOD REPLACED 2026-07-29 by operator ruling (Decision-122): orchids publishes to
+kauk and never vendors.** The original method below required `kauk sync` onto a scratch
+consuming repo. That method is OBSOLETE, not merely unrunnable — it tested a vendoring
+relationship that no longer exists, and `manifest.conf`'s absence (which made it
+impossible to run) is the correct state rather than a defect to work around. A skill's
+correctness in this repository is verified against this repository's own tree.
+
+Agreed method:
+1. **No dangling references.** Grep the whole tree for the old id `git-commit`: every hit
+   is either the migration entry (which must mention it) or a deliberate historical
+   reference. Zero live references to a skill file that no longer exists.
+2. **Both halves resolve.** `skills/git/SKILL.md` and `skills/git-workflow/SKILL.md` each
+   parse as valid frontmatter with `name` matching their directory.
+3. **The `Branch:` contradiction is gone.** The rule appears in exactly one of the two
+   halves, and reads unambiguously there — verified by a reader who has not seen this
+   conversation. This was the substantive defect the split existed to resolve.
+4. **Role-scoping holds** (the operator's refinement): only opening/closing roles
+   reference `git-workflow`; `sower`, `groomer`, `courier`, `bloomer`, `gardener`
+   reference `git` only.
+
+~~`kauk sync` on a scratch consuming repo: renamed skills appear under the new name, old
 symlinks are pruned, no dangling links remain, no skill references a name that no longer
-exists (grep the corpus for old ids). The `Branch:` rule reads unambiguously in both
-halves — verified by a reader who has not seen this conversation.
+exists (grep the corpus for old ids).~~ Struck per Decision-122.
