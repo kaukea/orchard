@@ -202,6 +202,20 @@ $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
   sparse live data; it refuses outright to write into the live runtime tree.
   Updates are event-driven (inotify on the projects root), polling-fallback
   otherwise.
+- **`tools/sidebar-live.sh` is the acceptance surface for a sidebar branch under
+  development, and it is a supervisor rather than a renderer.** A sidebar cannot
+  be judged from inside the branch that changes it, and it cannot be judged from
+  a pane opened before the change either; both its behaviour and its appearance
+  are only visible while it runs. The script occupies a pane, follows its
+  checkout's HEAD, and on each new commit exports that exact commit to a clean
+  tree and runs the renderer from there. Two properties are the reason for the
+  indirection. It tracks COMMITS, never the working tree, because a running
+  renderer goes blank when its own source file changes underneath it — the
+  process survives, nothing is logged, the display simply empties — so a
+  half-saved file would otherwise present as a rendering fault. And the pane
+  title names the commit on display, which is what makes a verdict given on the
+  pane a verdict on known code (Decision-112). The renderer is unmodified and
+  knows nothing about the supervisor.
 - **Retention is COLOUR, not removal.** Nothing ever ages off the bar: a
   working session renders normally; a terminal outcome (success/fail, or the
   gardener-only task outcome) becomes a PERSISTENT one-liner — green for
@@ -263,7 +277,8 @@ $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
   `sidebar_v3.py` stays deleted), `sidebar_model.py` (the model layer: event
   folding, registry reading, tree assembly, imported by `sidebar.py`),
   `sidebar_sim.py` (fleet-event simulator for development and testing),
-  `sidebar_nav.py` (navigation), `sidebar-mount.sh` (mount), `feature_name.py`
+  `sidebar_nav.py` (navigation), `sidebar-mount.sh` (mount), `sidebar-live.sh`
+  (per-commit acceptance surface for a branch under development), `feature_name.py`
   (ledger name resolution), `orchard-question-broker.py` +
   `orchard-question-broker-mount.sh` (the ask popup broker, above). Hide/show
   visibility is retired (operator ruling, 2026-07-25): `build_model()` (in

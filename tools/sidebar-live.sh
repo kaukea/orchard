@@ -21,7 +21,16 @@ log="$(git -C "$source_repo" rev-parse --git-common-dir)/the-works/sidebar-live.
 mkdir -p "$(dirname "$log")"
 
 renderer_pid=""
-shown_sha=""
+shown_sha=""    # the commit actually exported and running, and named in the title
+checked_sha=""  # the newest HEAD already judged for whether it changes the display
+
+# Paths the displayed pane actually depends on: the renderer and its model, and
+# the sidecars it reads feature names from. A commit touching only, say, the
+# workstream notes must not interrupt a pane somebody is watching.
+affects_display() {
+  [ -n "$1" ] || return 0
+  git -C "$source_repo" diff --name-only "$1" "$2" -- tools/ docs/TODO.md.d/ 2>/dev/null | grep -q .
+}
 
 head_sha() { git -C "$source_repo" rev-parse HEAD 2>/dev/null; }
 short() { git -C "$source_repo" rev-parse --short "$1" 2>/dev/null; }
@@ -81,10 +90,13 @@ while :; do
   sleep 2
   target="$(head_sha)"
 
-  if [ -n "$target" ] && [ "$target" != "$shown_sha" ]; then
-    if export_commit "$target"; then
-      stop_renderer
-      start_renderer "$target"
+  if [ -n "$target" ] && [ "$target" != "$checked_sha" ] && [ "$target" != "$shown_sha" ]; then
+    checked_sha="$target"
+    if affects_display "$shown_sha" "$target"; then
+      if export_commit "$target"; then
+        stop_renderer
+        start_renderer "$target"
+      fi
     fi
     continue
   fi
