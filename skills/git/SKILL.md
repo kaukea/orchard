@@ -1,11 +1,11 @@
 ---
-name: git-commit
-description: Use when committing files to git. It describes format and content to include in the commit messages that MUST be followed.
-roles: [general, process/workflow]
+name: git
+description: Use when committing files to git. Generic hygiene — format, gitmoji, scope discipline — that applies to every commit, in every repo or process.
+roles: [general]
 share: github
 compatibility: Requires git
 metadata:
-  tags: [git, commit, gitmoji, plan, task]
+  tags: [git, commit, gitmoji]
 ---
 
 # git commits (MUST)
@@ -16,7 +16,7 @@ metadata:
 - [ ] Format applied (see below)
 - [ ] Subject ≤ 52 characters
 - [ ] Body wrapped at 72 characters
-- [ ] Trailers present (`Branch:`, `Agent:`)
+- [ ] `Agent:` trailer present (add `Branch:` too where the `git-workflow` skill applies)
 - [ ] Scope rules followed
 
 Commit one logical change at a time. The user may override any rule.
@@ -28,11 +28,9 @@ Commit one logical change at a time. The user may override any rule.
 - **Unrelated external changes:** ask once, combined: *"These N files look unrelated to this workflow — confirm? If so, once the merge commit has landed, should I commit them on main, open a new feature branch, or will you handle it yourself?"*
 - **User edits to `.md` files** are committed separately from code changes.
 - **Stage specific paths:** `git add <file>`, never `git add -A` / `git add .`.
-- **Verify the current branch before staging.** `git branch --show-current` or read `git status`. If the workflow requires a feature branch and you're not on `f/…`, stop.
+- **Verify the current branch before staging.** `git branch --show-current` or read `git status`.
 - **Surface merge conflicts; do not auto-resolve.** Show the conflicting hunks, propose a resolution, wait for confirmation.
 - **Test results are not fabricated.** The `✅ x/y` (or 🚫) line reflects a run you actually performed in this session. If you didn't run tests, omit the line.
-- **`main` is immutable:** no amend, no rebase, no rewrite. Tags and notes are SHA-anchored and would be lost.
-- **Feature branches are mutable** for trivial fixups only (typo, prose, a missing semicolon). Larger changes get a new commit.
 - **No destructive operations without explicit user consent:** `reset --hard`, `--force` / `--force-with-lease`, `--no-verify`, `branch -D <unmerged>`, `checkout -- <dirty>`, `push`, `rebase`, `cherry-pick`.
 - **Batch pushes (MUST).** origin is wired to workflows: never push per-change during a discussing/refining round — commit locally and push ONCE when the round settles, or when the push is itself the intended signal a watcher waits on. Issue/PR comments are the same trigger class — one consolidated comment per round (Decision-033).
 
@@ -52,7 +50,6 @@ Commit one logical change at a time. The user may override any rule.
 
 <body>
 
-Branch: <branch-name>
 Agent: <model>
 ```
 
@@ -61,5 +58,5 @@ Agent: <model>
 - `<gitmoji>` is the closest match in https://gitmoji.dev, in Unicode.
 - `<test-emoji>` is ✅ (passed) or 🚫 (failed), followed by `<x>` succeeding and `<y>` total. If no tests were run, omit the line entirely.
 - Body lines wrap at 72 characters.
-- `Branch:` is required on every commit and is the current feature branch — never `main`, with one exception:
-  an operator-accepted micro-task commit (`workflow` skill → Micro-task path) carries `Branch: main`.
+- A process that runs branch-based workflows adds a `Branch:` trailer on top of this
+  format — see the `git-workflow` skill for that rule; it is not part of generic hygiene.
