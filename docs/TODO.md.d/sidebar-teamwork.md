@@ -696,6 +696,23 @@ Each was found during this feature and is out of its scope. None is fixed here.
     operator ruling to it.** Every sender re-implementing a directory lookup by hand is how
     that happens.
 
+    **His framing, which supersedes the one above and is better than it** (2026-07-28):
+    *"everything else is useless except maybe for resend semantics. You don't want to send
+    messages, you want to talk to someone."*
+
+    So the gap is not addressing, and it is not delivery receipts — this session spent a
+    stretch chasing both. The primitive wanted is a CONVERSATION with a peer. Delivery
+    metadata earns its keep only where it decides whether to resend; everything else it
+    reports is noise. Note `courier.py request` / `reply` already exist, so the
+    conversational shape is present. What is missing is naming who you want to talk to, and
+    knowing whether anyone is on the other end.
+
+    That last part has a cheap practical test, his: **ask a question rather than making a
+    statement.** A statement teaches you nothing, because a send receipt proves only that
+    the transport accepted bytes — not that they reached a mailbox, not that a live agent
+    drained it, not that it was acted on. A question that requires an answer proves an agent
+    is there, because the answer comes back.
+
     Transport, so out of this round's scope by his standing ruling. Returned, not fixed.
 
     **Recorded alongside it, because it was found the same way:** relaying operator words is
