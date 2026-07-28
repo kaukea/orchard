@@ -153,6 +153,10 @@ without his approval. This is the structural answer to the failure the audit was
 over — an agent generalising a remark into a standing constraint is an ADDITION, and
 additions are his alone.
 
+**Approval is a gate, not a timing constraint** — see "The gate is what matters, not the
+moment" below. This does not mean an agent must stop and ask before acting; it means the
+change does not land without his approval somewhere before it becomes real.
+
 ### For the other kinds, two cheap questions do most of the work
 
 *"For the other kinds, this is where simple rules, like, are easy to follow can solve
@@ -182,12 +186,50 @@ decision it can evaluate and a decision it can only obey or ignore at random. Th
 he names is the extreme case of the environment probe: a rule from an environment that has
 nothing to do with the one in the room.
 
-**PROPOSAL, not his ruling — needs confirmation.** A cloud agent typically runs with no
-operator present, so it cannot fall back on asking him when a probe is ambiguous. That
-suggests the probes must be answerable from the entry plus the code alone, with no
-operator round-trip, and that an entry which cannot be evaluated that way is malformed
-rather than merely awkward. Recorded as a proposal because he stated the benefit, not this
-requirement.
+**An earlier draft proposed** that because a cloud agent runs with no operator present,
+the probes must be answerable from the entry plus the code alone with no operator
+round-trip, and that an entry failing that is malformed. **He struck it as inference, and
+the correction below is the substance of this whole design.**
+
+### The gate is what matters, not the moment
+
+*"I said there is no change in the list of operator rules without approval. I did not say
+that the approval in the cloud environment needed to be in real time, considering
+approval is given at merge time. In the same way, approval is given for implementation at
+MAKE IT SO time or at THAT IS ALL time. The important bit is the gate, not the moment."*
+
+The write-lock is a **gate requirement**, not a timing constraint. Approval must happen;
+it need not happen before the agent acts. Read the fleet's existing gates the same way —
+MAKE IT SO and THAT IS ALL are approvals given at a moment chosen for the workflow, not
+permission sought before each keystroke.
+
+**Interactive and asynchronous agents satisfy the same gate differently:**
+
+*"Asking as we go is an improvement for interactive agents. Asynchronous agents also get
+the approval, but they just get it after having taken a judgment on removing or adding."*
+
+- **Interactive agents ask as they go.** This is an improvement — better, not required.
+- **Asynchronous agents take the judgment first and receive approval after.** A cloud
+  agent MAY decide to add or remove an operator rule; its approval arrives later. It is
+  not blocked, and it does not need the operator in the room.
+
+**The pull request is the approval channel:**
+
+*"And because it's a pull request, we will have a conversation, and the pull request
+comments — about not removing that rule in your test code — that still applies. And the
+cloud agent will pull it in, and he will update its pull request."*
+
+Approval for a cloud agent is given at merge time, through the pull request. The
+conversation on the PR is a first-class correction channel: a comment telling the agent
+not to remove a rule is binding, the agent pulls the comment in, and it updates the PR.
+The gate is satisfied by the review, not by a question asked up front.
+
+**The lesson recorded on top of the ruling**, in his words: *"You look at mechanical. I
+look at functional."* The struck proposal asked whether an agent could physically ask,
+and concluded the format must compensate. The right question was whether the gate is
+satisfied — and it is, by a different route, with no format constraint needed at all.
+An agent reasoning about capability where the operator is reasoning about outcome will
+keep producing constraints nobody asked for.
 
 ### These are acceptance criteria for `metronome`
 
@@ -240,7 +282,9 @@ an entry actually *is* removes the failure at its source.
 - The provenance model: what is recorded about an entry's origin, and how operator-origin
   entries are distinguished from agent-origin ones — the distinction the write-lock rests
   on.
-- The approval path for changing or adding an operator decision.
+- The approval path for changing or adding an operator decision, satisfiable
+  asynchronously — pull-request review at merge time counts, and PR conversation is a
+  binding correction channel the agent pulls in and acts on.
 - The file layout, and how discovery continues to work across it. Grep is what makes
   discovery cheap today; a probe that answers "is this about my area, and my software"
   rather than "does this word appear" is the harder half of the design.
@@ -284,9 +328,14 @@ Observed on his screen, not reviewed as a document. The pass conditions follow h
 - **A vanished area is interrogated, not assumed.** Given an entry whose area has been
   refactored away, the agent is seen asking whether the rule survives the change, and
   answering it deliberately in either direction rather than defaulting.
-- **The write-lock holds.** The agent does not change an operator decision, and does not
-  add one, without approval — including the tempting case where it has just learned
-  something that "obviously" should be a rule.
+- **The write-lock holds, at the gate.** No change or addition to an operator decision
+  becomes real without his approval — including the tempting case where the agent has
+  just learned something that "obviously" should be a rule. An asynchronous agent may
+  take the judgment first; what is checked is that the approval gate exists and is met,
+  not that the agent asked before acting.
+- **PR conversation is honoured.** Given a review comment telling it not to remove a
+  rule, a cloud agent pulls the comment in and updates its pull request rather than
+  arguing or ignoring it.
 - **Disclosure happens.** Every decision discovered is reported with the reason it was
   applied or ignored, ignored ones included, and the same disclosure appears in the exit
   interview.
