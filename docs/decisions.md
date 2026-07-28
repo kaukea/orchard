@@ -2169,3 +2169,32 @@ upstream before anything lands. The supervisor intervenes only when work diverge
 from the original intent (the autonomy ladder / metronome, Decision-075), and the
 operator wants these rules kept very, very light. The close stays sequential, run
 by the supervisor as today.
+
+## [2026-07-29 CEST] Decision-122: orchids PUBLISHES to kauk and never vendors — vendoring is retired for good
+#kauk #vendoring #distribution #testing #manifest #publication
+
+Operator ruling (2026-07-29, verbatim intent): *"we no longer use kauk, we publish
+to it, we don't vendor ever, it has caused endless pain."* The relationship is
+one-directional. orchids is a source package that PUBLISHES to kauk; it never
+consumes kauk, never installs a copy of itself, and never resolves its own agents,
+skills, hooks or tools through a vendored clone.
+
+The pain was real and is on the record: a self-vendoring orchids installed a clone
+of itself, `.claude/**` resolved into that clone rather than the repository, the
+clone sat commits behind across a whole transport rewrite, and editing the code
+here changed nothing about what actually ran until somebody happened to sync
+(`sidebar-teamwork`, 2026-07-28). Because those links were absolute, no worktree
+could run its own code either. A source repository consuming a vendored copy of
+its own output is circular.
+
+Consequences:
+- **`manifest.conf`'s absence is the CORRECT state, not a defect.** Its removal by
+  the unvendoring work is the ruling being applied, and no task should restore it
+  in order to make something else testable.
+- **Any test method that requires `kauk sync` onto a scratch consuming repo is
+  OBSOLETE, not merely unrunnable.** Tasks carrying such a Testing section have
+  their method replaced, not deferred until a package manager exists to satisfy it.
+  A skill's correctness in this repository is verified against this repository's
+  own tree.
+- The publish direction remains a real, separate concern; nothing here says orchids
+  stops shipping. It says orchids does not consume what it ships.
