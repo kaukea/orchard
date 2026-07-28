@@ -548,6 +548,34 @@ Each was found during this feature and is out of its scope. None is fixed here.
    is applied when it is not. It becomes true when this branch merges; the groundskeeper or
    the gardener should advance it at that point, not before.
 
+8. **A TASK FOR THE BOARD, to DISCUSS — verification that compares should be a tool, never an
+   agent reading and comparing in its own context.** Operator, 2026-07-28, and he asked to be
+   reminded of it later rather than for it to be decided now: *"the tasks that are read and
+   write intensive resulting in comparisons should never result in an agent reading, then
+   writing, then comparing. It should be writing a tool that deterministically does the work
+   and ... of verification. There is absolutely no reason to read the details when the only
+   thing you care about is the color of a cell in a specific location."*
+
+   The shape of it: where a job is read-heavy, write-heavy and ends in a comparison, the agent
+   writes a deterministic tool that performs the comparison and returns a VERDICT, and the
+   agent consumes only that verdict. It never pulls the raw material through its own context to
+   compare by eye. Asking "is the cell at row 12, column 3 this colour" should cost a boolean,
+   not a forty-eight-row dump of escape sequences.
+
+   **This round is the worked example of getting it wrong, and the cost is measured.** Every
+   sower was told to prove its work off captured bytes; each pulled whole `capture-pane -e`
+   frames into context, repeatedly, per width, before and after. **Four of them separately wrote
+   their own escape-sequence parser, and two of those parsers were wrong** — one blind to a
+   whole class of colour code, one producing a false positive it then had to chase. So the same
+   instrument was paid for four times and debugged twice, and single assignments ran 195k to
+   258k tokens where a courier costs 20-24k for a whole day.
+
+   The concrete first move, if the discussion goes this way: ONE committed helper — pane in,
+   resolved per-cell colour out — that every sower calls instead of writing its own, exposing
+   assertions at the level of "this cell, this colour" rather than returning bytes. Note that
+   `tests/test_sidebar_geometry_sweep.py` already resolves frames and is the natural home.
+   **Not built in this round; recorded for him to discuss, not decided.**
+
 ## Operator requests
 
 Ledger of everything the operator asked for during this feature, as received.
