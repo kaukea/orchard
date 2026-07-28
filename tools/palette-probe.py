@@ -212,10 +212,71 @@ def activity_line_treatments():
         show("4. different hue, italic", bg, body, accent, "\x1b[3m")
 
 
+
+
+# --------------------------------------------------------------------------
+# Orchid baselines compatible with a green marker (operator, 2026-07-28).
+# The project colour is hand-authored and he dislikes the current purple, so
+# the baseline is free to move. The constraint is the other way round: pick
+# baselines on which a green "f/" is genuinely readable, rather than picking
+# a baseline and then hunting for a green that survives it.
+# --------------------------------------------------------------------------
+
+# Vivid, clearly green, on the dark side, and deliberately not lime: hue is
+# held near true green rather than drifting toward yellow.
+# Chosen by measurement, not taste: a lighter green carries on nothing that is
+# still recognisably orchid. At #1b8a4b none of fifty baselines clear a
+# readable 60; at #0f5c31, seventeen do but only pale lilacs; at this value
+# thirty-two do, including saturated orchids such as #e57dde. The cost is
+# that a green this deep reads as green up close and as near-black across a
+# room, which is the operator's call and not a number's.
+MARKER_GREEN = "#08381d"
+
+
+def orchid_baselines(green_hex=MARKER_GREEN, floor=60.0, count=50):
+    import colorsys
+    green = rgb(green_hex)
+    out = []
+    for i in range(count):
+        # Orchid family: pinkish purple, roughly 278-325 degrees.
+        h = 0.772 + (i % 10) * (0.903 - 0.772) / 9
+        band = i // 10
+        l = 0.62 + band * 0.075
+        s = 0.78 - band * 0.11
+        r, g, b = colorsys.hls_to_rgb(h, l, s)
+        c = (round(r * 255), round(g * 255), round(b * 255))
+        lc = abs(apca_lc(green, c))
+        name_fg = _readable_on(c, rgb("#1a1b26"), rgb("#f8f8f2"))
+        out.append((c, lc, name_fg, abs(apca_lc(name_fg, c))))
+    return sorted(out, key=lambda t: -t[1])
+
+
+def orchids():
+    green = rgb(MARKER_GREEN)
+    rows = orchid_baselines()
+    passing = [r for r in rows if r[1] >= 60]
+    print(f"\nMarker green {MARKER_GREEN} — vivid, not lime.\n")
+    print(f"{len(rows)} orchid baselines generated, {len(passing)} carry that "
+          f"green at APCA 60 or better.\n")
+    print(f"{'orchid':<10}{'green':>7}{'name':>7}   sample")
+    print("-" * 74)
+    for c, lc, name_fg, name_lc in rows:
+        hexs = "#%02x%02x%02x" % c
+        mark = (f"\x1b[38;2;{green[0]};{green[1]};{green[2]}m"
+                f"\x1b[48;2;{c[0]};{c[1]};{c[2]}m ƒ/\x1b[0m")
+        name = (f"\x1b[38;2;{name_fg[0]};{name_fg[1]};{name_fg[2]}m"
+                f"\x1b[48;2;{c[0]};{c[1]};{c[2]}m sidebar redone \x1b[0m")
+        flag = "  " if lc >= 60 else " x"
+        print(f"{hexs:<10}{lc:>7.1f}{name_lc:>7.1f}{flag} {mark}{name}")
+    print()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "themes":
         themes()
     elif len(sys.argv) > 1 and sys.argv[1] == "activity":
         activity_line_treatments()
+    elif len(sys.argv) > 1 and sys.argv[1] == "orchids":
+        orchids()
     else:
         main()
