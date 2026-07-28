@@ -159,6 +159,25 @@ claiming ninety percent, not totality, from rules that are easy to follow. A des
 answers these two cheaply beats a more thorough mechanism that agents skip. Elaborateness
 here is a failure mode, not a virtue.
 
+### Cloud agents are a primary beneficiary
+
+*"That updated list would also help enormously cloud agents to make sense of decisions so
+they don't try to apply Windows 3.1 rules to writing code on Plasma."*
+
+The structure is not only for local sessions. A cloud agent arrives with less context than
+a local one and no shared history of what the fleet is currently working on, so an entry
+that carries its own area and its own software-and-version is the difference between a
+decision it can evaluate and a decision it can only obey or ignore at random. The failure
+he names is the extreme case of the environment probe: a rule from an environment that has
+nothing to do with the one in the room.
+
+**PROPOSAL, not his ruling — needs confirmation.** A cloud agent typically runs with no
+operator present, so it cannot fall back on asking him when a probe is ambiguous. That
+suggests the probes must be answerable from the entry plus the code alone, with no
+operator round-trip, and that an entry which cannot be evaluated that way is malformed
+rather than merely awkward. Recorded as a proposal because he stated the benefit, not this
+requirement.
+
 ### These are acceptance criteria for `metronome`
 
 *"will be an acceptance criteria for metronome"*. See Question 1b — metronome has no
