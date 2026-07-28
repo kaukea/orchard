@@ -14,6 +14,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 
 ## Process machinery
 
+- `feature · todo · critical · working · process ·` [Features first-class: land Decision-105 everywhere, not just the sidebar](TODO.md.d/features-first-class.md) ~epic-grouping ~github-board-sync ~sidebar-teamwork ~todo-to-task-list
 - `feature · todo · · plan-ready · process ·` [Sidebar redone fresh: pruned and rewritten, with the standing rulings as its specification](TODO.md.d/sidebar-teamwork.md) ~sidebar-polish ~sidebar-empty-rows ~fleet-sidebar
 - `bug · todo · critical · plan-ready · process ·` [Messaging restoration: recover the 24 functions the fakes squash reverted, keep its five real fixes](TODO.md.d/transport-test-reconciling.md) ~close-family-fakes ~sidebar-empty-rows ~bus-message-specifying
 - `bug · todo · · blocked-on-answers · process ·` [Groundskeeper verify hardening: post-merge suite run against a pre-merge baseline](TODO.md.d/groundskeeper-verify-hardening.md) ~close-family-fakes ~transport-test-reconciling
