@@ -159,6 +159,39 @@ which `xterm-256color` does not carry, so the outer tmux downgrades to 256 colou
 therefore not met in practice on the operator's own screen**, and the fix is a tmux
 `terminal-features`/`terminal-overrides` entry advertising `RGB`, not renderer code.
 
+### The measuring instrument was wrong four times in one day
+
+This is the round's most transferable finding, and it cost more than any defect in it. Four
+separate times, a confident measurement was an artefact of how the measurement was taken:
+
+1. **`tmux capture-pane -e` right-trims trailing whitespace and never restates an SGR
+   attribute that has not changed, including across ROW boundaries.** A correctly painted
+   region therefore captures as byte-empty. This produced two of the four "measured
+   defects" the 2026-07-28 round was chasing — the absent pane-bottom fill and the
+   inconsistently banded feature rows. Both were already correct. The fix is `-e -J` plus a
+   state machine that carries the active background forward across cells AND rows, never a
+   per-row grep for a colour code.
+2. **A byte-level ANSI parser that handles only `38;2;`/`48;2;` truecolour silently
+   misattributes colour**, because tmux substitutes basic 16-colour codes for exact matches
+   such as pure black. Caught inside a sower's own verification script while it was hunting
+   a different false positive — the instrument failing in the middle of being used to check
+   the instrument.
+3. **A guard that greps a function's source for a forbidden attribute must strip `#`
+   comments, not just the docstring.** `tests/test_sidebar.py`'s `_code_only` stripped only
+   the docstring, so a comment naming the very bug the code avoids ("Decision-111's `A_DIM`
+   bug") failed the guard — punishing a function for documenting itself. Fixed here.
+4. **`curses.update_lines_cols()` reads the inherited `LINES`/`COLUMNS` environment ahead of
+   the live pty**, and interactive bash exports them once at startup and never updates a
+   running child's copy. The renderer was frozen at launch geometry forever; tmux then
+   cropped its still-correct oversized output, which on screen is indistinguishable from a
+   truncation bug. Diagnosed and fixed, and it is the reason a resize looked like defect (d)
+   returning.
+
+The pattern to carry forward: **when a passing test and a wrong screen disagree, suspect the
+instrument before the code.** Three of the four above were reported to the operator as
+measured fact before being retracted, which is worse than not measuring at all — a wrong
+measurement presented with numbers buys false confidence.
+
 ### Prior state (carried forward)
 
 - `tools/sidebar.py` is **3,056 lines / 135 functions**, having absorbed

@@ -2893,16 +2893,22 @@ class SelectionHighlightTests(unittest.TestCase):
 
     @staticmethod
     def _code_only(fn):
-        """`fn`'s source with its own docstring stripped -- several of
-        these docstrings explain the fix in prose ("...rather than
-        `curses.A_REVERSE`...", "...drops its old A_DIM attribute...") and
-        would otherwise false-positive a plain substring search; only the
-        executable body is what these guards care about. Stripped via a
+        """`fn`'s source with its docstring AND its `#` comments stripped --
+        prose explaining a fix ("...rather than `curses.A_REVERSE`...",
+        "...drops its old A_DIM attribute...") would otherwise
+        false-positive a plain substring search; only the executable body is
+        what these guards care about.
+
+        The comment half of that was added after a real false positive: a
+        comment in `_draw_task_row` naming the very bug the code avoids
+        ("Decision-111's A_DIM bug") failed this guard, which is the guard
+        punishing a function for documenting itself. Stripped via a
         regex over the RAW source rather than a `fn.__doc__` substring
         match -- Python 3.13 dedents `__doc__` at compile time, so it no
         longer appears verbatim inside `inspect.getsource`'s raw text."""
         source = inspect.getsource(fn)
-        return re.sub(r'""".*?"""', "", source, count=1, flags=re.DOTALL)
+        without_docstring = re.sub(r'""".*?"""', "", source, count=1, flags=re.DOTALL)
+        return re.sub(r"#[^\n]*", "", without_docstring)
 
     def test_never_A_DIM_on_a_selected_custom_background(self):
         # Decision-111: A_DIM combined with a custom background corrupts
