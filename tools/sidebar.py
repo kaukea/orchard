@@ -6,9 +6,29 @@ and the plain-text prototype reader (tools/sidebar_v3.py) are both retired.
 The MODEL layer — data classes, event folding, registry reading, tree
 assembly (`build_model()`/`watch()`) — lives in `tools/sidebar_model.py`
 and is owned by that module's own docstring, which is the specification to
-read first. This module owns everything downstream of a `Fleet`: the
-pure-text Row/render pipeline (`flatten()`/`render_lines()`) and the curses
-draw layer, plus the CLI.
+read first. THIS file is now a thin CLI/main-loop shim (2026-07-28 module
+split, discovery pass: "colour ~36 functions, model building ~32, text
+composition ~21, curses I/O ~20, pure-text render pipeline ~13, glyphs
+~12" against a 3,086-line/~130-function monolith) — it wires the watch
+thread to the curses draw loop and re-imports every name the rest of this
+codebase (and its tests) reach by `sidebar.X`, but no longer DEFINES most
+of them. Read in dependency order (each only imports from the ones before
+it — colour before text composition before model building before the
+render pipeline before curses I/O, never the reverse):
+`sidebar_glyphs.py` (every fixed emoji/glyph constant) →
+`sidebar_colour.py` (RGB math, repo hue, the PRIMARY..FOURTH chain,
+contrast) → `sidebar_colour_lineage.py` (per-feature/task identity colour)
+→ `sidebar_band.py` (sweep/fill-bar geometry) → `sidebar_text.py`
+(cell-width-aware string primitives) → `sidebar_citation.py` (the agent
+quote + attribution ladder) → `sidebar_rows.py` (Fleet -> Row assembly) →
+`sidebar_render_text.py` (Row -> plain text, no curses) →
+`sidebar_curses_colour.py` (terminal colour management) →
+`sidebar_paint_shared.py`/`sidebar_paint_header.py`/`sidebar_paint_
+feature.py`/`sidebar_paint_task.py`/`sidebar_paint_step.py`/`sidebar_paint_
+identity.py` (one painter per row kind) → `sidebar_paint.py` (the
+per-frame dispatcher, `_draw()`). This file owns only what's left: the
+watch-thread supervisor (`_SharedFleet`/`_watch_thread`) and the curses
+event loop/CLI (`main`/`_run_dump`/`_run_once`).
 
 SEVEN-LEVEL HIERARCHY (Decision-105, 2026-07-26 — supersedes the earlier
 three-level repo/feature/subagent model, which minted one Feature row PER
