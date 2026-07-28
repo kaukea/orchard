@@ -43,12 +43,13 @@ him for: how to send a message by the NAME of the agent they want to talk to. Wi
 agents running in parallel, he judges that reasonable — so name-addressing is the answer
 to the question below, not one of its candidates.
 
-**Session addressing STAYS, for cross-repository.** Operator, same round: *"they can
-address by session too, for cross repository."* The two forms coexist and are not a
-migration — name is the ergonomic form for agents working alongside each other in one
-repository, `:session:<id>` remains the form that reaches across repository boundaries
-where a name has no shared meaning. Nothing about the existing `:session:` addressing is
-retired by this task.
+**Session addressing STAYS.** Operator, same round: *"they can address by session too,
+for cross repository."* What is ruled is that `:session:<id>` addressing is not retired —
+the two forms coexist. Cross-repository was named as a case where it is used; **it is NOT
+ruled to be the only such case, and the division of labour between the two forms is
+NOT settled.** (Recorded after an earlier draft of this sidecar inferred exactly that
+boundary and was corrected: "you are inferring and making into decisions what are implicit
+inferences.")
 
 **Hard implementation constraint, stated absolutely:** all of the work is done **in the
 SCRIPT** (`tools/courier.py`) and **under no circumstance in the COURIER AGENT**
@@ -65,8 +66,13 @@ script it is one implementation, testable, and free at read time.
 
 ## Questions
 
-- ~~**What is the address?**~~ **RULED: the agent's name** (see above). The remaining
-  questions are consequences of that ruling, not alternatives to it:
+- ~~**What is the address?**~~ **RULED: the agent's name**, with `:session:<id>` retained
+  alongside it (see above). The remaining questions are consequences of that ruling, not
+  alternatives to it:
+  - **When does a sender use a name and when a session id?** NOT ruled. The operator named
+    cross-repository as a case for session addressing but did not make it the boundary.
+    Options include: always-name-when-known, name-within-a-repository, sender's choice, or
+    name-resolves-to-session-underneath. Needs his ruling before build.
   - **What happens when two live agents share a name?** Several landscapers on one
     feature is the normal case under Decision-121.
   - **Does a name outlive its agent** — is a message to a name whose agent has stopped an
