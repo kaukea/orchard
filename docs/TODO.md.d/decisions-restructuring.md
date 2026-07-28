@@ -28,24 +28,35 @@ kinds each mapping to an obligation, and a claim that location is never a scope.
 struck both. What follows is his model. Anything not stated here is not settled, and an
 agent filling the gaps by inference is the exact failure this task exists to remove.
 
-### Every decision carries an obligation level — MUST, MAY, COULD
+### Every decision carries an RFC 2119 level — taken exactly as written
 
-*"decisions in general, whatever the context, global or not, all map every single one of
-them to MUST, MAY, COULD, which gives a pretty well understood level of freedom for an
-agent to decide if it will follow or not."*
+*"We use must and must not and should and should not. We take it exactly the way it was
+written. If it has been the underpinning of the Internet for thirty years, I'm sure
+agents will manage to deal with it for a few months."*
 
-Every decision. Not a taxonomy of kinds where some bind and others do not — each entry
-individually carries a keyword, and the keyword is what tells an agent how much freedom
-it has to not follow. The obligation is the well-understood part precisely because these
-words are already understood; nothing bespoke is introduced.
+**SETTLED.** The obligation vocabulary is RFC 2119, adopted as-is. Not a subset chosen
+for friendliness, not a rewording, not a bespoke scale — the keywords carry the meanings
+the RFC gives them, including the negative forms. He named MUST, MUST NOT, SHOULD and
+SHOULD NOT, and MAY earlier.
 
-Unsettled: **the exact keyword set.** He has said *"MUST MAY SHOULD"* once and
-*"must, may, could"* once. Whether the third level is SHOULD or COULD, and whether the
-negative forms are available, are his to fix and must not be assumed.
+This closes the question the earlier drafts left open, where he had said *"MUST MAY
+SHOULD"* once and *"must, may, could"* once. Neither was a new scale; both were pointing
+at the same standard one. It also resolves the dictated tail that had not survived —
+*"…slash main must not"* — which was introducing MUST NOT, now explicitly in the set.
 
-Unresolved: his sentence ended *"…needs to be coming along with the discovery slash main
-must not"*. The tail did not survive dictation. It may be introducing MUST NOT. It is
-recorded here rather than guessed at.
+The reasoning is worth keeping with the ruling: the vocabulary does not need softening
+for agents. It has been unambiguous for thirty years of protocol specification, and the
+whole point of adopting it is that its levels of freedom are already understood rather
+than invented here.
+
+**Carried in two places.** The keyword is embedded in the text of the decision itself, as
+an RFC embeds it in its own prose — so an agent reading the entry meets the obligation in
+the sentence that states it, with no lookup. Alongside that, it is projected as a custom
+GitHub field, visibly named for the RFC level, so the obligation is filterable and
+sortable on the board rather than only greppable in prose.
+
+That second half lands on the GitHub projection: `board_gh` gains a field, which puts
+this in the same territory as the existing field-projecting and decision-projecting work.
 
 ### Everything other than the obligation is provenance
 
@@ -218,7 +229,8 @@ an entry actually *is* removes the failure at its source.
 
 ### In scope
 
-- The obligation keyword set, and how every entry carries one.
+- The RFC 2119 level on every entry: embedded in the decision's own text, and projected
+  as a visibly-named custom GitHub field via `board_gh`.
 - How an entry declares its AREA, and how the where-it-is-and-below rule is expressed so
   an agent can answer "am I in the right area" and "does that area still exist" without
   interpretation — including what it must do when the area has been refactored away.
@@ -259,9 +271,9 @@ put them in front of an agent in a real session and observe what it does.
 
 Observed on his screen, not reviewed as a document. The pass conditions follow his model:
 
-- **Obligation is honoured as stated.** The MUST is followed; the weakest level visibly
-  leaves the agent free to decide, and it is seen deciding rather than complying by
-  reflex.
+- **Obligation is honoured as stated, in RFC 2119 terms.** The MUST is followed; a MAY
+  visibly leaves the agent free to decide and it is seen deciding rather than complying
+  by reflex; a SHOULD NOT is departed from only with a stated reason.
 - **Area is directional.** An entry sitting at an area governs that area and everything
   below it, and is NOT applied above or beside it. The agent is seen answering "am I in
   the right area where this decision was made".
