@@ -95,15 +95,22 @@ happen in a later bloom round once the shape exists.
 
 ## Questions
 
-1. **Badge delimiter for feature/task lines under a feature.** The accepted
-   render (features-first-class §2) uses `❘` for feature and nested-task
-   badges but the existing one-off/task badge grammar uses `·`. Confirm: is
-   `❘` intentional (a second, visually distinct delimiter marking "badge lives
-   under a feature") or should feature-scoped task badges keep `·` like
-   one-offs? Recommendation: keep `❘` as written — it doubles as a quick visual
-   cue that a line is feature-scoped vs a plain one-off, at zero parsing cost.
-2. **Grouping table above** — confirm, adjust, or reject before the migration
-   script runs. Recommendation: accept as-is (see table note).
+Both prior open questions are resolved — verified against the live tree in
+this bloom round (2026-07-29), no operator input needed:
+
+1. **Badge delimiter, resolved: `❘` stands.** Re-checked the accepted render
+   in `features-first-class.md` §2 (lines 38-42): every feature line and every
+   nested task line under a feature uses `❘` consistently (`{#oauth-auth}
+   ❘gh#40❘ ⟶ …`, `{#refresh-tokens} ❘seeded❘feature❘m❘auth❘gh#71❘`). The lone
+   `·` near that file (line 119) is prose separating enum values in a
+   sentence, not a badge delimiter — no conflicting precedent exists. `❘` is
+   the deliberate second grammar; closed as recommended.
+2. **Grouping table, resolved: accept as-is.** Re-scanned `docs/TODO.md` live:
+   63 nested bullet lines, 89 top-level lines, and the 8 candidates in the
+   table above remain the only lines with children — the "convert only
+   already-nested items" heuristic still covers the whole board with no
+   ambiguous middle case. No drift since the table was drafted. Closed as
+   recommended.
 
 ## Findings
 

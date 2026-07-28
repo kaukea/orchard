@@ -15,7 +15,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 ## Process machinery
 
 - `feature · todo · critical · queued · ·` [Features first-class: land Decision-105 everywhere, not just the sidebar](TODO.md.d/features-first-class.md) ~epic-grouping ~github-board-sync ~sidebar-teamwork ~todo-to-task-list
-  - `feature · todo · critical · blocked-on-answers · process ·` [Board grammar: two levels, two badges, One-offs — Decisions 117+118 built](TODO.md.d/board-grammar.md) ~features-first-class
+  - `feature · todo · critical · plan-ready · process ·` [Board grammar: two levels, two badges, One-offs — Decisions 117+118 built](TODO.md.d/board-grammar.md) ~features-first-class
   - `feature · todo · critical · blocked-on-answers · process ·` [Branch and close naming: f/feature/task, archive tags to match — Decisions 116+120 built](TODO.md.d/branch-and-close.md) ~features-first-class ~close-permission-blocking
   - `feature · todo · critical · blocked-on-answers · process ·` [GitHub projection: feature = parent issue, real sub-issues, unfiled triage — Decision-119 built](TODO.md.d/github-projection.md) ~features-first-class ~github-board-sync ~sync-automating
 - `feature · todo · · plan-ready · process ·` [Sidebar redone fresh: pruned and rewritten, with the standing rulings as its specification](TODO.md.d/sidebar-teamwork.md) ~sidebar-polish ~sidebar-empty-rows ~fleet-sidebar
