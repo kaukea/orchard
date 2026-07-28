@@ -1416,13 +1416,22 @@ class FlattenTests(unittest.TestCase):
             ["b-done", "d-done", "a-working", "c-idle"],
         )
 
-    def test_sole_same_named_task_drops_its_own_label_but_both_rows_stay(self):
-        # sidebar-teamwork defect 4: a feature with exactly one task of the
-        # SAME name repeated the identical string on both rows. Decision-
-        # 106 forbids hiding either row ("nothing is ever hidden except by
-        # the two collapses") -- the fix is a NAME-DROP, not a row-drop:
-        # the task row still exists, with its glyph and progress circle,
-        # just without repeating the string already on the feature band.
+    def test_sole_same_named_task_shows_its_status_rather_than_nothing(self):
+        # A feature with exactly one task of the SAME name used to repeat the
+        # identical string on both rows. Decision-106 forbids hiding either row
+        # ("nothing is ever hidden except by the two collapses"), so the fix was
+        # a NAME-DROP rather than a row-drop -- and this test asserted the task
+        # row's label became the empty string.
+        #
+        # The operator judged that on screen on 2026-07-28 and it was wrong: an
+        # empty label left a row carrying a marker, a status glyph and a
+        # progress circle with nothing to READ. Not repeating the feature's
+        # string is right; having nothing of its own to say is not. The task row
+        # now falls back to its own status word, which is real information the
+        # feature band above it does not already carry.
+        #
+        # This test previously asserted the blank, so it locked in the defect
+        # and passed while the screen was wrong.
         task = sidebar.Task(task_id="t", name="Close family fakes", status="working",
                              steps=[sidebar.Step(name="building", state="active")])
         feature = sidebar.Feature(feature_id="f", name="Close family fakes",
@@ -1435,7 +1444,9 @@ class FlattenTests(unittest.TestCase):
         feature_row = next(r for r in rows if r.kind == "feature")
         task_row = next(r for r in rows if r.kind == "task")
         self.assertEqual(feature_row.label, "Close family fakes")
-        self.assertEqual(task_row.label, "")
+        self.assertEqual(task_row.label, "working")
+        self.assertNotEqual(task_row.label, feature_row.label)
+        self.assertTrue(task_row.label.strip())
         # the row itself, its progress circle and its accordion are all
         # still there -- only the redundant string is gone.
         self.assertIsNotNone(task_row.progress_glyph)
