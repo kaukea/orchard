@@ -15,11 +15,11 @@ Badge: `type · status · urgency · readiness · area · gh#`.
 ## Process machinery
 
 - `feature · todo · critical · queued · ·` [Features first-class: land Decision-105 everywhere, not just the sidebar](TODO.md.d/features-first-class.md) ~epic-grouping ~github-board-sync ~sidebar-teamwork ~todo-to-task-list
-  - `feature · todo · critical · plan-ready · process ·` [Board grammar: two levels, two badges, One-offs — Decisions 117+118 built](TODO.md.d/board-grammar.md) ~features-first-class
+  - `feature · todo · critical · blocked-on-answers · process ·` [Board grammar: two levels, two badges, One-offs — Decisions 117+118 built](TODO.md.d/board-grammar.md) ~features-first-class
   - `feature · todo · critical · blocked-on-answers · process ·` [Branch and close naming: f/feature/task, archive tags to match — Decisions 116+120 built](TODO.md.d/branch-and-close.md) ~features-first-class ~close-permission-blocking
   - `feature · todo · critical · blocked-on-answers · process ·` [GitHub projection: feature = parent issue, real sub-issues, unfiled triage — Decision-119 built](TODO.md.d/github-projection.md) ~features-first-class ~github-board-sync ~sync-automating
 - `feature · todo · · plan-ready · process ·` [Sidebar redone fresh: pruned and rewritten, with the standing rulings as its specification](TODO.md.d/sidebar-teamwork.md) ~sidebar-polish ~sidebar-empty-rows ~fleet-sidebar
-- `bug · todo · critical · plan-ready · process ·` [Messaging restoration: recover the 24 functions the fakes squash reverted, keep its five real fixes](TODO.md.d/transport-test-reconciling.md) ~close-family-fakes ~sidebar-empty-rows ~bus-message-specifying
+- `bug · todo · critical · blocked-on-answers · process ·` [Messaging restoration: recover the 24 functions the fakes squash reverted, keep its five real fixes](TODO.md.d/transport-test-reconciling.md) ~close-family-fakes ~sidebar-empty-rows ~bus-message-specifying
 - `bug · todo · · blocked-on-answers · process ·` [Groundskeeper verify hardening: post-merge suite run against a pre-merge baseline](TODO.md.d/groundskeeper-verify-hardening.md) ~close-family-fakes ~transport-test-reconciling
 - `bug · todo · critical · blocked-on-answers · process ·` [Courier opaque payload: transport must not care how the string is made](TODO.md.d/courier-opaque-payload.md) ~message-bus ~bus-message-specifying ~courier-delegating
 - `bug · todo · critical · blocked-on-answers · process ·` [Close permission blocking: the harness classifier can strangle a close mid-merge](TODO.md.d/close-permission-blocking.md) ~groundskeeper-verify-hardening ~close-dispatching

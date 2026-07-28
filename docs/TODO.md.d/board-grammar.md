@@ -95,22 +95,87 @@ happen in a later bloom round once the shape exists.
 
 ## Questions
 
-Both prior open questions are resolved — verified against the live tree in
-this bloom round (2026-07-29), no operator input needed:
+### REOPENED 2026-07-29 by landscaper discovery — three NEW blocking questions
 
-1. **Badge delimiter, resolved: `❘` stands.** Re-checked the accepted render
-   in `features-first-class.md` §2 (lines 38-42): every feature line and every
-   nested task line under a feature uses `❘` consistently (`{#oauth-auth}
-   ❘gh#40❘ ⟶ …`, `{#refresh-tokens} ❘seeded❘feature❘m❘auth❘gh#71❘`). The lone
-   `·` near that file (line 119) is prose separating enum values in a
-   sentence, not a badge delimiter — no conflicting precedent exists. `❘` is
-   the deliberate second grammar; closed as recommended.
-2. **Grouping table, resolved: accept as-is.** Re-scanned `docs/TODO.md` live:
-   63 nested bullet lines, 89 top-level lines, and the 8 candidates in the
-   table above remain the only lines with children — the "convert only
-   already-nested items" heuristic still covers the whole board with no
-   ambiguous middle case. No drift since the table was drafted. Closed as
-   recommended.
+Discovery on `f/board-grammar` (6 explorers, read-only, zero commits) before the
+session crashed. Flushed here from `.git/the-works/board-grammar/2026-07-29-landscaper.md`
+(uncommittable). **The bloom round's "both questions resolved" conclusion below was
+reached from the sidecar's own text; the explorers read the actual files and found it
+wrong.** Nothing was built. These block relaunch.
+
+**Q1 — Decision-117's prose CONTRADICTS the render it says the operator accepted.**
+The bloom round closed this as "merely a delimiter swap." It is not. The accepted render's
+task line `{#refresh-tokens} ❘seeded❘feature❘m❘auth❘gh#71❘` differs from the live badge on
+FIVE axes, not one:
+- **5 fields, not 6** (no `status`)
+- **stage vocabulary `seeded`/`sprouted`/`tended`** — NOT `board_lint`'s STAGES
+  {queued, working, blocked-on-answers, plan-ready, complete}
+- **3rd field is a SIZE** (`xs`/`s`/`m`), not URGENCIES {critical, nice-to-have, idea}
+- **field order differs** (stage first, then type)
+- **`{#id}` bare slug, no `[Title](TODO.md.d/<id>.md)` link** — and `AGENTS.files.md`
+  explicitly rules "The id is never shown as a bare slug"
+
+Decision-117 says "Task lines keep today's six-field badge" while pointing at a render
+that does nothing of the sort. Unresolvable by an agent: which one is the specification?
+
+**Q2 — the board is THREE levels today, not two.** 153 board lines: 89 at depth 0, 49 at
+depth 1, **15 at depth 2**. The depth-2 lines are children of two depth-1 parents under
+`orchard`: `fleet-sidebar` → 10 children, `cloud-architect` → 5 children. A strictly
+two-level board cannot represent these. What happens to them?
+
+**Q3 — blast radius is FOUR parsers, not one.** Two of them are in NO task's scope and
+break silently on a grammar change:
+
+| tool | how it parses | owner |
+|---|---|---|
+| `board_lint.py:70,74` | line regex + `·` split | THIS task |
+| `board_gh.py:27,97-108` | own regex; RECONSTRUCTS badges on write-back | github-projection (out of scope) |
+| `board_stale.py:48,55` | own regex; reads `status` for bloom queue | **NOBODY** |
+| `feature_name.py:27-32` | own `_TITLE_RE`; reads the title LINK | **NOBODY** |
+
+`board_stale.py` drives the gardener's staleness walk; `feature_name.py` names sessions and
+sidebar rows. Compounding: the accepted render DELETES the title link `feature_name.py`
+reads. Does this task absorb them, or do they get their own tasks?
+
+### Also found: the grouping table has two factual errors
+
+Verified by indent inspection of `docs/TODO.md:85-92`:
+- **`psychometric-discovery` does NOT have children.** Lines 88-90 (bloom-administering,
+  bloomer-repointing, bloom-subset-posterior) are SIBLINGS at indent 2; the relation is
+  carried by `~psychometric-discovery` edges only. The table's "(+ its 3 children)" is wrong.
+- **The table invents a new feature `feature-creation`** to hold board-grammar,
+  branch-and-close, github-projection — but `features-first-class` is ALREADY their parent.
+  No new feature is needed; the existing one IS the feature.
+
+The count of 8 parent lines was right; two of its rows were not.
+
+### Also found: no test suite exists for `board_lint.py`
+
+No unit tests. It is invoked as a gate by `groomer.md:55`, `bloomer.md:70`, and the
+`bloom-tasks` skill. `tests/test_feature_name.py` exists and mocks the board format — it
+will need updating. **The testing surface for this feature must be built, not reused.**
+
+### Also found: three badge WRITERS must change with the grammar
+
+`groomer.md:52`, `bloomer.md:68`, `orchestrator-cloud.md:42` each instruct writing the
+six-field badge. `orchestrator-cloud.md:42` states "six fixed `·`-fields, all required"
+verbatim.
+
+### Migrations format confirmed
+
+8 existing entries: `# <date> — <title>` / 2-4 line why / `## Detect → convert`
+(state-guarded shell) / `## Verify`. Watermark at `.git/the-works/migrated`, compared by a
+`settings.json` UserPromptSubmit hook.
+
+### Superseded — the bloom round's conclusions, kept for the record
+
+~~Both prior open questions are resolved — verified against the live tree in this bloom
+round (2026-07-29), no operator input needed:~~
+
+1. ~~**Badge delimiter, resolved: `❘` stands.**~~ **WRONG — see Q1.** The bloom round
+   compared delimiters and missed that the two grammars differ on five other axes.
+2. ~~**Grouping table, resolved: accept as-is.**~~ **PARTLY WRONG** — two rows are
+   factually incorrect (see above), and the depth-2 problem (Q2) was not seen at all.
 
 ## Findings
 

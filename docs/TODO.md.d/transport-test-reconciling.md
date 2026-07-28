@@ -65,7 +65,103 @@
   - `tests/test_orchard_topic.py::test_bare_post_with_no_event_is_rejected`
   - `tests/test_orchard_topic.py::test_telemetry_rejection_filename_ends_in_json`
 
+## DISCOVERY RESULT 2026-07-29 — the Proposal below is INVALIDATED, and the live bug is a different one
+
+Landscaper discovery on `f/transport-test-reconciling` (7 explorers, read-only, zero
+commits) before the session crashed. Flushed here from
+`.git/the-works/transport-test-reconciling/20260729-landscaper.md` (uncommittable) so
+it survives. **Nothing was built. These findings must be ruled on before any relaunch.**
+
+### THE LIVE BUG IS CROSS-WORKTREE WAKE, AND IT IS CAUSED BY FIX B — verified live
+
+`project_slug()` now returns `<owner>.<repo>@<branch>`, so **every worktree gets its own
+orchard directory**. `orchard_send` (`courier.py:1130`) computes `target_project =
+ORCHID_PARENT_PROJECT or project_slug()` — it defaults to the SENDER's own directory. A
+child in a feature worktree signalling its parent in `main` therefore writes into its own
+directory, which the parent never watches. Measured live in that session:
+`ORCHID_PARENT_SESSION` set, **`ORCHID_PARENT_PROJECT` UNSET**, sender in
+`kaukea.orchids@f-transport-test-reconciling/` while the gardener's courier monitors
+`kaukea.orchids@main/`. **A landscaper's own close signal cannot reach its supervisor.**
+
+This is the "agents unable to reach the courier" token waste, and it is CONFIRMED by this
+very session: all three supervisors sat all night reporting "no lifecycle signal received"
+while their landscapers were alive and working — the signals physically could not arrive.
+Fix B solved the mailbox collision and created this; before `@branch`, all worktrees folded
+onto one directory so parent/child signalling happened to work.
+
+### The Proposal's revert-first construction is INVALID as written
+
+- **Step 1 would destroy the sidebar rewrite.** It says the transport-reading parts of
+  `tools/sidebar.py` return to `1b0ea94`. Commit `9de9975` (2026-07-28) since decomposed
+  `sidebar.py` from 3056 → 582 lines across 18 new `sidebar_*.py` modules. The cited
+  `sidebar.py:1189` marker read no longer exists at that address.
+- **Reverting is not "green at every step" any more.** `tests/test_courier.py` at HEAD
+  carries `MonitorCliTests` (5 tests) plus `MakeEnvelopeTests`/`CliRoundTripTests`
+  additions. A `courier.py` reverted to `1b0ea94` has no `cmd_monitor`, so those fail
+  immediately — reverting STARTS from a worse failure count than the 36 we have now.
+- **The five fixes are really four.** `operator_origin` is already fully present at
+  `1b0ea94` (envelope param l.538, flag l.556-557, `orchard_send` l.570, CLI l.1566).
+  Fix E costs zero work. The predecessor report's "absent before" claims were made
+  against `9452ee1` (the close-family-fakes BASE), not against `1b0ea94` — two different
+  commits, conflated.
+- Of the remaining four: fix B is real (slug), fix D is real and is a two-line
+  conditional (`skip_replies`), fix C is real and is **the large one** (~15 functions for
+  `monitor`), fix A is the deliberate mailbox retirement.
+
+### Restoration surface is narrower than believed — good news
+
+**Zero commits after `aa848a4` touched `tools/courier.py` or `tools/orchard_topic.py`.**
+The revert-and-reapply surface is `courier.py` ALONE; nothing later would be lost by it.
+And only ONE non-test consumer of the deleted symbols exists: `orchard_topic.py:106`
+(`write_orchard_file` + `orchard_message_name`). Restoring those two functions turns all
+10 `test_orchard_topic.py` failures green with **no edit to `orchard_topic.py`**, which is
+byte-identical at both commits.
+
+The marker producer/consumer seam at HEAD: reader lives at `sidebar_model.py:545`
+(`_iter_feature_markers`), expecting schema-2 `{tasks:[{task|feature, name?, state?,
+updated}]}`. **Production writer: none** — only `sidebar_sim.py:606` (a fixture) and test
+setup write feature markers; `courier.py:1003` writes only the zero-byte session
+heartbeat. At `1b0ea94` the writer was `write_feature_marker` called from
+`orchard_deliver`, and its shape matched the reader exactly.
+
+### The `:session:` doubling claim is CORRECT (one explorer got it wrong)
+
+An explorer called it false by tracing a BARE `--to abc123` (prefixed once at l.587,
+stripped once at l.906-911). But the failing test is the ALREADY-PREFIXED path:
+`cmd_signal` does `to = f":session:{to}"` unconditionally, so `--to :session:abc` becomes
+`:session::session:abc`. The de-doubling guard was among the 24 deleted. **The charter
+instructs agents to signal `--to :session:<parent>` — already prefixed — so this is the
+path actually used in practice.**
+
+### docs/orchard-bus.md staleness — all three claims confirmed, plus more
+
+`l.139` documents `<repo>.<project>`, code is `<owner>.<repo>@<branch>`; storage layout
+`l.134-148` omits `<feature>.marker`; `l.180-184` still tags the unfiltered-wake gap
+`[GAP, remaining]` which `courier.py:1233-1239` already fixed. Additionally
+`operator_origin` is undocumented and task-outcome messages are missing from §2.
+`ARCHITECTURE.md` l.175/187 repeat the stale slug, l.124 omits `<feature>.marker`.
+
+### Ground truth at `add50a8`
+
+Full suite: **36 failed, 502 passed, 11 subtests passed, 139s**, 538 tests total. Failing
+set matches the recorded list exactly, no drift, safely repeatable.
+
+## OPEN QUESTIONS FOR THE OPERATOR (block relaunch)
+
+1. **Does the cross-worktree wake defect split out as its own expedited task?** It is the
+   live token-waste bug, it is small (`ORCHID_PARENT_PROJECT` must be injected at spawn, or
+   `orchard_send` must resolve the parent's project rather than defaulting to its own), and
+   it is independent of the 24-function restoration. Recommendation: yes — fix it FIRST and
+   alone, because every other agent in the fleet is currently unable to signal its parent.
+2. **Given revert-first is invalid, does the restoration become patch-forward?** Restore the
+   deleted symbols onto HEAD rather than reverting `courier.py` to `1b0ea94` and replaying.
+   The narrowed surface (courier.py only, one non-test consumer) makes this materially
+   safer than it looked on 2026-07-27. Recommendation: yes, patch-forward.
+3. **`tools/sidebar.py` is out of scope entirely now** — confirm, given the rewrite.
+
 ## Proposal
+
+**SUPERSEDED IN PART — see DISCOVERY RESULT above. Retained for the ruling it records.**
 
 **OPERATOR RULING 2026-07-27: revert to the functioning bus, then pull in this morning's fixes.**
 Construction order is the ruling's substance, not a detail — the base is the known-green
