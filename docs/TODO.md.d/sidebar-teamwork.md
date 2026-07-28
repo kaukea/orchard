@@ -568,11 +568,47 @@ Ledger of everything the operator asked for during this feature, as received.
 | 12 | 2026-07-28, resolving the contrast tension raised to him: *"You can side step the problem in colouring by taking the suggesttion i gave you earlier. Dont stay in he same tones. A task is short lived, it could pick up a compatilble colour from antoher side of the palette, as eentually it will cloe witin half a hour (IN HTHEORY), so not disconnecte but an adjacent color tone. Or you could redyce churn by doing it per feature"* | **in flight, `colour-chain`.** **The constraint that was squeezing the floors was MY reading, not his instruction.** I had taken the five-role chain to mean each link is a further step down one tone family, which crowds every derived tone against its neighbour and makes 4.5 text / 3.0 marks progressively harder. He has removed that: a task may take a **compatible colour from another part of the palette** — "not disconnected but an adjacent colour tone" — so the step is sideways in HUE to a neighbour, not merely darker. That is where the contrast headroom comes from. His rationale bounds how bold this may be: a task is **short-lived** ("eventually it will close within half an hour, in theory"), so a task carrying its own adjacent hue does not accumulate the visual debt a permanent element would. The chain's order and assignments are unchanged; only the relationship between links loosens. **A genuine choice, being built both ways rather than chosen:** per-TASK adjacency gives more separation between sibling tasks and churns as tasks come and go; per-FEATURE shifts once and is stable for the feature's life. Selectable at runtime so two panes can differ only by that. Unmoved requirements: deterministic (a given identity always resolves to the same hue, computed not sampled, so nothing shifts on repaint), colour carries identity only with no ramp implying sequence or progress, and an adjacent hue must not read as "further along". |
 | 13 | 2026-07-28, after seeing a second sower approach three hundred thousand tokens: *"Tell it to carry on because we paid for the token and to split. Tell yourself that no subagent should be launched without planning a prelaunched token budget and to verify when it approaches that limit if the work is nearly over or if you did it wrong. And immediately ask operator for remediation."* | **implemented, and it is a STANDING RULE, not a one-off.** (i) The live sower was told to carry on — the spend is paid for and he wants the work finished, not restarted — **and to perform the module split while it is in the file**, because at 153 KB and 3,086 lines simply reading `tools/sidebar.py` costs roughly forty thousand tokens, and that sower has already paid the entry fee a fresh one would have to pay again. Feature work is finished and green first, then the split, each extraction committed separately. (ii) **Every subagent from now on is launched with a token budget stated in its step-spec.** On approaching it the sower STOPS and reports which of two things is true — the work is nearly done, or the step was specified wrongly — and that goes to the operator for remediation immediately rather than being absorbed. The budget is a checkpoint, not a guillotine: neither running quietly past it nor abandoning work to stay under it. First budget set: 500,000 for the live sower's feature work plus split. **The measured fact behind the rule, which belongs in the record:** this round's agreed plan was to split the renderer module by module. It went 3,056 lines on `main` → 2,579 after `sidebar_model.py` came out → **3,086 now**, larger than when the round began, because every feature specified during the day was added to the same monolith. Each sower has paid a bigger entry fee than the one before it. **Worth promoting to a numbered decision — his call, not mine.** |
 | 14 | 2026-07-28, superseding the previous instruction minutes later: *"tell it to stop what it's doing and just do the splits by modules and make the modules as small and cohesive as is possible. In doubt, ask."* | **relayed and in force.** Feature work on the colour chain and the citation is **STOPPED**, not paused for later polish — whatever was coherent is committed, anything broken reverted, and nothing further is added to it. The sower's sole remaining job is the module split. **Small and cohesive is the goal, not "fewer files"**: the earlier sketch of colour / text composition / row painting / curses I/O is a starting point rather than a target, and where a boundary is open the smaller module wins. The working test is that a module can be described in one sentence without the word "and". **"In doubt, ask" is carried as an instruction rather than an offer** — an ambiguous boundary, a function two modules both have a claim on, or a cycle that would need breaking, stops the sower and comes to the operator, instead of being guessed and then documented as though decided. That guess-and-document habit is the one this round has paid most for. Method unchanged: extract in place, prune dead paths as each piece comes out, tests green between steps, each extraction its own commit. Budget and its checkpoint rule unchanged at 500,000. |
+| 15 | 2026-07-28: *"I think the rule should go, uh, fleet wide. However, you must have a must close. Do not, under any circumstance, estimate without any information when launching a fleet of agents. If you do not have enough data to do a statistically accurate estimate, Ask the operator if a round of discovery should be done."* | **staged as a DECISION ENTRY** — see `## Decision entries`, first block, unnumbered for the groundskeeper's mechanical fold. Promoted from a feature-local working rule to a fleet-wide one at his instruction, with the must-clause he asked for: a budget is never invented to satisfy the requirement, because a fabricated number launders a guess into something that later reads as evidence. Where the data for a defensible estimate does not exist, the operator is asked whether a discovery round should size the work first — discovery is fundable, fabrication is not. **Self-applied immediately and honestly:** the 500,000 given to the live sower rests on real data for *a sower working in this file* (195k, 236k, 258k for single assignments; 364k and 418k across resumed ones), but there is **no** data for *splitting this file*, which is a different job. That gap was put to him rather than papered over. |
 
 ## Decision entries
 
 Staged for the groundskeeper's mechanical fold into `docs/decisions.md` at close.
 UNNUMBERED by design — the number is assigned at fold time.
+
+### Decision-NNN — Every subagent launch carries a token budget, and a budget is never guessed
+
+Operator, 2026-07-28, direct, and **fleet-wide** — this is not a sidebar rule. It was made
+after two sowers in one round each approached three hundred thousand tokens on a single
+assignment, against twenty to twenty-four thousand for a courier over an entire day.
+
+**Every subagent MUST be launched with a token budget written into its step specification.**
+No exceptions, no "this one is small". The budget is a **checkpoint, not a guillotine**: on
+approaching it the subagent STOPS and reports which of exactly two things is true — the
+remaining work is nearly done, or the step was specified wrongly in the first place — and
+that goes to the **operator for remediation immediately**. It is never absorbed by the
+launching agent, never quietly run past, and work is never truncated to squeeze under the
+number.
+
+**The must-clause, which is the point of the rule:** *do not, under any circumstance,
+estimate without any information when launching a fleet of agents.* A budget invented to
+satisfy the requirement is worse than no budget, because it launders a guess into a number
+that later reads as evidence. **If there is not enough data for a statistically defensible
+estimate, ASK THE OPERATOR whether a round of discovery should be run first.** Discovery to
+size the work is a legitimate, fundable activity; a fabricated estimate is not.
+
+The evidence this was made on, recorded because the rule is otherwise easy to dismiss as
+bureaucracy. In the round that prompted it, the renderer under work was 153 KB and 3,086
+lines, so reading it cost roughly forty thousand tokens before a single line was written, and
+its test file cost the same again. Four separate subagents each wrote their own
+escape-sequence parser because none was shared, and two of those parsers were wrong. Three
+subagents were made to work concurrently in that one file and told to re-read on every stale
+edit. And the round's own agreed plan had been to SPLIT that file — it began at 3,056 lines,
+fell to 2,579 when one module was extracted, and had grown to 3,086 by the end of the day
+because every newly specified feature went into the same monolith. Each subagent paid a
+larger entry fee than the one before it, and nobody was measuring.
+
+The general lesson is not about tokens. An agent that cannot say what a job should cost does
+not understand the job well enough to delegate it.
 
 ### Decision-NNN — The no-animation rule was never a ruling and is struck
 
