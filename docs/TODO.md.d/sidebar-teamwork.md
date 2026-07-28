@@ -630,7 +630,23 @@ Each was found during this feature and is out of its scope. None is fixed here.
     arrive on messages, so the signal exists. What does not exist is a safe way for an agent
     to compute over it by hand.
 
-11. **THE FEATURE LEVEL HAS NO NAME OF ITS OWN, BECAUSE THE WORKFLOW NEVER FILLS ONE IN.**
+11. ~~**THE FEATURE LEVEL HAS NO NAME OF ITS OWN.**~~ **WRONG — RETRACTED 2026-07-28. The
+    name exists, is authored upstream, and rides every event. The renderer discards it.**
+
+    `identity.feature_name` is on the identity envelope of every event, authored by
+    `tools/feature_name.py` from the ledger as a real human name, and put on the wire by
+    `tools/orchard_topic.py:138-143`. A captured fixture holds a live value:
+    `tests/fixtures/event_identity_new_shape_live.json` carries
+    `"feature_name": "Sidebar empty rows: header renders…"`.
+
+    So the feature row showing a task's name is a RENDERER defect, not a missing upstream
+    field, and it is fixable inside this round. This landscaper reported the opposite twice
+    and returned it to the board as unfixable — an assertion about the data made without
+    looking at the data, which is the same fault this feature has recorded four times
+    already. The original text is kept below, struck, because the retraction matters more
+    than the claim.
+
+    ~~Original claim:~~
     Operator, 2026-07-28, looking at the feature row on his own pane: *"the content right
     now is the content of the task name, and it's not the right one either ... It has no
     content of its own because we haven't filled it in from the workflow correctly."*
