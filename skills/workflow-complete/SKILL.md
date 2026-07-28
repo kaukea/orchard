@@ -92,7 +92,7 @@ Agent: <model>
 - `<lead-time>` — Human-readable lead time (e.g., "2d 8h", "1m 2d") between the first commit of the feature branch and
   the merge commit. NOT measured from the commit you branched off of on `main`.
 - `<branch>` — The feature branch you are merging.
-- For anything else follow the rules in the git-commit skill.
+- For anything else follow the rules in the git-workflow skill.
 
 A close that carries no content to `main` — a no-content task or an abandoned experiment — uses this same template
 with an **empty** commit. See *Abandoned and no-content closes* below.

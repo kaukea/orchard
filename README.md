@@ -82,8 +82,9 @@ Fix a lesson once, and every repo knows it on the next sync.
 
 **Discipline that holds.** The `workflow` and `workflow-complete` pair enforce
 the gates — feature branches, agreed testing, your explicit approval, an
-identical close. `git-commit` makes history readable, `clean-code` keeps the
-output short and honest, `readme-sync` stops this very file from lying, and
+identical close. `git` makes history readable and `git-workflow` keeps the
+branch/merge mechanics straight, `clean-code` keeps the output short and
+honest, `readme-sync` stops this very file from lying, and
 `diagnostics` turns "it's broken" into one reproducible script instead of an
 hour of flailing.
 
