@@ -93,3 +93,9 @@ Agreed method:
 ~~`kauk sync` on a scratch consuming repo: renamed skills appear under the new name, old
 symlinks are pruned, no dangling links remain, no skill references a name that no longer
 exists (grep the corpus for old ids).~~ Struck per Decision-122.
+
+## Changelog entry
+Split `git-commit` skill into `git` (generic commit hygiene) and `git-workflow` (branch/workflow mechanics) — resolves the `Branch: main` rule contradiction and reduces token load on agents that only commit. Repoint agent skill references by role. (Decision-122)
+
+## Readme delta
+In the Skills section: `git-commit` split into `git` (history readability) and `git-workflow` (branch/merge mechanics); same responsibility, two complementary skills.
