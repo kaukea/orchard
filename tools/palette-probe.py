@@ -108,5 +108,68 @@ def main():
     print()
 
 
+# --------------------------------------------------------------------------
+# Dracula, chosen 2026-07-28. Two bases to compare: the palette's own dark
+# base, and a dimmer one for working at night, where the accents are pulled
+# down in lightness so they stop glaring without losing their identity.
+# --------------------------------------------------------------------------
+
+DRACULA = {
+    "base": "#282a36", "line": "#44475a", "fg": "#f8f8f2", "comment": "#6272a4",
+    "cyan": "#8be9fd", "green": "#50fa7b", "orange": "#ffb86c",
+    "pink": "#ff79c6", "purple": "#bd93f9", "red": "#ff5555",
+    "yellow": "#f1fa8c",
+}
+
+
+def _dim(c, factor):
+    import colorsys
+    h, l, s = colorsys.rgb_to_hls(*(v / 255 for v in c))
+    r, g, b = colorsys.hls_to_rgb(h, max(l * factor, 0.0), s * 0.92)
+    return (round(r * 255), round(g * 255), round(b * 255))
+
+
+def _readable_on(bg, dark, light):
+    return dark if abs(apca_lc(dark, bg)) >= abs(apca_lc(light, bg)) else light
+
+
+def mock_sidebar(title, base, line, fg, accents, width=34):
+    dark, light = rgb("#1a1b26"), rgb("#f8f8f2")
+    rows = []
+    head = accents["purple"]
+    rows.append((head, _readable_on(head, dark, light), f"{'orchids':^{width}}"))
+    for name, key in (("Close-family fakes", "pink"), ("Sidebar redone", "cyan")):
+        a = accents[key]
+        rows.append((a, _readable_on(a, dark, light), f" {name}".ljust(width)))
+        rows.append((line, fg, f" ▌ working".ljust(width)))
+        for step, mark in (("ɪᴅᴇᴀᴛɪᴏɴ", "✓"), ("ʙᴜɪʟᴅɪɴɢ", "⠧")):
+            rows.append((base, fg, f" ▌{mark} {step}".ljust(width)))
+        rows.append((base, accents["comment"],
+                     ' ▌“sweeping” — landscaper'.ljust(width)))
+    out = [f"\x1b[1m{title}\x1b[0m"]
+    for bg, f, text in rows:
+        out.append("  " + swatch(f, bg, text))
+    return out
+
+
+def themes():
+    base = {k: rgb(v) for k, v in DRACULA.items()}
+    night = {k: _dim(v, 0.62) for k, v in base.items()}
+    night["base"] = rgb("#14151c")
+    night["line"] = _dim(base["line"], 0.66)
+    a = mock_sidebar("DARK — Dracula as published", base["base"], base["line"],
+                     base["fg"], base)
+    b = mock_sidebar("NIGHT — dimmed for working in the dark", night["base"],
+                     night["line"], night["fg"], night)
+    print()
+    for l, r in zip(a, b):
+        pad = 40 - len(l) + len(l.encode()) // 3
+        print(f"{l}{' ' * 6}{r}")
+    print()
+
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "themes":
+        themes()
+    else:
+        main()
