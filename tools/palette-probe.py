@@ -164,7 +164,13 @@ def themes():
     night = {k: _dim(v, 0.62) for k, v in base.items()}
     night["base"] = rgb("#14151c")
     night["line"] = _dim(base["line"], 0.66)
-    night["fg"] = _dim(base["fg"], 0.94)
+    # NOT white. White is the brightest thing the screen can emit, which is
+    # the opposite of what a night theme is for. A warm tone at lower
+    # luminance carries less light and less blue while staying comfortably
+    # readable — the operator picked this out of an earlier dimmed draft and
+    # it was the good part of it. Three candidates measured on this base:
+    # warm sand APCA 85, amber 75, gold 70; white is 106 at full glare.
+    night["fg"] = rgb("#e8d5a8")
     a = mock_sidebar("DARK — Dracula as published", base["base"], base["line"],
                      base["fg"], base)
     b = mock_sidebar("NIGHT — dimmed for working in the dark", night["base"],
