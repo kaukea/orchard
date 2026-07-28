@@ -609,6 +609,27 @@ Each was found during this feature and is out of its scope. None is fixed here.
    Open for him, not assumed: is dim unusable, usable except over a custom background, or
    usable freely? Until he says, it is information rather than a rule.
 
+10. **THE TIMER'S CALCULATION BELONGS IN A SCRIPT, AND THE TIMER COMES AFTER THE CURRENT
+    DESIGN.** Operator, 2026-07-28: *"when work starts on a step or finishes, there are
+    messages coming in with it, but we need to ensure calculations are: 1. accurate, 2. do
+    not infect the context. So I see only one way of doing that and that's a script. But
+    let's finish at least getting the current design working before we restore the features
+    you removed."*
+
+    Two rulings in one sentence. **Sequencing:** the current design is finished and working
+    before the timer is built and before anything removed is restored. **Method:** the
+    elapsed-time calculation is performed by a deterministic script, not by an agent reading
+    event data into its context and reasoning over it. Both of his criteria fail that way —
+    an agent's arithmetic over raw data is neither reliably accurate nor free of context
+    cost.
+
+    Same principle as returned item 8 (comparisons belong in a tool, not in a context),
+    applied to a second case. The two should be discussed together rather than separately.
+
+    Confirmed by him in the same exchange: the start and finish of work on a step **do**
+    arrive on messages, so the signal exists. What does not exist is a safe way for an agent
+    to compute over it by hand.
+
 ## Operator requests
 
 Ledger of everything the operator asked for during this feature, as received.
