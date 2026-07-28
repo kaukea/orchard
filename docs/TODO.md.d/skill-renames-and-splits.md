@@ -13,23 +13,29 @@
   `git-commit`, avoiding rework.
 
 ## Questions
-- `git-commit` split shape: two skills (`git` in `general` + `git-workflow` in
-  `process/workflow`), or one skill whose sections are role-tagged? Two skills is the
-  only shape the DAG can actually deliver on — a repo declining `process/workflow` must
-  not receive the `Branch:` trailer rule — but it costs a second file and a second
-  `description` in every session that takes both.
-  - Recommendation: two skills. Role-tagged sections inside one file can't stop the
-    DAG from delivering the whole file to a repo that declined `process/workflow` —
-    the DAG gates whole skills, not sections (per Findings below and the manifest
-    mechanism this programme already relies on). The extra file/description cost is
-    the actual price of correctness here, not a warning sign.
-- Any other skill carrying the same double life? `readme-sync` reads workflow-only
-  ("MUST be read at workflow completion") but its content is generic README guidance.
-  - Recommendation: scope this task to `git-commit` only; open a new task (or fold into
-    `skill-terseness-pass`, which already sweeps every skill for content issues) to
-    audit the rest of the corpus for the same pattern, rather than blocking this split
-    on a full-corpus sweep. Doing the sweep here would expand this task's WHAT past its
-    chartered scope (the `git-commit` split).
+
+Both resolved — operator ruling, 2026-07-29 bloom round:
+
+- ~~`git-commit` split shape~~ **Resolved: two complementary skills.** `git`
+  (generic hygiene — gitmoji, subject ≤52, body wrap, scope discipline,
+  no-force-without-consent) and `git-workflow` (`Branch:` trailer, main-immutable,
+  MAKE IT SO gating, the squash-merge mechanics). Operator's own framing: the two
+  are complementary, not overlapping. **Role-scoping refinement (operator):** only
+  the roles that actually OPEN (start a branch/workflow) or CLOSE (squash-merge)
+  need to understand the squash-merge machinery — `git-workflow` is pulled in by
+  `landscaper`, `supervisor`, `groundskeeper` (and the cloud equivalents), not by
+  every agent that merely commits along the way (`sower`, `groomer`, `courier` load
+  `git` only). This is itself a token saving beyond the original split: most agents
+  in the fleet never need `git-workflow` at all.
+- ~~Other double-life skills~~ **Resolved: out of scope here.** Stays scoped to
+  `git-commit`; a full-corpus double-life audit is `skill-terseness-pass`'s job,
+  not this task's.
+
+## Sizing
+
+Operator ruling, 2026-07-29: sonnet-tier, "lowest acceptable model for each job" —
+mechanical rename/split/grep work. Launch at `claude-sonnet-5`, effort `medium`
+(downsized from the landscaper's default `claude-opus-5`/`xhigh`).
 
 ## Findings
 - `doing-skills` → `authoring-skills`, in `general` (Decision-003). The rename is not
@@ -56,7 +62,11 @@
    Decision-021); lands with its squash-merge.
 2. Split `git-commit` per the agreed shape; resolve the `Branch: main` contradiction
    explicitly in whichever half owns it.
-3. Sweep for other cross-references broken by the renames.
+3. Update each agent's frontmatter/body skill references so only `landscaper`,
+   `supervisor`, `groundskeeper` (and cloud equivalents `architect-cloud`,
+   `housekeeper-cloud`, `orchestrator-cloud`) reference `git-workflow`; every other
+   agent (`sower`, `groomer`, `courier`, `bloomer`, `gardener`) keeps `git` only.
+4. Sweep for other cross-references broken by the renames.
 
 ## Testing
 `kauk sync` on a scratch consuming repo: renamed skills appear under the new name, old
