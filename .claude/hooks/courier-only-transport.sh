@@ -1,0 +1,1 @@
+../../hooks/courier-only-transport.sh
