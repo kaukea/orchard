@@ -645,6 +645,25 @@ Each was found during this feature and is out of its scope. None is fixed here.
     about the feature row is being taken against placeholder content. The row's appearance
     can be settled now; what it says cannot.
 
+12. **A NAMING CONVENTION FOR THE BOARD: the feature becomes the prefix of the task.**
+    Operator, 2026-07-28: *"we make the feature name the prefix of the task name moving
+    forward so f/sidebar/themes"*, with the feature row rendering as *"🧩/sidebar"*.
+
+    So a task identifier carries its feature: `f/<feature>/<task>`. The feature row shows the
+    middle segment, the task row the last. This is a **workflow convention**, not a renderer
+    concern — branches, worktrees and sidecars are named by the gardener, and it changes how
+    every future feature is created.
+
+    **It resolves returned item 11 above.** That item reported the feature level as having no
+    name because nothing upstream authors one. Under this convention the name is derivable
+    from the identifier the renderer already receives, with no new field and no producer
+    change. The renderer half is being built now; the naming half belongs to whoever owns
+    branch creation.
+
+    Existing branches do not have this shape — this one is `f/sidebar-teamwork`, a single
+    segment — so both forms must survive, and no feature name is to be invented where the
+    identifier has only one segment.
+
 ## Operator requests
 
 Ledger of everything the operator asked for during this feature, as received.
