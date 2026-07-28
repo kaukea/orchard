@@ -2753,6 +2753,51 @@ class HeaderContrastIsCalculatedTests(unittest.TestCase):
             sidebar.contrast_ratio(fg, bg), sidebar._CONTRAST_MIN_TEXT)
 
 
+class HeaderRampVariantSwitchTests(unittest.TestCase):
+    """Temporary A/B switch (operator, 2026-07-28): his own dictated
+    "three cells" and the tmux reference's own "two cells, four steps via
+    the half-block trick" are two different builds, and he was never
+    asked to pick explicitly -- `SIDEBAR_HEADER_RAMP_VARIANT` lets two
+    panes differ ONLY in this one knob until he does. Unset/unknown must
+    fall back to the default variant, never raise (this file's own
+    fail-open rule for anything environment-sourced)."""
+
+    def setUp(self):
+        self._had = "SIDEBAR_HEADER_RAMP_VARIANT" in os.environ
+        self._old = os.environ.get("SIDEBAR_HEADER_RAMP_VARIANT")
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        if self._had:
+            os.environ["SIDEBAR_HEADER_RAMP_VARIANT"] = self._old
+        else:
+            os.environ.pop("SIDEBAR_HEADER_RAMP_VARIANT", None)
+
+    def test_default_is_three_cell_when_unset(self):
+        os.environ.pop("SIDEBAR_HEADER_RAMP_VARIANT", None)
+        self.assertEqual(sidebar._header_ramp_cells(), 3)
+
+    def test_two_cell_variant(self):
+        os.environ["SIDEBAR_HEADER_RAMP_VARIANT"] = "two-cell"
+        self.assertEqual(sidebar._header_ramp_cells(), 2)
+
+    def test_three_cell_variant(self):
+        os.environ["SIDEBAR_HEADER_RAMP_VARIANT"] = "three-cell"
+        self.assertEqual(sidebar._header_ramp_cells(), 3)
+
+    def test_unrecognised_value_falls_back_to_default(self):
+        os.environ["SIDEBAR_HEADER_RAMP_VARIANT"] = "bogus"
+        self.assertEqual(sidebar._header_ramp_cells(), 3)
+
+    def test_gradient_threshold_moves_with_the_variant(self):
+        # "orchids" core is 9 cells wide (see _header_core_width) -- the
+        # two-cell variant needs 4 fewer columns than the three-cell one
+        # to afford a full ramp.
+        self.assertFalse(sidebar._header_gradient_fits("orchids", 14, ramp_cells=3))
+        self.assertTrue(sidebar._header_gradient_fits("orchids", 14, ramp_cells=2))
+        self.assertTrue(sidebar._header_gradient_fits("orchids", 15, ramp_cells=3))
+
+
 class TaskRowPaintsItsOwnBackgroundTests(unittest.TestCase):
     """A task row SITS ON its feature's band (Decision-110). Its name was
     drawn with a one-argument `colours.pair(fg)`, i.e. no background at all,

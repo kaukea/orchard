@@ -111,13 +111,14 @@ superseding the earlier monotonic left-to-right gradient): a fixed-size
 core — the title, one space of padding each side — filled with the repo's
 PRIMARY colour (`repo_colour_roles(hue).primary`, i.e. `hue["accent"]`,
 still resolved through the direct-colour terminfo path, never
-approximated away), flanked by `_HEADER_RAMP_CELLS` cells of gradient EACH
-side that tame the primary down toward the SECONDARY (`hue["fill"]`),
-mirrored, with flat secondary fill beyond that to the row's edges — no new
-palette, every tone is built from the triple the repo already owns (see
-`_draw_header`). The title is never shrunk to make room for the ramp: a
-pane too narrow for the full title AND the full ramp drops the ramp
-entirely and renders a flat primary block instead. A feature row's
+approximated away), flanked by `_header_ramp_cells()` cells of gradient
+EACH side (a temporary A/B knob, see `_draw_header`'s own comment) that
+tame the primary down toward the SECONDARY (`hue["fill"]`), mirrored, with
+flat secondary fill beyond that to the row's edges — no new palette, every
+tone is built from the triple the repo already owns (see `_draw_header`).
+The title is never shrunk to make room for the ramp: a pane too narrow for
+the full title AND the full ramp drops the ramp entirely and renders a
+flat primary block instead. A feature row's
 full-width dimmer background band uses that same `"fill"` hue,
 unconditionally (every feature row, any status — it is what makes a feature
 visibly not a task, see `_draw_feature_row`). The accordion's ACTIVE step
@@ -1987,24 +1988,49 @@ def _safe_addch(stdscr, y: int, x: int, ch: str, attr: int) -> None:
 # BLOCK layout (operator spec, 2026-07-28, reproducing the operator's own
 # tmux `window-status-current-format` technique against the repo's own
 # hue): a fixed-size CORE (" TITLE ", filled with PRIMARY) sits centred in
-# the row, flanked by `_HEADER_RAMP_CELLS` gradient cells each side that
+# the row, flanked by `_header_ramp_cells()` gradient cells each side that
 # TAME the primary down toward SECONDARY (mirrored), with flat secondary
-# fill beyond that to the row's edges. Each ramp cell carries TWO of the
-# `_HEADER_RAMP_STEPS` interpolated tones at once via a half-block glyph
-# (`▐`/`▌`) — one tone as the glyph's foreground (the half nearer the
-# core), the other as its background (the half nearer the fill) — the same
-# trick that lets tmux's own two-cell ramp read as four steps, scaled here
-# to three cells reading as six. "No space for gradients, no gradient,
-# easy" (operator, 2026-07-28): the title is NEVER shrunk to make room for
-# the ramp — `_header_gradient_fits` is the one threshold that decides
-# ramp-or-not, computed from the title's OWN untruncated width, never the
-# reverse.
+# fill beyond that to the row's edges. Each ramp cell carries TWO
+# interpolated tones at once via a half-block glyph (`▐`/`▌`) — one tone as
+# the glyph's foreground (the half nearer the core), the other as its
+# background (the half nearer the fill) — the same trick that lets tmux's
+# own ramp read as more steps than it has cells. "No space for gradients,
+# no gradient, easy" (operator, 2026-07-28): the title is NEVER shrunk to
+# make room for the ramp — `_header_gradient_fits` is the one threshold
+# that decides ramp-or-not, computed from the title's OWN untruncated
+# width, never the reverse.
+#
+# TEMPORARY A/B SWITCH (operator, 2026-07-28: his own dictated "three
+# cells" and the tmux reference he pointed at — which spends only TWO
+# cells per side and reaches four perceptual steps via the half-block
+# trick — are two different builds, and he was never asked to choose
+# between them explicitly; he then ruled choices must never be buried in
+# prose again). `_header_ramp_cells()` reads `SIDEBAR_HEADER_RAMP_VARIANT`
+# so two panes can run side by side differing ONLY in this one knob:
+# "two-cell" (the tmux reference's own proportions) or "three-cell" (his
+# literal dictation, the default when unset — the closer reading of his
+# actual words). A companion sower wires the env var through and shows the
+# active variant in the pane title; this module only reads it. Narrow and
+# obviously temporary: it exists purely for that A/B and comes back out
+# once he picks.
 # --------------------------------------------------------------------------
 
-_HEADER_RAMP_CELLS = 3
-_HEADER_RAMP_STEPS = _HEADER_RAMP_CELLS * 2
+_HEADER_RAMP_VARIANT_ENV = "SIDEBAR_HEADER_RAMP_VARIANT"
+_HEADER_RAMP_CELLS_BY_VARIANT = {"two-cell": 2, "three-cell": 3}
+_HEADER_RAMP_DEFAULT_VARIANT = "three-cell"
 _HEADER_RAMP_IN = "▐"   # left ramp (entering the core): glyph fg on the RIGHT half — nearer the core
 _HEADER_RAMP_OUT = "▌"  # right ramp (leaving the core): glyph fg on the LEFT half — nearer the core
+
+
+def _header_ramp_cells() -> int:
+    """Gradient cells per side, right now — see the A/B switch note above.
+    An unrecognised or unset value falls back to the default variant
+    rather than raising, the same fail-open rule this file uses
+    everywhere else for environment-sourced input."""
+    variant = os.environ.get(_HEADER_RAMP_VARIANT_ENV, _HEADER_RAMP_DEFAULT_VARIANT)
+    return _HEADER_RAMP_CELLS_BY_VARIANT.get(
+        variant, _HEADER_RAMP_CELLS_BY_VARIANT[_HEADER_RAMP_DEFAULT_VARIANT],
+    )
 
 
 def _header_core_width(title: str) -> int:
@@ -2014,19 +2040,20 @@ def _header_core_width(title: str) -> int:
     return _cell_width(title) + 2
 
 
-def _header_gradient_fits(title: str, width: int) -> bool:
+def _header_gradient_fits(title: str, width: int, ramp_cells: int) -> bool:
     """True once `width` can hold the title's own FULL core plus a FULL
-    ramp on each side. This is the one on/off switch (operator: "no space
-    for gradients, no gradient, easy") — there is no partial ramp and the
-    title is never truncated to manufacture room for one."""
-    return width >= _header_core_width(title) + 2 * _HEADER_RAMP_CELLS
+    ramp of `ramp_cells` on each side. This is the one on/off switch
+    (operator: "no space for gradients, no gradient, easy") — there is no
+    partial ramp and the title is never truncated to manufacture room for
+    one."""
+    return width >= _header_core_width(title) + 2 * ramp_cells
 
 
 def _header_ramp_tone(
     steps: list[tuple[int, int, int]], k: int,
 ) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     """(inner, outer) tones for ramp cell `k` (0 = adjacent to the core,
-    `_HEADER_RAMP_CELLS - 1` = adjacent to the flat fill) — identical
+    the outermost cell = adjacent to the flat fill) — identical
     mapping on both sides of the core; only the glyph (and so which
     physical half of the cell "inner" lands on) differs between them."""
     return steps[2 * k], steps[2 * k + 1]
@@ -2087,17 +2114,18 @@ def _draw_header(
     hue = _repo_hue(title)
     roles = repo_colour_roles(hue)
     primary, secondary = roles.primary, roles.secondary
+    ramp_cells = _header_ramp_cells()
 
-    if not _header_gradient_fits(title, width):
+    if not _header_gradient_fits(title, width, ramp_cells):
         _draw_flat_block(primary)
         return
 
     core_width = _header_core_width(title)
-    decorated_width = core_width + 2 * _HEADER_RAMP_CELLS
+    decorated_width = core_width + 2 * ramp_cells
     left_fill = (width - decorated_width) // 2
     right_fill = (width - decorated_width) - left_fill
 
-    ramp = colour_ramp_steps(primary, secondary, _HEADER_RAMP_STEPS)
+    ramp = colour_ramp_steps(primary, secondary, ramp_cells * 2)
     core_fg = ensure_contrast(_muted_toward(HEADER_FG, primary), primary, _CONTRAST_MIN_TEXT)
     core_attr = colours.pair(core_fg, primary) | reverse
     fill_attr = colours.pair(MUTED, secondary) | reverse
@@ -2106,14 +2134,14 @@ def _draw_header(
     for _ in range(left_fill):
         _safe_addch(stdscr, y, col, " ", fill_attr)
         col += 1
-    for k in reversed(range(_HEADER_RAMP_CELLS)):
+    for k in reversed(range(ramp_cells)):
         inner, outer = _header_ramp_tone(ramp, k)
         _safe_addch(stdscr, y, col, _HEADER_RAMP_IN, colours.pair(inner, outer) | reverse)
         col += 1
     for ch in f" {title} ":
         _safe_addch(stdscr, y, col, ch, core_attr)
         col += 1
-    for k in range(_HEADER_RAMP_CELLS):
+    for k in range(ramp_cells):
         inner, outer = _header_ramp_tone(ramp, k)
         _safe_addch(stdscr, y, col, _HEADER_RAMP_OUT, colours.pair(inner, outer) | reverse)
         col += 1
@@ -2705,7 +2733,23 @@ def main(stdscr) -> None:
         elif key in (ord("q"), ord("Q")):
             return
         elif key == curses.KEY_RESIZE:
+            # `update_lines_cols()` alone only refreshes the `curses.LINES`/
+            # `curses.COLS` convenience globals -- it does NOT reliably
+            # resize `stdscr` itself (whether ncurses' own internal SIGWINCH
+            # handler already resized `stdscr` before `KEY_RESIZE` reached
+            # here is a build/version detail, not something this app can
+            # assume). Confirmed the hard way: a real resize left every
+            # subsequent `stdscr.getmaxyx()` reporting the OLD geometry
+            # forever, so the app kept redrawing at the old width while
+            # tmux's own pane grid silently cropped the oversized output to
+            # the new, smaller viewport -- a name cut mid-word with no
+            # ellipsis, because the renderer never even saw the narrower
+            # width to truncate against. `resizeterm()` is the explicit,
+            # version-independent call that actually reallocates `stdscr`
+            # (and any subwindows) to the just-refreshed `curses.LINES`/
+            # `curses.COLS`.
             curses.update_lines_cols()
+            curses.resizeterm(curses.LINES, curses.COLS)
         # any other key (including -1 on timeout) is ignored
 
 

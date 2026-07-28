@@ -335,10 +335,18 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         lines = self._capture_when_ready()
         stripped = [_strip_sgr(line) for line in lines]
 
-        header_idx = next(i for i, l in enumerate(stripped) if l.strip() == "orchids")
+        # The header row is now a BLOCK (operator spec, 2026-07-28): the
+        # title sits in a padded core flanked by half-block ramp glyphs
+        # (`▐`/`▌`) mirrored on each side, not the title alone centred
+        # across the whole row -- so the row's own stripped text is no
+        # longer bare "orchids", it carries those glyphs too. This pane is
+        # wide enough (PANE_WIDTH=60) for the default variant's full ramp.
+        header_idx = next(i for i, l in enumerate(stripped) if "orchids" in l)
         self.assertTrue(_has_any_bg(lines[header_idx]))
         leading_spaces = len(stripped[header_idx]) - len(stripped[header_idx].lstrip(" "))
         self.assertGreater(leading_spaces, 0)
+        self.assertIn(sidebar._HEADER_RAMP_IN, stripped[header_idx])
+        self.assertIn(sidebar._HEADER_RAMP_OUT, stripped[header_idx])
 
         done_idx = next(
             i for i, l in enumerate(stripped)
@@ -365,7 +373,7 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         )
         self.assertIn("landscaper", stripped[quote_idx])
 
-        signmc_header_idx = next(i for i, l in enumerate(stripped) if l.strip() == "signmc")
+        signmc_header_idx = next(i for i, l in enumerate(stripped) if "signmc" in l)
         signmc_feature_idx = next(
             i for i, l in enumerate(stripped)
             if i > signmc_header_idx and "focus returning" in l
@@ -684,8 +692,18 @@ class SidebarOnceCLITests(unittest.TestCase):
         text = _raw_strip_escapes(raw)
         self.assertIn(b"orchids", text)
         self.assertIn(b"once check", text)
-        self.assertTrue(_raw_has_colour(raw, sidebar.HEADER_FG))
-        self.assertTrue(_raw_has_colour(raw, sidebar.REPO_HUES["orchids"]["header"]))
+        # The header's core now sits on the repo's PRIMARY (`hue["accent"]`,
+        # operator spec 2026-07-28 — the old per-column gradient's "header"
+        # hue field and the raw, uncontrasted HEADER_FG constant it leaked
+        # into blank padding columns are both gone from this row now: every
+        # core column, blank or not, gets the one contrast-derived title
+        # colour computed the same way `_draw_header` computes it).
+        primary = sidebar.repo_colour_roles(sidebar.REPO_HUES["orchids"]).primary
+        title_fg = sidebar.ensure_contrast(
+            sidebar._muted_toward(sidebar.HEADER_FG, primary), primary, sidebar._CONTRAST_MIN_TEXT,
+        )
+        self.assertTrue(_raw_has_colour(raw, primary))
+        self.assertTrue(_raw_has_colour(raw, title_fg))
 
 
 if __name__ == "__main__":
