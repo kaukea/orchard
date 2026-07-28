@@ -2,7 +2,7 @@
 - created_by: Sebastien Lambla
 - created_during: gardener
 
-# A full review of the decisions register: what the rulings say, and how they are written
+# The decisions register lies: audit every entry for truth, provenance and authority
 
 ## Blockers
 
@@ -31,21 +31,23 @@ dependency, no capability gap, no other task holds it.
    and proposes a disposition, and the operator rules on each; no entry is struck,
    rewritten, or demoted without him.*
 
-3. **How far does "how they are written" reach?** Two readings. The narrow one is
-   conformance: the heading format, the mandatory timestamp, the mandatory keyword
-   line, the supersession markers — all mechanically checkable against the spec in
-   `AGENTS.files.md` §Decisions. The wide one adds prose quality: whether a body is
-   written for a reader with no session context, in full sentences, with its jargon
-   expanded, per the `writing` skill — which is a judgement call on 117 bodies.
-   *Recommendation: both, but reported separately, because conformance findings are
-   objective and prose findings are opinions and should not be mixed in one list.*
+3. ~~How far does "how they are written" reach?~~ **ANSWERED — and the axis was
+   the wrong one.** The question offered prose quality. The operator replaced it
+   with provenance and legitimacy, in his words: *"Who wrote them, under what
+   circumstance, was the operator asked at all, is it inference, is it situational
+   or global, does it even belong there"* — and immediately added that this is a
+   ***"non exhaustive list"***. It is a demonstration of the kind of interrogation
+   the register must survive, not the checklist to run against it. See `## Proposal`,
+   second axis. Prose quality is not part of this task.
 
 4. **Is the output a document, or tooling, or both?** A one-off review produces a
-   findings document that is stale the moment the next decision is appended. A lint
-   — the conformance half is entirely mechanical — keeps the register conformant
-   forever and would fit beside the board lints that already exist. *Recommendation:
-   the conformance half becomes a lint, the content half stays a document, because
-   only one of the two can be automated honestly.*
+   findings document that is stale the moment the next decision is appended. Parts
+   of the work are mechanical and could become a lint that keeps the register honest
+   forever: the conformance checks certainly, and — now that provenance is an axis —
+   the authorship and circumstance of every entry too, since both are recoverable
+   from git without judgement. *Recommendation: the mechanically derivable parts
+   become a lint, the judgement parts stay a document, because only one of the two
+   can be automated honestly.*
 
 ## Findings
 
@@ -97,30 +99,66 @@ the task, not the review itself.
 
 ## Proposal
 
-A full review of `docs/decisions.md` along the two axes the operator named — what the
-decisions say, and how they are written.
+A full review of `docs/decisions.md`. The operator's premise, in his words, is that
+**"the file lies"**. That is the frame for the whole task: this is not a tidy-up of a
+basically-sound document, it is an audit of a record suspected of asserting things that
+are not true. The review's job is to find out where, how much, and how it happened.
 
-**The writing axis** covers conformance against `AGENTS.files.md` §Decisions: the
-heading shape, the required timestamp, the required keyword line, the supersession
-markers and their back-references, the chronological numbering, and the two-date
-contract introduced by Decision-115. Every entry is checked and every deviation
-reported with its entry number. Whether this axis also judges prose quality against
-the `writing` skill is Question 3.
+The register's authority rests entirely on one claim — that it records decisions the
+operator made. Every agent in the fleet greps it and honours what it finds without
+question, because that is what it is for. An entry that is inference, generalisation,
+or invention therefore does not sit inertly in a file; it propagates as a ruling, and
+it has already licensed at least one agent to act against the operator's intent.
 
-**The content axis** covers whether each entry is a ruling at all. Entries that record
-a passing state, an interim limitation, or a fact about the code rather than a
-deliberate choice are identified. So are pairs that contradict each other with no
-supersession recorded between them, entries whose factual premises are no longer true,
-and entries attributed to an operator ruling that the record does not support. Every
-such finding is reported with evidence; none is acted on without the operator, per
-Question 2.
+### Axis one: does the entry say something true and current
 
-Explicitly in scope: the register as a whole, all 117 entries, no sampling.
+Whether each entry is a ruling at all. Entries recording a passing state, an interim
+limitation, or a fact about what the code did at the time rather than a deliberate
+choice — which the register's own spec forbids. Pairs that contradict each other with
+no supersession recorded between them. Entries whose factual premises were wrong when
+written or have since become wrong. Rulings contradicted by what actually shipped.
 
-Explicitly NOT in scope: appending new decisions, deciding anything the register does
-not already contain, and reconciling the register against the code to determine whether
-a ruling was implemented. That last one is a much larger piece of work and would be its
-own task.
+### Axis two: is the entry legitimate — provenance and authority
+
+The operator's line of interrogation, given as a **non-exhaustive** demonstration and
+to be extended by the reviewer rather than treated as a checklist:
+
+- **Who wrote it** — which agent, which model, which role.
+- **Under what circumstance** — mid-build, at a close, staged by a landscaper, folded
+  by a groundskeeper, or written by the operator himself.
+- **Was the operator asked at all** — is there evidence of a question put and answered,
+  or does the entry simply assert a ruling with nothing behind it.
+- **Is it inference** — did an agent generalise a passing remark, a complaint, or an
+  offhand preference into a standing constraint. This is the known failure: an entry
+  currently staged on another branch exists precisely to strike a rule that "was never
+  a ruling, just a one-line remark generalised by an agent".
+- **Is it situational or global** — was a decision correct for one circumstance written
+  as though it binds everywhere and forever.
+- **Does it even belong there** — is this a decision, or something that should have been
+  a changelog line, a code comment, or a task.
+
+Authorship and circumstance are recoverable from git without judgement: each heading
+traces to the commit that introduced it, and that commit to its branch, feature and
+author. That makes a large part of this axis mechanical evidence rather than opinion,
+and it is what the review builds its judgements on top of.
+
+The reviewer is expected to find grounds the operator did not list. The six above are
+the shape of the suspicion, not its boundary.
+
+### Scope
+
+In scope: the register as a whole, all 117 entries, no sampling. Conformance against
+`AGENTS.files.md` §Decisions — heading shape, required timestamp, required keyword
+line, supersession markers and back-references, chronological numbering, the two-date
+contract from Decision-115 — is checked as part of the pass, but it is the least of it.
+
+NOT in scope: appending new decisions; deciding anything the register does not already
+contain; prose quality against the `writing` skill; and a full reconciliation of every
+ruling against the code to determine whether it was implemented, which is a much larger
+piece of work and would be its own task.
+
+Nothing is struck, demoted or rewritten on an agent's authority beyond the objectively
+mechanical, per Question 2.
 
 ## Testing
 
