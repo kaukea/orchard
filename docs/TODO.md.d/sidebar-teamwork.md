@@ -8,7 +8,86 @@
 
 - none — the `⊘transport-test-reconciling` blocker is REMOVED by the operator's
   2026-07-27 ruling that the sidebar derives names from EVENTS, not from the marker.
-  See `## Proposal`. The two tasks are now independent.
+  See `## BUILD SPECIFICATION — written 2026-07-28, NOTHING DISPATCHED UNTIL AGREED
+
+Operator ruling that produced this: *"you're not sending anything until you have finished
+specifying exactly what work needs to be done ... this is not corrective measure, this is
+real time design."* Every change so far has been dispatched from a partial instruction and
+been wrong in some way. This section is the complete statement of remaining work. Items
+marked **OPEN** cannot be settled by an agent and block dispatch of the item they sit in.
+
+### A — Project header and feature rows
+
+- The gradient folds on the **LEFT**. Current build has it trailing to the right of the
+  title, which the operator identifies as the opposite of what was asked. The row should
+  read as folding in from the screen edge.
+- **Longer gradient, more block steps** than the three originally specified. Block elements
+  give eighth resolution on the left (`▏▎▍▌▋▊▉█`); a right-hand mirror is made by swapping
+  foreground and background on a left block, since Unicode has no right-quarter block.
+- Applies to the project header **and to every feature row**, not the first only.
+- Feature rows share the **project's background**, differing only in font colour.
+- The project header's text must be **the most emphasized in the sidebar**. It is currently
+  the least, which is why the parent-child structure does not read.
+- Feature row renders **`🧩/<feature name>`**. The jigsaw is U+1F9E9, East-Asian-Wide, two
+  cells, no variation selector; with the `/` that is three cells of chrome.
+- Feature name comes from `identity.feature_name` where present (it is authored upstream and
+  already on the wire), else the middle segment of an `f/<feature>/<task>` identifier, else
+  nothing invented.
+- No room for the gradient means no gradient; the title is never shortened to protect it.
+
+### B — Step rows
+
+- **The spinner animates.** `STATUS_EMOJI["working"]` is pinned to `SPINNER_FRAMES[7]`, one
+  frame of ten. The loop already ticks at 125ms and the tick already reaches the draw path.
+- **The left gutter is the FEATURE's colour and spans the whole feature**, unbroken across
+  its tasks. This REVERSES the earlier instruction that the gutter carried the task's
+  colour; the operator confirmed the reversal.
+- **Every row paints its own background.** Measured on the live pane: the first step row
+  emits one, and every row below it emits none and inherits. That is why all steps look
+  identical and why the block moves if anything above it changes.
+- **OPEN — do stages get their own background?** His words were *"I wonder if some background
+  on the stage would be useful"*, which is a question, not an instruction. Not to be decided
+  by an agent.
+
+### C — Bubble glyphs belong to subagents alone
+
+- Remove the bubble prefix from the feature row and the task row. Neither is a subagent.
+- Subagent rows carry three states: **empty = scheduled · blinking = running · full =
+  closed.** The blink can ride the same tick the spinner uses.
+- **OPEN — what marks a task's status once the bubble is gone?** Task rows currently use the
+  bubble as their status marker. If bubbles are subagent-only, tasks need a different marker
+  or none, and that is a design decision.
+
+### D — Rows that say nothing
+
+- **The stale row is empty** — it renders a marker and the word "stale", no content of its
+  own. Residue of a name-drop rule the operator rejected, whose replacement he also rejected
+  (*"neither are correct"*).
+- **The activity line is dead** — renders `"no activity"` where it should show what the agent
+  is doing now.
+- Both must be diagnosed as MISSING versus DISCARDED before any change. The same class of
+  error has been made twice in this feature: a feature name declared absent that was riding
+  on every event and being thrown away.
+- The citation format is settled: quote, em dash, agent, middle dot, model — full model name
+  minus "Claude", with version; degrading by abbreviating the model, then dropping it, then
+  the ordinary ellipsis rule. Dropping the model must not leave a dangling middle dot.
+- **OPEN — what does a row show when it genuinely has no content?** A status word was
+  rejected. Nothing may be invented.
+
+### Deferred by the operator, explicitly not in this specification
+
+The per-stage timer and its script-based calculation · a night or dimmed theme · theme
+switching · restoring the two features a squash-merge dropped · splitting the 2,935-line
+test file along the new module seams.
+
+### Parallel decomposition, once the OPEN items are answered
+
+The renderer is now sixteen modules, so these are genuinely independent and fan out with no
+shared files: **A** owns `sidebar_paint_header` + `sidebar_paint_feature`; **B** owns
+`sidebar_paint_step` + `sidebar_glyphs`; **C** owns `sidebar_paint_identity` +
+`sidebar_paint_task`; **D** owns `sidebar_rows` + `sidebar_citation`.
+
+## Proposal`. The two tasks are now independent.
 
 ## Questions
 
