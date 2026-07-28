@@ -1,5 +1,6 @@
 .ai/repositories/
 .claude/worktrees/
+.claude/gardener-mode.local
 .claude/orchestrator-mode.local
 .claude/.pending-subjob.local
 .claude/.subjob-*.local
