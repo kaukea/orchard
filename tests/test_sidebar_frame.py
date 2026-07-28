@@ -335,16 +335,15 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         lines = self._capture_when_ready()
         stripped = [_strip_sgr(line) for line in lines]
 
-        # The header row is now a BLOCK (operator spec, 2026-07-28): the
-        # title sits in a padded core flanked by half-block ramp glyphs
-        # (`▐`/`▌`) mirrored on each side, not the title alone centred
-        # across the whole row -- so the row's own stripped text is no
-        # longer bare "orchids", it carries those glyphs too. This pane is
+        # The header row is a FULL-WIDTH BLOCK (operator spec, 2026-07-28,
+        # restated same day: "the gradient cells to reach the sides of the
+        # pane"): the ramp cells sit flush against BOTH pane edges -- no
+        # leading/trailing space of flat fill any more -- with the title's
+        # padded core filling whatever is left between them. This pane is
         # wide enough (PANE_WIDTH=60) for the default variant's full ramp.
         header_idx = next(i for i, l in enumerate(stripped) if "orchids" in l)
         self.assertTrue(_has_any_bg(lines[header_idx]))
-        leading_spaces = len(stripped[header_idx]) - len(stripped[header_idx].lstrip(" "))
-        self.assertGreater(leading_spaces, 0)
+        self.assertTrue(stripped[header_idx].startswith(sidebar._HEADER_RAMP_IN))
         self.assertIn(sidebar._HEADER_RAMP_IN, stripped[header_idx])
         self.assertIn(sidebar._HEADER_RAMP_OUT, stripped[header_idx])
 

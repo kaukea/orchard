@@ -1348,13 +1348,13 @@ class FlattenTests(unittest.TestCase):
         self.assertEqual(
             [(r.kind, r.activity or r.label) for r in rows if r.kind in ("accordion", "agent", "subagent")],
             [
-                ("accordion", sidebar._step_row(building, "t", 0, None).label),
+                ("accordion", sidebar._step_row(building, "t", 0, None, None).label),
                 ("agent", "extracting model"),
                 ("subagent", "grep-scan"),
                 ("agent", "writing tests"),
                 ("subagent", "docs-audit"),
                 ("subagent", "test-runner"),
-                ("accordion", sidebar._step_row(releasing, "t", 0, None).label),
+                ("accordion", sidebar._step_row(releasing, "t", 0, None, None).label),
             ],
         )
         # every row belonging to the open step's agents/subagents sits ONE

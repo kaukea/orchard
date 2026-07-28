@@ -1026,29 +1026,48 @@ def identity_line_text(doing: str, role: str | None, model: str | None, width: i
 
 
 # --------------------------------------------------------------------------
-# Identity BLOCK — a quote with a subordinate attribution beneath it, book-
-# epigraph style (operator ruling, 2026-07-26, SUPERSEDES the single-line
-# `identity_line_text` above as the agent row's live render; that function
-# stays defined/tested but nothing in the draw path calls it any more).
+# Identity BLOCK — a quote with a subordinate attribution, book-epigraph
+# style (operator ruling, 2026-07-26, SUPERSEDES the single-line `identity_
+# line_text` above as the agent row's live render; that function stays
+# defined/tested but nothing in the draw path calls it any more). Citation
+# punctuation restored 2026-07-28 (operator, verbatim: "the rulestays (or
+# comes back): middle dot between then, full odel name (minus Claude) and
+# version, if clipping use abreviatiob, if stil clipping remove model, if
+# stilll clipping usual ellipsis rule" — a RESTORATION, not an invention).
 #
 # The status is volatile and is the thing being scanned for, so it carries
-# the news as the quote; role/model are stable context, subordinate and
-# rendered smaller/later. Degrades in this exact order as room shrinks:
-#   full    "activity"                  (2 lines, full model string)
-#           — role · model
-#   abbrev  "activity"                  (2 lines, model's short/version-
-#           — role · shortmodel          less form — WIDTH-driven: the full
-#                                         string didn't fit)
-#   tight   "activity" — role           (1 line, model dropped entirely —
-#                                         HEIGHT-driven: no room for a
-#                                         second line this frame)
-#   none    "activity"                  (1 line, attribution dropped too —
-#                                         WIDTH-driven: even "quote — role"
-#                                         didn't fit)
-# The quote itself never drops. 2-vs-1-line (expand) is a single per-frame
-# decision from real available height (`_agent_expansion_fits`), never a
-# per-row guess; full-vs-abbrev-vs-none is purely about whether the text
-# fits the row's own column width.
+# the news as the quote; role/model are stable context, subordinate. TWO
+# layouts (operator: "one line citation style if space... otherwise the
+# citation is just below the text"), chosen by `expand` — the caller's
+# real-available-height decision (`_agent_expansion_fits`), unchanged by
+# this step:
+#
+#   tight (expand=False, the row's own WIDTH-driven ladder — the common
+#   case, since a 1-line row costs no extra height):
+#     "activity" — role · model            (full model, the rare case:
+#                                            "It's all relative" — Albert
+#                                            Einstein · Opus 14.2)
+#     "activity" — role · shortmodel        (model doesn't fit -> abbreviate)
+#     "activity" — role                    (still doesn't fit -> drop model
+#                                            entirely — never a dangling
+#                                            middle dot)
+#     "activ…"                              (even quote+role doesn't fit ->
+#                                            role drops too, ordinary
+#                                            ellipsis rule on the quote
+#                                            alone, ``_truncate``)
+#   expand (2 lines, HEIGHT-permitting only):
+#     "activity"
+#         role · model                      (full, then short, then no
+#                                            model — same ladder, NO dash:
+#                                            "no ash obviuouys" once the
+#                                            citation is its own line —
+#                                            indented a few blanks, chosen
+#                                            over right-aligned because the
+#                                            indent already existed here)
+#
+# The quote itself never drops in either layout. Which LAYOUT applies
+# (tight vs expand) is HEIGHT-driven and untouched by this step; which RUNG
+# within a layout applies is purely WIDTH-driven.
 # --------------------------------------------------------------------------
 
 _ATTRIBUTION_INDENT = "    "
@@ -1057,6 +1076,20 @@ _ATTRIBUTION_INDENT = "    "
 def _role_text(role: str | None) -> str:
     emoji = role_emoji(role)
     return (emoji + NBSP + role) if (role and emoji) else (role or "")
+
+
+def _strip_claude_prefix(model: str) -> str:
+    """The model string exactly as it arrives on the bus, minus a leading
+    "claude"/"claude-" (operator, 2026-07-28: "full odel name (minus
+    Claude) and version" — the FULL citation rung is the bus string
+    verbatim otherwise, never re-cased or re-punctuated; that transform is
+    `short_model_name`'s job, one rung further down the ladder)."""
+    lowered = model.lower()
+    if lowered.startswith("claude-"):
+        return model[len("claude-"):]
+    if lowered.startswith("claude"):
+        return model[len("claude"):].lstrip("-")
+    return model
 
 
 def short_model_name(model: str | None) -> str | None:
@@ -1078,15 +1111,19 @@ def short_model_name(model: str | None) -> str | None:
 
 
 def attribution_text(role: str | None, model: str | None, width: int) -> tuple[str, str]:
-    """(role_text, model_text) for the attribution line at `width` columns
-    — role_text never empties (callers only reach this once `role` is
-    truthy); model_text is the full model string, its short form, or ''
-    once neither fits — the model degrades, role never does, in the
-    2-line (expand) form."""
+    """(role_text, model_text) for the BELOW-QUOTE citation at `width`
+    columns — role_text never empties (callers only reach this once
+    `role` is truthy); model_text is the full model string (minus its
+    "Claude" prefix, `_strip_claude_prefix` — operator: "full odel name
+    (minus Claude) and version"), its short form, or '' once neither fits
+    — the model degrades, role never does, in the 2-line (expand) form.
+    `width` here is the room for "role · model" — no dash, this rung sits
+    on its own line (see the module section docstring)."""
     role_text = _role_text(role)
     if not model:
         return role_text, ""
-    room = width - _cell_width("— ") - _cell_width(role_text) - _cell_width(" · ")
+    model = _strip_claude_prefix(model)
+    room = width - _cell_width(role_text) - _cell_width(" · ")
     if _cell_width(model) <= max(room, 0):
         return role_text, model
     short = short_model_name(model)
@@ -1095,10 +1132,16 @@ def attribution_text(role: str | None, model: str | None, width: int) -> tuple[s
     return role_text, ""
 
 
-def _attribution_line(role: str | None, model: str | None, width: int) -> str:
+def _citation_line(role: str | None, model: str | None, width: int) -> str:
+    """The below-quote citation (the expand layout's second line) — role
+    then model, middle-dot separated, NO leading dash (operator: "no ash
+    obviuouys" — the dash marks an INLINE attribution; once the citation
+    is its own, positioned line, it is redundant). Falls through `_truncate`
+    as the final safety net if even the role alone overruns `width` (the
+    ordinary ellipsis rule, same as every other rung)."""
     role_text, model_text = attribution_text(role, model, width)
-    tail = f" · {model_text}" if model_text else ""
-    return f"— {role_text}{tail}"
+    text = f"{role_text} · {model_text}" if model_text else role_text
+    return _truncate(text, width)
 
 
 def _quoted_activity(activity: str) -> str:
@@ -1137,47 +1180,75 @@ def _tight_quote_floor(width: int) -> int:
     return max(width // 2, _MIN_TIGHT_QUOTE_WIDTH)
 
 
-def tight_line_parts(activity: str, role: str | None, width: int) -> tuple[str, str]:
-    """(shown_quote, tail) for the tight (1-line) rung — `tail` is
-    " — <role>" once the quote can keep at least `_tight_quote_floor(width)`
-    cells alongside it, "" once giving the role room would crush the quote
-    below that floor (sidebar-teamwork defect 2: the quote is what a reader
-    scans this line for, so it is the role that yields when both can't fit
-    comfortably, not the other way round). `shown_quote` alone is never
-    truncated below the plain quote unless making room for the role
-    actually requires it."""
+def _model_rungs(model: str | None) -> list[str | None]:
+    """Model candidates for the ONE-LINE citation, widest first: the full
+    string (minus "Claude", `_strip_claude_prefix`), its abbreviated form
+    (`short_model_name`, skipped if identical), then None (dropped
+    entirely) — operator: "if clipping use abreviatiob, if stil clipping
+    remove model". Always ends in None so a caller's loop always has a
+    final candidate to fall back to."""
+    if not model:
+        return [None]
+    full = _strip_claude_prefix(model)
+    candidates: list[str | None] = [full]
+    short = short_model_name(full)
+    if short and short != full:
+        candidates.append(short)
+    candidates.append(None)
+    return candidates
+
+
+def tight_line_parts(
+    activity: str, role: str | None, width: int, model: str | None = None,
+) -> tuple[str, str]:
+    """(shown_quote, tail) for the tight (1-line) rung — the ONE-LINE
+    citation's home (operator: "one line citation style if space" — rare,
+    since it costs the most width, but tried FIRST, widest candidate
+    first). `tail` is ` — role · model` (full), ` — role · shortmodel`
+    (abbreviated), ` — role` (model dropped — never a dangling middle dot,
+    since the dot is only ever emitted alongside a model string), or ""
+    (role dropped too) — whichever is the WIDEST one that still keeps the
+    quote at or above `_tight_quote_floor(width)` (sidebar-teamwork defect
+    2: the quote is what a reader scans this line for, so IT is the last
+    thing to yield, not the first). `shown_quote` alone is never truncated
+    below the plain quote unless making room for a tail actually requires
+    it."""
     quote = _quoted_activity(activity)
     if not role:
         return _truncate(quote, width), ""
     role_text = _role_text(role)
-    tail = f" — {role_text}"
-    quote_budget = width - _cell_width(tail)
-    if quote_budget >= _tight_quote_floor(width):
-        shown_quote = quote if _cell_width(quote) <= quote_budget else _truncate(quote, quote_budget)
-        return shown_quote, tail
+    floor = _tight_quote_floor(width)
+
+    for candidate_model in _model_rungs(model):
+        tail = f" — {role_text} · {candidate_model}" if candidate_model else f" — {role_text}"
+        quote_budget = width - _cell_width(tail)
+        if quote_budget >= floor:
+            shown_quote = quote if _cell_width(quote) <= quote_budget else _truncate(quote, quote_budget)
+            return shown_quote, tail
     return _truncate(quote, width), ""
 
 
-def tight_line(activity: str, role: str | None, width: int) -> str:
-    quote, tail = tight_line_parts(activity, role, width)
+def tight_line(activity: str, role: str | None, width: int, model: str | None = None) -> str:
+    quote, tail = tight_line_parts(activity, role, width, model)
     return f"{quote}{tail}"
 
 
 def identity_block(activity: str, role: str | None, model: str | None,
                     width: int, expand: bool) -> list[str]:
-    """[quote] or [quote, attribution] — see the module section docstring
-    above for the exact degradation ladder. `expand` is the caller's real-
-    height decision (`_agent_expansion_fits`); `width` is this row's own
-    column budget. Lines are returned WITHOUT the row's own depth indent —
-    callers prepend that uniformly; the attribution line's extra
-    `_ATTRIBUTION_INDENT` beneath the quote is already baked in."""
+    """[quote] or [quote, citation] — see the module section docstring
+    above for the exact two-layout, per-layout-ladder degradation.
+    `expand` is the caller's real-height decision (`_agent_expansion_
+    fits`); `width` is this row's own column budget. Lines are returned
+    WITHOUT the row's own depth indent — callers prepend that uniformly;
+    the citation line's extra `_ATTRIBUTION_INDENT` beneath the quote is
+    already baked in."""
     if not role:
         return [_quoted_activity(activity)]
     if expand:
         quote = _quoted_activity(activity)
         attribution_width = max(width - len(_ATTRIBUTION_INDENT), 0)
-        return [quote, _ATTRIBUTION_INDENT + _attribution_line(role, model, attribution_width)]
-    return [tight_line(activity, role, width)]
+        return [quote, _ATTRIBUTION_INDENT + _citation_line(role, model, attribution_width)]
+    return [tight_line(activity, role, width, model)]
 
 
 def _agent_expansion_fits(rows: list[Row], height: int | None) -> bool:
@@ -2458,8 +2529,29 @@ def _draw_feature_row(
 # A constant, small breathing indent replaces the old depth-scaled one here
 # (curses-only — depth is now colour, not columns; the plain-text path
 # still uses `INDENT_UNIT * row.depth`, see `render_lines`, since it has no
-# colour to carry structure with).
-_BLOCK_CONTENT_INDENT = "  "
+# colour to carry structure with). The indent itself (operator ruling,
+# 2026-07-28, item 11: "the indent s quarter or half block left, forgeground
+# THURD background FOURTH (hence indent of 1)") is now a single COLOURED
+# glyph column rather than a run of blank spaces — HALF block, not quarter:
+# quarter (`▎`) is already `_TASK_BAR_GLYPH`'s own glyph, and reusing it here
+# would blur two markers with different meanings into one shape. Half block
+# is also the exact technique `_draw_header`'s own ramp already uses (one
+# cell, two tones), so this reuses rather than invents.
+_INDENT_GLYPH = "▌"
+_INDENT_WIDTH = 1
+
+
+def _draw_indent_cell(
+    stdscr, y: int, colours: _ColourCache, third: tuple[int, int, int], fourth: tuple[int, int, int],
+) -> None:
+    """The one-column boundary glyph for every step/agent/subagent row —
+    THIRD (the task's own line colour) on the glyph's own half, FOURTH
+    (every step row's and the indent's own background) on the rest of the
+    cell. `fourth` is the caller's already selection-adjusted background —
+    lifting only the glyph's own fg here would desync it from a lifted
+    neighbour, so the caller decides the lift once and this just paints."""
+    fg = ensure_contrast(third, fourth, _CONTRAST_MIN_MARK)
+    _safe_addch(stdscr, y, 0, _INDENT_GLYPH, colours.pair(fg, fourth))
 
 
 def _fill_row_bg(stdscr, y: int, width: int, bg: tuple[int, int, int], colours: _ColourCache) -> None:
@@ -2505,6 +2597,7 @@ def _selection_highlight(bg: tuple[int, int, int] | None) -> tuple[int, int, int
 
 def _draw_identity_block(
     stdscr, y: int, width: int, row: Row, selected: bool, expand: bool, colours: _ColourCache,
+    hue: dict[str, tuple[int, int, int]],
 ) -> int:
     """Draws the agent's quote + subordinate attribution (see
     `identity_block`'s docstring for the exact ladder) — 1 or 2 curses rows
@@ -2512,22 +2605,25 @@ def _draw_identity_block(
     decisions (`attribution_text`/`tight_line_parts`) with the pure text
     path so the two can never disagree; only the per-segment colouring
     (quote plain ITALIC, role dim-italic, model tier-coloured) is
-    curses-only. The owning step's open-block colour (`_open_block_bg`) is
-    painted across the FULL row width first, then every foreground colour
-    is contrast-checked against it (operator ruling, 2026-07-26: legible
-    text on the dimmed background is a hard requirement, achieved by
-    adjusting the foreground, never by dimming the content itself — so the
-    role/model text below drops its old A_DIM attribute in favour of an
-    explicitly contrast-safe colour). `selected` swaps in `_selection_
-    highlight` for the block's own background (sidebar-teamwork defect 4)
-    rather than `curses.A_REVERSE` — always painted, even when this row had
-    no open-block background of its own, so the pick is unmistakable
-    whatever row kind it lands on."""
+    curses-only. The owning step's open-block colour (`_open_block_bg`,
+    FIFTH) is painted across the FULL row width first, then every
+    foreground colour is contrast-checked against it (operator ruling,
+    2026-07-26: legible text on the dimmed background is a hard
+    requirement, achieved by adjusting the foreground, never by dimming
+    the content itself — so the role/model text below drops its old
+    A_DIM attribute in favour of an explicitly contrast-safe colour).
+    `selected` swaps in `_selection_highlight` for the block's own
+    background (sidebar-teamwork defect 4) rather than `curses.A_REVERSE`
+    — always painted, even when this row had no open-block background of
+    its own, so the pick is unmistakable whatever row kind it lands on.
+    The one-column indent glyph (THIRD on FOURTH, `_draw_indent_cell`)
+    marks this row as belonging to its task; content starts one column in."""
     bg = _open_block_bg(row)
     if selected:
         bg = _selection_highlight(bg)
-    indent = _BLOCK_CONTENT_INDENT
-    content_width = max(width - len(indent), 0)
+    roles = task_chain_roles(hue, row.feature_colour)
+    fourth = _selection_highlight(roles.fourth) if selected else roles.fourth
+    content_width = max(width - _INDENT_WIDTH, 0)
     attr_extra = curses.A_BOLD if selected else 0
     block_bg = bg if bg is not None else (0, 0, 0)
     quote_fg = ensure_contrast(TEXT, block_bg, _CONTRAST_MIN_TEXT)
@@ -2537,30 +2633,32 @@ def _draw_identity_block(
         _fill_row_bg(stdscr, y, width, bg, colours)
         if expand:
             _fill_row_bg(stdscr, y + 1, width, bg, colours)
+    _draw_indent_cell(stdscr, y, colours, roles.third, fourth)
 
     if not expand:
-        shown_quote, tail = tight_line_parts(row.activity, row.role, content_width)
-        _safe_addstr(stdscr, y, 0, _truncate(indent + shown_quote, width),
+        shown_quote, tail = tight_line_parts(row.activity, row.role, content_width, row.model)
+        _safe_addstr(stdscr, y, _INDENT_WIDTH, _truncate(shown_quote, content_width),
                      colours.pair(quote_fg, bg, italic=True) | attr_extra)
         if tail:
-            x = len(indent) + _cell_width(shown_quote)
+            x = _INDENT_WIDTH + _cell_width(shown_quote)
             _safe_addstr(stdscr, y, x, _truncate(tail, max(width - x, 0)),
                          colours.pair(role_fg, bg, italic=True) | attr_extra)
         return y + 1
 
     quote = _quoted_activity(row.activity)
-    _safe_addstr(stdscr, y, 0, _truncate(indent + quote, width),
+    _safe_addstr(stdscr, y, _INDENT_WIDTH, _truncate(quote, content_width),
                  colours.pair(quote_fg, bg, italic=True) | attr_extra)
     if not row.role:
         return y + 1
     y += 1
+    _draw_indent_cell(stdscr, y, colours, roles.third, fourth)
+    # No dash on this rung (operator, 2026-07-28: "the citation is just
+    # below the text itself either right alined or indented by a few
+    # blans, no ash obviuouys") — indented, chosen over right-aligned
+    # because `_ATTRIBUTION_INDENT` already existed for exactly this.
     attribution_width = max(content_width - len(_ATTRIBUTION_INDENT), 0)
     role_text, model_text = attribution_text(row.role, row.model, attribution_width)
-    x = 0
-    x += len(indent) + len(_ATTRIBUTION_INDENT)
-    prefix = "— "
-    _safe_addstr(stdscr, y, x, prefix, colours.pair(role_fg, bg) | attr_extra)
-    x += len(prefix)
+    x = _INDENT_WIDTH + len(_ATTRIBUTION_INDENT)
     _safe_addstr(stdscr, y, x, role_text, colours.pair(role_fg, bg, italic=True) | attr_extra)
     x += _cell_width(role_text)
     if model_text:
@@ -2577,16 +2675,20 @@ _SUBAGENT_TERMINAL_FG = {"done": GREEN, "failed": MUTED}
 
 def _draw_subagent_row(
     stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache,
+    hue: dict[str, tuple[int, int, int]],
 ) -> int:
     """A subagent's own line — presence glyph (`_row_text`'s existing
     scheduled/doing/done/failed vocabulary) + label, on the owning step's
     open-block background (see `_draw_identity_block`'s docstring for why),
     full width, contrast-checked. `selected` swaps in `_selection_highlight`
     for the block's own background (sidebar-teamwork defect 4), same as
-    `_draw_identity_block`."""
+    `_draw_identity_block`. Carries the same one-column indent glyph
+    (THIRD on FOURTH) as every other row related to this task."""
     bg = _open_block_bg(row)
     if selected:
         bg = _selection_highlight(bg)
+    roles = task_chain_roles(hue, row.feature_colour)
+    fourth = _selection_highlight(roles.fourth) if selected else roles.fourth
     block_bg = bg if bg is not None else (0, 0, 0)
     fg = ensure_contrast(
         _SUBAGENT_TERMINAL_FG.get(row.status, TEXT), block_bg, _CONTRAST_MIN_TEXT,
@@ -2594,10 +2696,11 @@ def _draw_subagent_row(
     attr_extra = curses.A_BOLD if selected else 0
     if bg is not None:
         _fill_row_bg(stdscr, y, width, bg, colours)
+    _draw_indent_cell(stdscr, y, colours, roles.third, fourth)
     glyph = (STATUS_EMOJI[row.status] if row.status in TERMINAL_TASK_STATUSES
              else _SUBAGENT_LIVE_GLYPH.get(row.status, SUBAGENT_GLYPH))
-    text = _truncate(f"{_BLOCK_CONTENT_INDENT}{glyph} {row.label}", width)
-    _safe_addstr(stdscr, y, 0, text, colours.pair(fg, bg) | attr_extra)
+    text = _truncate(f"{glyph} {row.label}", max(width - _INDENT_WIDTH, 0))
+    _safe_addstr(stdscr, y, _INDENT_WIDTH, text, colours.pair(fg, bg) | attr_extra)
     return y + 1
 
 
@@ -2625,8 +2728,12 @@ def _draw_task_row(
     stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache,
     hue: dict[str, tuple[int, int, int]], tick: int,
 ) -> int:
-    """A task's own row: a single accent BAR cell — background B
-    (`hue["fill"]`, grade 1), foreground Ct (grade 2, `row.task_colour`,
+    """A task's own row: a single accent BAR cell — background THIRD
+    (`task_chain_roles(hue, row.feature_colour).third`, operator ruling
+    2026-07-28: the task line's own background is derived FROM the repo's
+    SECONDARY, one link down the chain, no longer equal to it — supersedes
+    the earlier `hue["fill"]` reading, which was SECONDARY itself, the
+    feature row's own tone), foreground Ct (grade 2, `row.task_colour`,
     already allocated once per feature by `_assign_task_colours` within
     its feature's own hue range, so two open tasks are told apart by bar
     colour alone) — followed by its name and right-aligned progress circle
@@ -2636,11 +2743,11 @@ def _draw_task_row(
     its Ct tint, same exclusivity rule as before. The status glyph itself
     is `_task_row_glyph` (operator ruling, 2026-07-27) — cycling while
     working, static otherwise. `selected` swaps in `_selection_highlight`
-    for the row's own background B (sidebar-teamwork defect 4) rather than
+    for the row's own background (sidebar-teamwork defect 4) rather than
     `curses.A_REVERSE` — every foreground below is already run through
     `ensure_contrast` against `bg`, so substituting the lifted background
     before those calls keeps the guarantee automatically."""
-    bg = hue["fill"]
+    bg = task_chain_roles(hue, row.feature_colour).third
     if selected:
         bg = _selection_highlight(bg)
     attr_extra = curses.A_BOLD if selected else 0
@@ -2709,55 +2816,60 @@ def _step_row_display_text(row: Row, width: int) -> str:
 
 def _draw_step_row(
     stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache, tick: int,
+    hue: dict[str, tuple[int, int, int]],
 ) -> int:
     """One line of the task's five-step accordion (operator correction,
     2026-07-26: "collapse keeps the line" — every step gets its own row,
-    always), FULL WIDTH from cell 1, CENTRED, small caps.
+    always), CENTRED, small caps, over a one-column indent (THIRD on
+    FOURTH, `_draw_indent_cell`) plus the row's own FOURTH background.
 
     EVERY step title — done, active, or todo alike — carries the SAME flat
-    CONTENT colour (grade 3, `content_colour_base(row.task_colour)`,
-    operator ruling 2026-07-27: "every step title carries the same
-    section-title background... being active is expressed by its mark,
-    its sweep and by what appears beneath it, NOT by changing the title's
-    own background" — supersedes the earlier reading where the active
-    title itself sat on a separately-darkened `open_stage_colour`). If the
-    ACTIVE step is also LIVE (a genuinely "working" agent on it, not
-    merely the furthest-along position — `row.live`, see `_step_row`/the
-    model-layer function of the same name) it additionally carries the
-    MOVING GRADIENT sweep — reusing the pre-existing lifted-band
-    triangular-wave geometry (`band_position`/`band_span`/
-    `band_column_colour`) at the row's own full width, brightening this
-    SAME content colour rather than a separately-darkened one. No room/no
-    motion just means a static (but still correctly coloured) block
-    (ANIMATION CAVEAT: a missing animation must never mean a missing
-    step). `selected` swaps in `_selection_highlight` for the step's own
-    content colour (sidebar-teamwork defect 4) rather than `curses.
-    A_REVERSE` — every foreground below is already run through `ensure_
-    contrast` against `content`/the sweep's own `bg`, so substituting the
-    lifted colour before those calls keeps the guarantee automatically."""
-    content = content_colour_base(row.task_colour or MUTED)
-    if selected:
-        content = _selection_highlight(content)
+    FOURTH colour (operator ruling 2026-07-28, item 11: "for whichi
+    wederive the FOURTh... Then each step uses FOURTH" — supersedes the
+    grade-3 `content_colour_base(row.task_colour)` reading this docstring
+    previously described; a step row's background is now the repo/feature
+    chain's FOURTH, same tone as the indent's own background, not a
+    per-task tint). Being active is expressed by its mark, its sweep and
+    by what appears beneath it, NOT by changing the title's own
+    background (operator ruling 2026-07-27, still true). If the ACTIVE
+    step is also LIVE (a genuinely "working" agent on it, not merely the
+    furthest-along position — `row.live`, see `_step_row`/the model-layer
+    function of the same name) it additionally carries the MOVING
+    GRADIENT sweep — reusing the pre-existing lifted-band triangular-wave
+    geometry (`band_position`/`band_span`/`band_column_colour`) across the
+    row's own text width, brightening this SAME FOURTH colour rather than
+    a separately-darkened one. No room/no motion just means a static (but
+    still correctly coloured) block (ANIMATION CAVEAT: a missing animation
+    must never mean a missing step). `selected` swaps in `_selection_
+    highlight` for the step's own FOURTH colour (sidebar-teamwork defect
+    4) rather than `curses.A_REVERSE` — every foreground below is already
+    run through `ensure_contrast` against `content`/the sweep's own `bg`,
+    so substituting the lifted colour before those calls keeps the
+    guarantee automatically."""
+    roles = task_chain_roles(hue, row.feature_colour)
+    content = _selection_highlight(roles.fourth) if selected else roles.fourth
     attr_extra = curses.A_BOLD if selected else 0
-    text = _step_row_display_text(row, width)
+    _draw_indent_cell(stdscr, y, colours, roles.third, content)
+    text_width = max(width - _INDENT_WIDTH, 0)
+    text = _step_row_display_text(row, text_width)
 
     if row.status != "active":
         fg = ensure_contrast(_STEP_LINE_COLOUR.get(row.status, MUTED), content, _CONTRAST_MIN_TEXT)
         for col, ch in enumerate(text):
-            _safe_addch(stdscr, y, col, ch, colours.pair(fg, content) | attr_extra)
+            _safe_addch(stdscr, y, col + _INDENT_WIDTH, ch, colours.pair(fg, content) | attr_extra)
         return y + 1
 
     if row.live:
-        span = band_span(max(width - 1, 1))
+        span = band_span(max(text_width - 1, 1))
         pos = band_position(tick, span)
         for col, ch in enumerate(text):
-            bg = band_column_colour(col, pos, width, content) or content
+            bg = band_column_colour(col, pos, text_width, content) or content
             fg = ensure_contrast(TEXT, bg, _CONTRAST_MIN_TEXT)
-            _safe_addch(stdscr, y, col, ch, colours.pair(fg, bg) | attr_extra)
+            _safe_addch(stdscr, y, col + _INDENT_WIDTH, ch, colours.pair(fg, bg) | attr_extra)
     else:
         fg = ensure_contrast(TEXT, content, _CONTRAST_MIN_TEXT)
         for col, ch in enumerate(text):
-            _safe_addch(stdscr, y, col, ch, colours.pair(fg, content) | attr_extra)
+            _safe_addch(stdscr, y, col + _INDENT_WIDTH, ch, colours.pair(fg, content) | attr_extra)
     return y + 1
 
 
@@ -2777,10 +2889,10 @@ def _draw(
     expand = _agent_expansion_fits(rows, max_y)
     y = 0
     # The current repo's hue triple — updated on every "repo" row, reused
-    # by every "task" row until the next one (a task row needs grade 1's
-    # "B" for its bar's background; feature/step/agent/subagent rows carry
-    # everything colour-related they need directly on the Row already, see
-    # `task_colour`/`_open_block_bg`).
+    # by every "task"/"accordion"/"agent"/"subagent" row until the next one
+    # (each resolves its own THIRD/FOURTH from this via `task_chain_roles`;
+    # feature rows carry everything colour-related they need directly on
+    # the Row already, see `task_colour`/`feature_colour`/`_open_block_bg`).
     hue = _repo_hue("")
     for i, row in enumerate(rows[offset:offset + max_y], start=offset):
         if y >= max_y:
@@ -2798,13 +2910,13 @@ def _draw(
             y = _draw_task_row(stdscr, y, max_x, row, i == selected, colours, hue, tick)
             continue
         if row.kind == "accordion":
-            y = _draw_step_row(stdscr, y, max_x, row, i == selected, colours, tick)
+            y = _draw_step_row(stdscr, y, max_x, row, i == selected, colours, tick, hue)
             continue
         if row.kind == "agent":
-            y = _draw_identity_block(stdscr, y, max_x, row, i == selected, expand, colours)
+            y = _draw_identity_block(stdscr, y, max_x, row, i == selected, expand, colours, hue)
             continue
         if row.kind == "subagent":
-            y = _draw_subagent_row(stdscr, y, max_x, row, i == selected, colours)
+            y = _draw_subagent_row(stdscr, y, max_x, row, i == selected, colours, hue)
             continue
 
         text = _truncate(_row_text(row), max_x)
