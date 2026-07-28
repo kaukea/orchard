@@ -41,6 +41,25 @@ Both resolved — operator ruling, 2026-07-29 bloom round:
   carve-out requires `Branch: main`. Found 2026-07-17 while committing board work in
   this very repo. `skill-renames-and-splits` resolves this one; the pass should hunt
   for its siblings.
+- **Skill-vs-agent-def duplication, found 2026-07-29 (operator-prompted dedupe
+  check).** Two concrete pairs, beyond the git-commit/gardener-carve-out conflict
+  above:
+  - `skills/gardener` (2588 words) vs `agents/gardener.md` (4173 words) — the skill's
+    own opening admits it: "repos with the role-agent layer: the gardener agent def
+    governs session mechanics... this skill supplies board doctrine below." orchids
+    HAS the agent layer, so most of the skill's content is restating what
+    `agents/gardener.md` already carries. Not necessarily pure waste — other
+    kauk-sync consumer repos without the agent layer may still need the full skill
+    — confirm audience split before cutting.
+  - `skills/workflow` (2152 words) + `skills/workflow-complete` (1590 words) vs
+    `agents/landscaper.md` (3273 words) — landscaper is the sole real consumer of
+    either skill and its own system prompt already restates branch rules, the
+    testing/approval gates, and the close procedure inline. Same shape of question:
+    does the agent-def defer to the skill (cut the inline restatement) or does the
+    skill become a thin pointer (cut the skill body)?
+  - General pattern worth checking while in the corpus: any skill whose sole
+    trigger is "read by agent X" is a duplication candidate against agent X's own
+    system prompt, not just against `AGENTS.shared.md`.
 - The frontmatter contract itself is drifting: 26 `name`/`description`, 17 `metadata`,
   4 `share`, 4 `compatibility`, 3 `tracked`. `doing-skills` ships an unfilled
   placeholder (`tags: [ <grep-able trigger words> ]`) into the package.
@@ -54,7 +73,11 @@ contradicts another skill or restates `AGENTS.shared.md`, and cut what the role 
 made redundant. Record each conflict found and its resolution — the conflicts are the
 valuable output, not the byte count. **Widened (operator ruling):** also restructure
 skill bodies where they carry redundant style/prose or restate `AGENTS.shared.md`
-verbatim. **Tags (operator ruling):** rewrite every `metadata.tags` list so the skill
+verbatim, OR restate content already carried in a consuming agent's own system prompt
+(see the `skills/gardener` and `skills/workflow`+`skills/workflow-complete` pairs in
+Findings) — resolve per-pair which side (skill or agent-def) stays authoritative and
+which becomes a thin pointer, checking kauk-sync cross-repo audience before cutting a
+skill some consumer repos may still need in full. **Tags (operator ruling):** rewrite every `metadata.tags` list so the skill
 is locatable by its tags alone — specific enough to disambiguate from siblings, short
 enough to stay cheap; drop tags that don't earn a place in that index.
 
