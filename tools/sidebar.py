@@ -106,22 +106,42 @@ mock (REPO_HUES, MODEL_TIERS, HEADER_FG/TEXT/MUTED/GREEN/GREEN_SOFT/AMBER/
 FILL_GREEN, PHASES, ROLE_EMOJI, LOCATION_BADGES, NBSP) is copied from it
 verbatim, not re-derived.
 
-The project header is a centred BLOCK (operator spec, 2026-07-28,
-superseding the earlier monotonic left-to-right gradient): a fixed-size
-core — the title, one space of padding each side — filled with the repo's
-PRIMARY colour (`repo_colour_roles(hue).primary`, i.e. `hue["accent"]`,
-still resolved through the direct-colour terminfo path, never
-approximated away), flanked by `_header_ramp_cells()` cells of gradient
-EACH side (a temporary A/B knob, see `_draw_header`'s own comment) that
-tame the primary down toward the SECONDARY (`hue["fill"]`), mirrored, with
-flat secondary fill beyond that to the row's edges — no new palette, every
-tone is built from the triple the repo already owns (see `_draw_header`).
-The title is never shrunk to make room for the ramp: a pane too narrow for
-the full title AND the full ramp drops the ramp entirely and renders a
-flat primary block instead. A feature row's
-full-width dimmer background band uses that same `"fill"` hue,
-unconditionally (every feature row, any status — it is what makes a feature
-visibly not a task, see `_draw_feature_row`). The accordion's ACTIVE step
+The project header is a FULL-WIDTH BLOCK (operator spec, 2026-07-28,
+superseding the earlier monotonic left-to-right gradient, then again the
+same day's centred-badge build once the ramp was corrected to reach the
+pane edges): `_header_ramp_cells()` cells of gradient sit at EACH pane
+edge (a temporary A/B knob, see `_draw_header`'s own comment) taming the
+repo's PRIMARY colour (`repo_colour_roles(hue).primary`, i.e.
+`hue["accent"]`, still resolved through the direct-colour terminfo path,
+never approximated away) down toward SECONDARY (`hue["fill"]`), mirrored,
+with the PRIMARY-filled core — the title, centred, one space of padding
+each side at minimum — filling everything left over, so the core WIDENS
+with the pane rather than a flat fill band doing so. No new palette,
+every tone is built from the triple the repo already owns (see
+`_draw_header`). The title is never shrunk to make room for the ramp: a
+pane too narrow for the full title AND the full ramp drops the ramp
+entirely and renders a flat primary block instead.
+
+PRIMARY and SECONDARY are the first two links of a five-role chain
+(operator ruling, 2026-07-28, verbatim: "primay -> gradient -> secondary.
+we reuse that later for ownership tracking" then "from the SECONDARY we
+derive a THIRD... FOURTH... FIFTH"), named and derived in exactly one
+place (`repo_colour_roles`/`task_chain_roles`) so a later ownership-
+tracking feature can reuse it: PRIMARY is the header core; SECONDARY is
+where the ramp lands, and unconditionally IS the feature row's own
+full-width dimmer background band (`hue["fill"]`, every feature row, any
+status — what makes a feature visibly not a task, see
+`_draw_feature_row`); THIRD is the task row's own background and the
+one-column INDENT glyph's foreground; FOURTH is the indent glyph's
+background and every step row's own background; FIFTH is the open-stage
+block's background exactly as it already was (`open_stage_colour`,
+per-task, unchanged by this chain). The indent — one column, a left
+half-block glyph, THIRD on FOURTH — is what marks every step/agent/
+subagent row as belonging to its task, replacing a plain blank-space
+indent. Whether THIRD/FOURTH root at the REPO's own hue (one chain per
+repo, the default) or re-root per FEATURE is `SIDEBAR_COLOUR_SCOPE`
+(`repo`/`feature`, unresolved by the operator — both are built, neither is
+picked, see `task_chain_roles`). The accordion's ACTIVE step
 carries the KITT sweep — a bright cell with a two-column fading tail,
 sweeping the same bidirectional triangular wave (`band_position`/
 `band_span`, reused from the pre-existing lifted-band geometry) across a
@@ -2104,20 +2124,23 @@ def _safe_addch(stdscr, y: int, x: int, ch: str, attr: int) -> None:
 # --------------------------------------------------------------------------
 # Curses drawing — repo header
 #
-# BLOCK layout (operator spec, 2026-07-28, reproducing the operator's own
-# tmux `window-status-current-format` technique against the repo's own
-# hue): a fixed-size CORE (" TITLE ", filled with PRIMARY) sits centred in
-# the row, flanked by `_header_ramp_cells()` gradient cells each side that
-# TAME the primary down toward SECONDARY (mirrored), with flat secondary
-# fill beyond that to the row's edges. Each ramp cell carries TWO
-# interpolated tones at once via a half-block glyph (`▐`/`▌`) — one tone as
-# the glyph's foreground (the half nearer the core), the other as its
-# background (the half nearer the fill) — the same trick that lets tmux's
-# own ramp read as more steps than it has cells. "No space for gradients,
-# no gradient, easy" (operator, 2026-07-28): the title is NEVER shrunk to
-# make room for the ramp — `_header_gradient_fits` is the one threshold
-# that decides ramp-or-not, computed from the title's OWN untruncated
-# width, never the reverse.
+# FULL-WIDTH BLOCK layout (operator spec, 2026-07-28, reproducing the
+# operator's own tmux `window-status-current-format` technique against the
+# repo's own hue, restated 2026-07-28 in item 11: "the gradient cells...
+# reach the sides of the pane"): `_header_ramp_cells()` gradient cells sit
+# at EACH pane edge, taming PRIMARY down toward SECONDARY, with the CORE —
+# filled with PRIMARY, the title centred within it — filling everything in
+# between. The core therefore WIDENS with the pane; there is no flat
+# secondary fill band any more (superseded the earlier fixed-size centred
+# core + flat-fill-to-the-edges build, same day). Each ramp cell carries
+# TWO interpolated tones at once via a half-block glyph (`▐`/`▌`) — one
+# tone as the glyph's foreground (the half nearer the core), the other as
+# its background (the half nearer the pane edge) — the same trick that
+# lets tmux's own ramp read as more steps than it has cells. "No space for
+# gradients, no gradient, easy" (operator, 2026-07-28): the title is NEVER
+# shrunk to make room for the ramp — `_header_gradient_fits` is the one
+# threshold that decides ramp-or-not, computed from the title's OWN
+# untruncated width, never the reverse.
 #
 # TEMPORARY A/B SWITCH (operator, 2026-07-28: his own dictated "three
 # cells" and the tmux reference he pointed at — which spends only TWO
@@ -2201,7 +2224,7 @@ def _draw_header(
     per-column gradient — this is computed ONCE per row, not once per
     column.
 
-    Both non-paused branches below reserve the row's own literal LAST
+    The paused/no-gradient flat branch reserves the row's own literal LAST
     column for background only, via `render_header_line(title, width - 1)`
     (never the title's own trailing glyph): `_safe_addch` blanks whatever
     character lands on that column to a plain space, and a multi-byte
@@ -2210,8 +2233,9 @@ def _draw_header(
     one-column reservation `_step_row_display_text`/`_draw_feature_row`/
     `_draw_task_row` already make. The gradient branch does not need the
     same reservation for its own ramp glyphs: the outermost ramp cell's
-    "outer" tone is already exactly `secondary` (`_header_ramp_tone`), so
-    if that glyph happens to land on the last column and gets blanked to a
+    "outer" tone is already exactly `secondary` (`_header_ramp_tone`), and
+    now that the ramp reaches the pane edge, THAT outermost cell — not the
+    core — is what can land on the last column; if it gets blanked to a
     plain space, what shows through is that same flat secondary tone —
     correct, not merely harmless."""
     reverse = curses.A_REVERSE if selected else 0
@@ -2239,33 +2263,27 @@ def _draw_header(
         _draw_flat_block(primary)
         return
 
-    core_width = _header_core_width(title)
-    decorated_width = core_width + 2 * ramp_cells
-    left_fill = (width - decorated_width) // 2
-    right_fill = (width - decorated_width) - left_fill
-
+    # FULL WIDTH: the ramp reaches both pane edges and the core fills
+    # everything left over — the core WIDENS with the pane instead of a
+    # flat secondary fill doing so (item 11's structural change).
+    core_width = width - 2 * ramp_cells
     ramp = colour_ramp_steps(primary, secondary, ramp_cells * 2)
+    core_text = render_header_line(title, core_width)
     core_fg = ensure_contrast(_muted_toward(HEADER_FG, primary), primary, _CONTRAST_MIN_TEXT)
     core_attr = colours.pair(core_fg, primary) | reverse
-    fill_attr = colours.pair(MUTED, secondary) | reverse
 
     col = 0
-    for _ in range(left_fill):
-        _safe_addch(stdscr, y, col, " ", fill_attr)
-        col += 1
     for k in reversed(range(ramp_cells)):
         inner, outer = _header_ramp_tone(ramp, k)
         _safe_addch(stdscr, y, col, _HEADER_RAMP_IN, colours.pair(inner, outer) | reverse)
         col += 1
-    for ch in f" {title} ":
+    for i in range(core_width):
+        ch = core_text[i] if i < len(core_text) else " "
         _safe_addch(stdscr, y, col, ch, core_attr)
         col += 1
     for k in range(ramp_cells):
         inner, outer = _header_ramp_tone(ramp, k)
         _safe_addch(stdscr, y, col, _HEADER_RAMP_OUT, colours.pair(inner, outer) | reverse)
-        col += 1
-    for _ in range(right_fill):
-        _safe_addch(stdscr, y, col, " ", fill_attr)
         col += 1
 
 
