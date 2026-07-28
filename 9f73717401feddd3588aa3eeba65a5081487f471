@@ -1,0 +1,3 @@
+CORRECTION: this commit's message describes only the supervisor's watcher-reaping fix, but it also carries five renderer files (sidebar_colour, sidebar_paint_identity, sidebar_paint_shared, sidebar_paint_step, sidebar_paint_task) belonging to the interrupted fold-and-steps step: the flat task row, the fixed-left step mark, the shared FOURTH-tone block background, and the green/white subagent collapse.
+
+Cause: those files had been restored with 'git checkout <commit> -- tools/', which stages as well as restores, and the commit was made without re-checking the index. Not rewritten, because the SHA is already referenced by the sidecar and has been displayed on the acceptance pane; recorded here instead.
