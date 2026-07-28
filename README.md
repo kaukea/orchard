@@ -89,17 +89,7 @@ hour of flailing.
 
 **House rules for your stacks.** `coding-dotnet`, `coding-tofu`, and
 `coding-lmstudio` carry the conventions for .NET, OpenTofu, and local-LLM
-work; `shortcut-file` reads and writes Apple Shortcuts at the byte level;
-`software-catalog` knows the apt dependency rule that once nuked a desktop —
-so no agent repeats it.
-
-**A forensics lab, ready to open.** Evidence handling with a command-level
-`chain-of-custody`, full `forensic-acquisition` to signed E01 images,
-`read-apfs` for encrypted Apple volumes on Linux, `machine-access` for locked
-Macs without lowering their defences, `icloud` rescue before data is lost,
-`reverse-engineering-files` for opaque formats, `digital-signature` for
-smart-card-sealed manifests, and `write-to-s3` for tamper-evident off-site
-storage.
+work; `shortcut-file` reads and writes Apple Shortcuts at the byte level.
 
 **And the model's own machinery.** Skills that keep the agents honest
 (`read-agents`, `agent-behaviour`), pass work between sessions without leaking
