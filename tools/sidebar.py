@@ -270,6 +270,12 @@ from sidebar_band import (  # noqa: E402
     lifted_fill_colour,
     progress_column_colour,
 )
+from sidebar_text import (  # noqa: E402
+    _cell_width,
+    _truncate,
+    render_header_line,
+    small_caps,
+)
 from sidebar_model import (  # noqa: E402
     ACTIVE_WINDOW_SECONDS,
     BRANCH_SEPARATOR,
@@ -307,30 +313,6 @@ ORCHID_PALETTE = [
     ("green",   (0x6A, 0xB0, 0x4F), curses.COLOR_GREEN),
     ("blue",    (0x4A, 0x7B, 0xC8), curses.COLOR_BLUE),
 ]
-
-
-# --------------------------------------------------------------------------
-# Small caps (phase label, e.g. "building" -> "ʙᴜɪʟᴅɪɴɢ")
-# --------------------------------------------------------------------------
-
-_SMALL_CAPS_MAP = {
-    "a": "ᴀ", "b": "ʙ", "c": "ᴄ", "d": "ᴅ", "e": "ᴇ",
-    "f": "ꜰ", "g": "ɢ", "h": "ʜ", "i": "ɪ", "j": "ᴊ",
-    "k": "ᴋ", "l": "ʟ", "m": "ᴍ", "n": "ɴ", "o": "ᴏ",
-    "p": "ᴘ", "q": "ꞯ", "r": "ʀ", "s": "ꜱ", "t": "ᴛ",
-    "u": "ᴜ", "v": "ᴠ", "w": "ᴡ", "x": "x",       "y": "ʏ",
-    "z": "ᴢ",
-}
-
-
-def small_caps(text: str) -> str:
-    return "".join(_SMALL_CAPS_MAP.get(ch, ch) for ch in text)
-
-
-def _cell_width(text: str) -> int:
-    """Terminal column width of `text`: East-Asian Wide/Fullwidth characters
-    (which include the role emoji) occupy two cells, everything else one."""
-    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in text)
 
 
 def compose_identity_line(
@@ -965,36 +947,6 @@ def _row_text(row: Row) -> str:
     return f"{indent}{STATUS_EMOJI.get(row.status, '○')} {row.label}"
 
 
-def _truncate(text: str, width: int) -> str:
-    """THE single truncation rule for every row kind (feature, task,
-    subagent, header, quote alike — sidebar-teamwork defect 1: a feature
-    row and a task row used to disagree, one cutting bare and one with an
-    ellipsis; every caller now goes through this one function instead).
-
-    `width` is TERMINAL CELLS, not characters — measured via `_cell_width`,
-    never `len()`, because these strings carry role emoji and other
-    East-Asian-Wide glyphs (the ❌ failed glyph is one) that occupy two
-    cells apiece; slicing by character count alone can both overflow the
-    pane edge and land the cut mid-glyph. A string that already fits is
-    returned unchanged; one that doesn't is cut and ends with an ellipsis,
-    which itself counts toward the budget so the result never overflows."""
-    if width <= 0:
-        return ""
-    if _cell_width(text) <= width:
-        return text
-    ellipsis_width = _cell_width(ELLIPSIS)
-    budget = max(width - ellipsis_width, 0)
-    kept: list[str] = []
-    used = 0
-    for ch in text:
-        ch_width = _cell_width(ch)
-        if used + ch_width > budget:
-            break
-        kept.append(ch)
-        used += ch_width
-    return "".join(kept) + ELLIPSIS
-
-
 def _feature_row_layout(
     glyph: str, name: str, pct: int | None, width: int, badge: str | None,
 ) -> tuple[str, str, int, str, str]:
@@ -1170,21 +1122,6 @@ def _watch_thread(shared: _SharedFleet) -> None:
         watch(shared.set, watched_names=load_watched_repo_names())
     except Exception:
         pass  # keep the UI alive on the last snapshot even if the watch dies
-
-
-# --------------------------------------------------------------------------
-# Project header text (pure) — sidebar-titling OVERRIDE 1
-# --------------------------------------------------------------------------
-
-def render_header_line(title: str, width: int) -> str:
-    """Title centred over `width` columns, space-padded both sides — the
-    text drawn on top of the curses solid-hue header block."""
-    if width <= 0:
-        return ""
-    text = _truncate(title, width)
-    pad = width - len(text)
-    left = pad // 2
-    return (" " * left) + text + (" " * (pad - left))
 
 
 # --------------------------------------------------------------------------
