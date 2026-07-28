@@ -5,6 +5,12 @@
 - ~~None, but must land before or with `role-dag-frontmatter` — the rename changes the
   keystone file that defines the frontmatter contract.~~ Resolved: the rename was
   executed inside f/role-dag-frontmatter (2026-07-20, Decision-021).
+- Sequencing note (2026-07-29 bloom round): this task and `skill-terseness-pass` are
+  being bloomed together as part of an operator-driven token-load reduction pass across
+  the repo. `skill-terseness-pass` already declares `⊘skill-renames-and-splits` on the
+  board (it runs after this one) — this split should land first so the terseness pass
+  edits the post-split `git`/`git-workflow` files rather than the pre-split
+  `git-commit`, avoiding rework.
 
 ## Questions
 - `git-commit` split shape: two skills (`git` in `general` + `git-workflow` in
@@ -12,8 +18,18 @@
   only shape the DAG can actually deliver on — a repo declining `process/workflow` must
   not receive the `Branch:` trailer rule — but it costs a second file and a second
   `description` in every session that takes both.
+  - Recommendation: two skills. Role-tagged sections inside one file can't stop the
+    DAG from delivering the whole file to a repo that declined `process/workflow` —
+    the DAG gates whole skills, not sections (per Findings below and the manifest
+    mechanism this programme already relies on). The extra file/description cost is
+    the actual price of correctness here, not a warning sign.
 - Any other skill carrying the same double life? `readme-sync` reads workflow-only
   ("MUST be read at workflow completion") but its content is generic README guidance.
+  - Recommendation: scope this task to `git-commit` only; open a new task (or fold into
+    `skill-terseness-pass`, which already sweeps every skill for content issues) to
+    audit the rest of the corpus for the same pattern, rather than blocking this split
+    on a full-corpus sweep. Doing the sweep here would expand this task's WHAT past its
+    chartered scope (the `git-commit` split).
 
 ## Findings
 - `doing-skills` → `authoring-skills`, in `general` (Decision-003). The rename is not
