@@ -409,12 +409,97 @@ def _repo_hue(repo_name: str) -> dict[str, tuple[int, int, int]]:
 class ColourRoles:
     primary: tuple[int, int, int]
     secondary: tuple[int, int, int]
+    third: tuple[int, int, int]
+    fourth: tuple[int, int, int]
 
 
 def repo_colour_roles(hue: dict[str, tuple[int, int, int]]) -> ColourRoles:
-    """A repo hue's PRIMARY/SECONDARY pair — no new palette, both are
-    fields the hue triple already carries (`"accent"`/`"fill"`)."""
-    return ColourRoles(primary=hue["accent"], secondary=hue["fill"])
+    """A repo hue's five-role chain (operator ruling, 2026-07-28, verbatim:
+    "from the SECONDARY we derive a THIRD... for whichi wederive the
+    FOURTh"): PRIMARY/SECONDARY are no new palette, both fields the hue
+    triple already carries (`"accent"`/`"fill"`); THIRD and FOURTH are each
+    one `_chain_step` further down the SAME chain — never independent
+    lookups. FIFTH is deliberately NOT a field here: he calls it "the stage
+    as today", i.e. the existing per-TASK `open_stage_colour(content_
+    colour_base(task_colour))` value, unchanged by this chain — a repo-wide
+    dataclass has no way to carry a per-task tone, and none was asked for."""
+    secondary = hue["fill"]
+    third = _chain_step(secondary)
+    fourth = _chain_step(third)
+    return ColourRoles(primary=hue["accent"], secondary=secondary, third=third, fourth=fourth)
+
+
+# Fixed, never hashed (operator, 2026-07-28: "a given identity always
+# resolves to the same colour, so nothing shifts as the pane repaints" —
+# every field of `ColourRoles` is a pure function of the repo's own hue). A
+# bare lightness lerp alone would leave THIRD/FOURTH sitting in exactly
+# SECONDARY's own hue, which is what his separate ruling rules out ("dont
+# stay in he same tones... an adjacent colour tone" — not the SAME family,
+# not a disconnected one either): each link below rotates the hue by a
+# small fixed amount as well as lightening/desaturating, so successive
+# links buy contrast headroom from an adjacent hue rather than from
+# lightness alone — the tension he flagged, since each link sits closer to
+# its neighbour and the 4.5/3.0 floors get harder to clear every step.
+_CHAIN_HUE_STEP_DEGREES = 18.0
+_CHAIN_LIGHTNESS_STEP = 0.09
+_CHAIN_SATURATION_FACTOR = 0.92
+
+
+def _chain_step(base: tuple[int, int, int]) -> tuple[int, int, int]:
+    """One link of the PRIMARY -> SECONDARY -> THIRD -> FOURTH -> FIFTH
+    chain: a fixed hue rotation plus a lightening/desaturating nudge (see
+    the constants above) — deterministic, same input always yields the
+    same output."""
+    h, l, s = colorsys.rgb_to_hls(*(c / 255 for c in base))
+    h = (h + _CHAIN_HUE_STEP_DEGREES / 360.0) % 1.0
+    l = min(l + _CHAIN_LIGHTNESS_STEP, 1.0)
+    s = max(s * _CHAIN_SATURATION_FACTOR, 0.0)
+    r, g, b = colorsys.hls_to_rgb(h, l, s)
+    return (round(r * 255), round(g * 255), round(b * 255))
+
+
+# The one open choice this step builds BOTH sides of rather than picks
+# (operator: "the axis is repository-uniform versus per-feature" — never
+# per-task): whether the THIRD/FOURTH half of the chain (task row
+# background, indent glyph, every step row background) is rooted at the
+# REPO's own SECONDARY (one chain shared by every feature under it — the
+# only behaviour that has ever existed here, and the default) or re-rooted
+# at each FEATURE's own colour (`feature_colour_base`), so sibling features
+# in the same repo get visually distinct task/step palettes. PRIMARY/
+# SECONDARY themselves never move with this switch: the header and the
+# feature row's own band stay repo-wide in both scopes — he pinned
+# SECONDARY to the feature row's existing background unconditionally, and
+# nothing about that is in play here.
+_COLOUR_SCOPE_ENV = "SIDEBAR_COLOUR_SCOPE"
+_COLOUR_SCOPE_VALUES = {"repo", "feature"}
+_COLOUR_SCOPE_DEFAULT = "repo"
+
+
+def _colour_scope() -> str:
+    """`repo` (default, unset, or unrecognised — same fail-open rule this
+    file uses everywhere for environment-sourced input) or `feature`."""
+    value = os.environ.get(_COLOUR_SCOPE_ENV, _COLOUR_SCOPE_DEFAULT)
+    return value if value in _COLOUR_SCOPE_VALUES else _COLOUR_SCOPE_DEFAULT
+
+
+def task_chain_roles(
+    hue: dict[str, tuple[int, int, int]], feature_colour: tuple[int, int, int] | None,
+) -> ColourRoles:
+    """THIRD/FOURTH for a task/step/indent row: `repo_colour_roles(hue)`
+    unchanged in "repo" scope (the default), or re-rooted at `feature_
+    colour` (this row's owning feature's own grade-1 colour) in "feature"
+    scope — two more `_chain_step` links from the feature's own colour,
+    the same distance SECONDARY sits from THIRD/FOURTH in the repo-scope
+    chain, so the two scopes are structurally comparable. Falls back to
+    the repo scope when a row has no feature colour to re-root on (should
+    not happen in practice — every task-bearing row carries one — but
+    never crashes if it does)."""
+    roles = repo_colour_roles(hue)
+    if _colour_scope() != "feature" or feature_colour is None:
+        return roles
+    third = _chain_step(feature_colour)
+    fourth = _chain_step(third)
+    return ColourRoles(primary=roles.primary, secondary=roles.secondary, third=third, fourth=fourth)
 
 
 def colour_ramp_steps(
@@ -1197,32 +1282,47 @@ class Row:
     # terminal task's own row (it uses a fixed done/failed colour instead,
     # see `_draw_task_row`) and for repo/feature rows (not applicable).
     task_colour: tuple[int, int, int] | None = field(default=None)
+    # kind in {"task", "accordion", "agent", "subagent"} only — this row's
+    # owning FEATURE's own grade-1 colour (`feature_colour_base`, computed
+    # once per feature by `_feature_rows`), threaded the same way `task_
+    # colour` already is. Only consumed when `SIDEBAR_COLOUR_SCOPE=feature`
+    # re-roots the THIRD/FOURTH chain at the feature rather than the repo
+    # (see `task_chain_roles`) — None otherwise (repo scope) and for
+    # repo/feature rows (not applicable).
+    feature_colour: tuple[int, int, int] | None = field(default=None)
 
 
-def _agent_row(agent: Agent, target: str, depth: int, task_colour: tuple[int, int, int] | None) -> Row:
+def _agent_row(
+    agent: Agent, target: str, depth: int, task_colour: tuple[int, int, int] | None,
+    feature_colour: tuple[int, int, int] | None,
+) -> Row:
     return Row(depth=depth, kind="agent", target=target, label=agent.role or agent.session_id,
-               task_colour=task_colour,
+               task_colour=task_colour, feature_colour=feature_colour,
                status=agent.status, activity=agent.activity, role=agent.role, model=agent.model)
 
 
 def _subagent_row(
     sub: Subagent, target: str, depth: int, task_colour: tuple[int, int, int] | None,
+    feature_colour: tuple[int, int, int] | None,
 ) -> Row:
     return Row(depth=depth, kind="subagent", target=target, label=sub.label, status=sub.state,
-               task_colour=task_colour)
+               task_colour=task_colour, feature_colour=feature_colour)
 
 
 def _agent_and_subagent_rows(
     agent: Agent, target: str, depth: int, task_colour: tuple[int, int, int] | None,
+    feature_colour: tuple[int, int, int] | None,
 ) -> list[Row]:
     """An agent's identity-line row, followed by its own subagent rows at
     the SAME depth (rule 6, 2026-07-26: a subagent hangs under the STEP its
     parent agent is on, not one level deeper than its parent) — both carry
-    the owning task's own colour (`task_colour`, Ct), so the curses draw
-    path can paint them on the same open-block background as their step
-    without any further lookup."""
-    return [_agent_row(agent, target, depth, task_colour), *(
-        _subagent_row(sub, target, depth, task_colour) for sub in agent.subagents
+    the owning task's own colour (`task_colour`, Ct) and the owning
+    feature's own colour (`feature_colour`), so the curses draw path can
+    paint them on the same open-block background as their step, and
+    resolve the THIRD/FOURTH chain in either colour scope, without any
+    further lookup."""
+    return [_agent_row(agent, target, depth, task_colour, feature_colour), *(
+        _subagent_row(sub, target, depth, task_colour, feature_colour) for sub in agent.subagents
     )]
 
 
@@ -1234,6 +1334,7 @@ _ACCORDION_STEP_GLYPH = {"done": "✓", "active": "⠧", "todo": ""}
 
 def _step_row(
     step: Step, target: str, depth: int, task_colour: tuple[int, int, int] | None,
+    feature_colour: tuple[int, int, int] | None,
 ) -> Row:
     """One line of the task's five-step accordion — a COLLAPSE KEEPS ITS
     OWN LINE (operator correction, 2026-07-26: "collapse keeps the line,
@@ -1243,13 +1344,16 @@ def _step_row(
     The active step's agents (and their subagents) are the caller's job to
     nest beneath this row, one level deeper (see `_task_rows`) — this row
     itself only ever carries the step's own name and mark, plus the owning
-    task's own colour (`task_colour`, Ct) its grade-3 content colour is
-    derived from (`content_colour_base`, curses-only)."""
+    task's colour (`task_colour`) and feature's colour (`feature_colour`),
+    which `_draw_step_row` resolves through `task_chain_roles` into its own
+    FOURTH background (operator ruling, 2026-07-28 — supersedes the
+    grade-3 `content_colour_base(task_colour)` reading this docstring
+    previously described)."""
     glyph = _ACCORDION_STEP_GLYPH[step.state]
     label = f"{glyph} {small_caps(step.name)}" if glyph else small_caps(step.name)
     live = step.state == "active" and any(a.status == "working" for a in step.agents)
     return Row(depth=depth, kind="accordion", target=target, label=label, status=step.state,
-               live=live, task_colour=task_colour)
+               live=live, task_colour=task_colour, feature_colour=feature_colour)
 
 
 # 0..4 completed-of-five steps -> a quarter-fill circle (operator ruling,
@@ -1276,30 +1380,37 @@ def _task_progress_glyph(task: Task) -> str | None:
 def _task_rows(
     task: Task, target: str, depth: int,
     task_colour: tuple[int, int, int] | None = None,
+    feature_colour: tuple[int, int, int] | None = None,
 ) -> list[Row]:
     """A task's own row (name left-aligned, its progress circle right-
     aligned — `_task_progress_glyph`); `task_colour` is
     this task's own already-allocated Ct, grade 2, computed once per
     feature by `_assign_task_colours` — None for a terminal task, which
-    uses a fixed done/failed colour instead, curses-only), plus — while it
-    is still open — its five-line step accordion (`_step_row`, one row per
-    `PHASES` entry, each keeping its own place whether done/active/todo),
-    the active step's agents (and their subagents) nested one level deeper
-    than that step's own row, and any role-unmapped agent (fails open,
-    rendered directly under the task, no step to nest it in). A terminal
-    task (`TERMINAL_TASK_STATUSES`) folds: its own row is all that shows."""
+    uses a fixed done/failed colour instead, curses-only); `feature_colour`
+    is the owning feature's own grade-1 colour, threaded the same way for
+    the `SIDEBAR_COLOUR_SCOPE=feature` chain re-rooting (`task_chain_
+    roles`). Plus — while it is still open — its five-line step accordion
+    (`_step_row`, one row per `PHASES` entry, each keeping its own place
+    whether done/active/todo), the active step's agents (and their
+    subagents) nested one level deeper than that step's own row, and any
+    role-unmapped agent (fails open, rendered directly under the task, no
+    step to nest it in). A terminal task (`TERMINAL_TASK_STATUSES`) folds:
+    its own row is all that shows."""
     name = task.name
     rows = [Row(depth=depth, kind="task", target=target, label=name, status=task.status,
-                 progress_glyph=_task_progress_glyph(task), task_colour=task_colour)]
+                 progress_glyph=_task_progress_glyph(task), task_colour=task_colour,
+                 feature_colour=feature_colour)]
     if task.status in TERMINAL_TASK_STATUSES:
         return rows
     for step in task.steps:
-        rows.append(_step_row(step, target, depth + 1, task_colour))
+        rows.append(_step_row(step, target, depth + 1, task_colour, feature_colour))
         if step.state == "active":
             for agent in step.agents:
-                rows.extend(_agent_and_subagent_rows(agent, target, depth + 2, task_colour))
+                rows.extend(_agent_and_subagent_rows(
+                    agent, target, depth + 2, task_colour, feature_colour,
+                ))
     for agent in task.unstepped_agents:
-        rows.extend(_agent_and_subagent_rows(agent, target, depth + 1, task_colour))
+        rows.extend(_agent_and_subagent_rows(agent, target, depth + 1, task_colour, feature_colour))
     return rows
 
 
@@ -1349,11 +1460,19 @@ def _feature_rows(feature: Feature, repo_name: str, depth: int) -> list[Row]:
                  status=feature.status, repo_name=repo_name)]
     if _feature_collapsed(feature):
         return rows
-    task_colours = _assign_task_colours(_repo_hue(repo_name), feature.feature_id, feature.tasks)
+    hue = _repo_hue(repo_name)
+    task_colours = _assign_task_colours(hue, feature.feature_id, feature.tasks)
+    # This feature's own grade-1 colour — computed once here (mirrors `task_
+    # colours` above) and threaded onto every row below so `task_chain_
+    # roles` can re-root the THIRD/FOURTH chain on it when `SIDEBAR_COLOUR_
+    # SCOPE=feature`; unused (but harmless to carry) in the default "repo"
+    # scope.
+    feature_colour = feature_colour_base(hue, feature.feature_id)
     dropped_name_task = _sole_same_named_task(feature)
     for task in feature.tasks:
         task_rows = _task_rows(task, target, depth + 1,
-                                task_colour=task_colours.get(task.task_id))
+                                task_colour=task_colours.get(task.task_id),
+                                feature_colour=feature_colour)
         if task is dropped_name_task:
             # NAME-DROP, not a row-drop (Decision-106: nothing is hidden
             # except by the two collapses) — the task row still carries
