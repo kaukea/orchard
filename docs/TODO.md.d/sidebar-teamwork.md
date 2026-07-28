@@ -674,6 +674,15 @@ comfortable; and the activity line had been given the palette's comment tone, wh
 is designed to recede in an editor and measured 32 on the ordinary base and 14
 dimmed — visible as unreadable from across the room, which is how it was caught.
 
+**The activity line is differentiated by HUE, not by style** (operator, 2026-07-28,
+choosing treatment 3 of four shown). It takes a distinct accent — cyan on the
+published base, measuring a lightness contrast of 88 against the body text's 106 —
+and it is NOT italicised. Making it the same colour as the body text, which is what
+fixing its legibility had done, removed the very thing that marked it as a different
+kind of line: in his words, that bypasses the problem rather than solving it. The
+line must be readable AND visibly distinct from the stage names among which it sits,
+and the eighteen points of contrast spent buying that distinction are affordable.
+
 Choosing a foreground by maximising a contrast number is what produced the last of
 those: white scores 106 where a warm tone scores 85, and white is the brightest thing
 a screen can emit. The measurement exists to catch unreadable text, not to be
