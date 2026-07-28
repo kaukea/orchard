@@ -13,7 +13,6 @@ from __future__ import annotations
 import curses
 
 from sidebar_colour import (  # noqa: E402
-    GREEN,
     MUTED,
     TEXT,
     _CONTRAST_MIN_TEXT,
@@ -79,9 +78,12 @@ def _draw_task_row(
        used by the headless render/tests), since only the on-screen curses
        appearance was in scope here.
 
-    A terminal task's own green/"failed" text colour still wins over plain
-    TEXT, same exclusivity rule as before — that is name-text colour, not a
-    second background, and was never one of the three named above. The
+    A terminal task's own name text drops its green "done" colour (operator
+    ruling, 2026-07-28: "the green is not green enough... I suggest we
+    simply remove the green from that" — the same colour-as-status-carrier
+    drop `_draw_subagent_row` already made): the row's own `✓` mark already
+    carries done-ness, so its name reads in plain TEXT, same as any other
+    status except "failed", which still keeps MUTED. The
     status glyph itself is `_task_row_glyph` (operator ruling, 2026-07-27)
     — cycling while working, static otherwise. `selected` swaps in
     `_selection_highlight` for the row's own background (sidebar-teamwork
@@ -100,7 +102,7 @@ def _draw_task_row(
     # column, so it is filled separately below rather than by `_safe_addstr`.
     text_width = max(width - 1, 0)
     body = _truncate(compose_task_row_text(glyph, row.label, None, text_width), text_width)
-    text_fg = GREEN if row.status == "done" else MUTED if row.status == "failed" else TEXT
+    text_fg = MUTED if row.status == "failed" else TEXT
     text_fg = ensure_contrast(text_fg, bg, _CONTRAST_MIN_TEXT)
     attr = colours.pair(text_fg, bg) | attr_extra
     _safe_addstr(stdscr, y, 0, body, attr)

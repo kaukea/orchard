@@ -22,6 +22,7 @@ from sidebar_citation import (  # noqa: E402
     tight_line_parts,
 )
 from sidebar_colour import (  # noqa: E402
+    ACTIVITY_ACCENT,
     MUTED,
     TEXT,
     _CONTRAST_MIN_CONTENT,
@@ -55,9 +56,20 @@ def _draw_identity_block(
     `identity_block`'s docstring for the exact ladder) — 1 or 2 curses rows
     depending on `expand`; returns the next unused y. Shares its content
     decisions (`attribution_text`/`tight_line_parts`) with the pure text
-    path so the two can never disagree; only the per-segment colouring
-    (quote plain ITALIC, role dim-italic, model tier-coloured) is
-    curses-only. The owning step's open-block colour (`_open_block_bg`,
+    path so the two can never disagree; only the per-segment colouring is
+    curses-only.
+
+    The quote is told apart from its surrounding step titles by HUE, not
+    by style (operator ruling, 2026-07-28, choosing between four shown
+    treatments: a distinct accent colour, plain — NOT italic, and NOT the
+    same colour as the body text). A quote in plain `TEXT` — what an
+    earlier fix did in the course of raising step-content contrast — reads
+    as legible but loses the one thing that marked it as a different KIND
+    of line from the stage names around it; italic recovers that
+    distinction without a second colour to learn, but he ruled it out
+    directly. `ACTIVITY_ACCENT` is the accent this settles on. The role/
+    model attribution stays MUTED, plain (never italic either, same
+    ruling). The owning step's open-block colour (`_open_block_bg`,
     FIFTH) is painted across the FULL row width first, then every
     foreground colour is contrast-checked against it (operator ruling,
     2026-07-26: legible text on the dimmed background is a hard
@@ -84,7 +96,7 @@ def _draw_identity_block(
     # TEXT` (4.5, left untouched — operator ruling, 2026-07-28, "the title
     # is absolutely fine for contrast... the content of step" is what is
     # not): this is a step's own CONTENT.
-    quote_fg = ensure_contrast(TEXT, block_bg, _CONTRAST_MIN_CONTENT)
+    quote_fg = ensure_contrast(ACTIVITY_ACCENT, block_bg, _CONTRAST_MIN_CONTENT)
     role_fg = ensure_contrast(MUTED, block_bg, _CONTRAST_MIN_CONTENT)
 
     if bg is not None:
@@ -96,16 +108,16 @@ def _draw_identity_block(
     if not expand:
         shown_quote, tail = tight_line_parts(row.activity, row.role, content_width, row.model)
         _safe_addstr(stdscr, y, _INDENT_WIDTH, _truncate(shown_quote, content_width),
-                     colours.pair(quote_fg, bg, italic=True) | attr_extra)
+                     colours.pair(quote_fg, bg) | attr_extra)
         if tail:
             x = _INDENT_WIDTH + _cell_width(shown_quote)
             _safe_addstr(stdscr, y, x, _truncate(tail, max(width - x, 0)),
-                         colours.pair(role_fg, bg, italic=True) | attr_extra)
+                         colours.pair(role_fg, bg) | attr_extra)
         return y + 1
 
     quote = _quoted_activity(row.activity)
     _safe_addstr(stdscr, y, _INDENT_WIDTH, _truncate(quote, content_width),
-                 colours.pair(quote_fg, bg, italic=True) | attr_extra)
+                 colours.pair(quote_fg, bg) | attr_extra)
     if not row.role:
         return y + 1
     y += 1
@@ -117,14 +129,14 @@ def _draw_identity_block(
     attribution_width = max(content_width - len(_ATTRIBUTION_INDENT), 0)
     role_text, model_text = attribution_text(row.role, row.model, attribution_width)
     x = _INDENT_WIDTH + len(_ATTRIBUTION_INDENT)
-    _safe_addstr(stdscr, y, x, role_text, colours.pair(role_fg, bg, italic=True) | attr_extra)
+    _safe_addstr(stdscr, y, x, role_text, colours.pair(role_fg, bg) | attr_extra)
     x += _cell_width(role_text)
     if model_text:
         sep = " · "
         _safe_addstr(stdscr, y, x, sep, colours.pair(role_fg, bg) | attr_extra)
         x += len(sep)
         model_fg = ensure_contrast(model_tier_colour(row.model), block_bg, _CONTRAST_MIN_CONTENT)
-        _safe_addstr(stdscr, y, x, model_text, colours.pair(model_fg, bg, italic=True) | attr_extra)
+        _safe_addstr(stdscr, y, x, model_text, colours.pair(model_fg, bg) | attr_extra)
     return y + 1
 
 def _draw_subagent_row(

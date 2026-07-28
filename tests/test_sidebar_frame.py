@@ -139,7 +139,16 @@ def _last_truecolor_pair(
     line's SGR codes set, walked the same extended-sequence-aware way as
     `_has_attr_code`. A row generally carries one background for its whole
     span (a feature band, a task's row, a step's content colour, an
-    open-block); the last-seen value is representative for that."""
+    open-block); the last-seen value is representative for that.
+
+    Pure black (`30`/`40`) is recognised alongside the full `38;2`/`48;2`
+    form (found here, header/feature falling-block step): a direct-colour
+    terminfo entry, given an EXACT (0, 0, 0), may canonicalise it down to
+    the short classic-ANSI SGR code rather than restating it as `38;2;0;0;
+    0` — observed against this tmux build's own captured bytes once
+    `ensure_contrast`'s black/white extreme genuinely lands on pure black
+    (the header/feature "most emphasized" text does this routinely now).
+    Not a parser rewrite, just the one extra case this collapse needs."""
     fg = bg = None
     for codes in _sgr_code_lists(raw_line):
         i = 0
@@ -152,6 +161,10 @@ def _last_truecolor_pair(
                     bg = rgb
                 i += 5
                 continue
+            if codes[i] == "30":
+                fg = (0, 0, 0)
+            elif codes[i] == "40":
+                bg = (0, 0, 0)
             i += 1
     return fg, bg
 
@@ -584,6 +597,15 @@ def _raw_has_colour(raw: bytes, rgb: tuple[int, int, int]) -> bool:
         [b"38", b"2", r, g, b], [b"48", b"2", r, g, b],
         [b"38", b"5", index], [b"48", b"5", index],
     ]
+    if rgb == (0, 0, 0):
+        # A direct-colour terminfo entry, given an EXACT (0, 0, 0), may
+        # canonicalise it down to the short classic-ANSI SGR code ("30"/
+        # "40") rather than restating it as "38;2;0;0;0" -- observed
+        # against this tmux build's own captured bytes once `ensure_
+        # contrast`'s black/white extreme genuinely lands on pure black
+        # (the header/feature "most emphasized" text does this routinely
+        # now, see `_last_truecolor_pair`'s own matching note).
+        patterns += [[b"30"], [b"40"]]
     return any(
         _raw_has_subsequence(params, pattern)
         for params in _raw_param_lists(raw) for pattern in patterns
@@ -694,9 +716,7 @@ class SidebarOnceCLITests(unittest.TestCase):
         # core column, blank or not, gets the one contrast-derived title
         # colour computed the same way `_draw_header` computes it).
         primary = sidebar.repo_colour_roles(sidebar.REPO_HUES["orchids"]).primary
-        title_fg = sidebar.ensure_contrast(
-            sidebar._muted_toward(sidebar.HEADER_FG, primary), primary, sidebar._CONTRAST_MIN_TEXT,
-        )
+        title_fg = sidebar.header_emphasis_colour(primary)
         self.assertTrue(_raw_has_colour(raw, primary))
         self.assertTrue(_raw_has_colour(raw, title_fg))
 

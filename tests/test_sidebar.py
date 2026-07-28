@@ -2649,57 +2649,61 @@ class ContrastGuaranteeTests(unittest.TestCase):
         result = sidebar.ensure_contrast(sidebar.TEXT, bg, sidebar._CONTRAST_MIN_TEXT)
         self.assertGreaterEqual(sidebar.contrast_ratio(result, bg), sidebar._CONTRAST_MIN_TEXT)
 
-    def test_feature_row_style_pair_now_clears_contrast(self):
-        # the concrete on-screen defect: a failed feature row's muted
-        # glyph/name colour against its own fill, previously unchecked.
+    def test_feature_row_falling_block_text_now_clears_contrast(self):
+        # the falling-block redesign's own equivalent (operator, 2026-07-28:
+        # the feature row shares the header's PRIMARY/SECONDARY background,
+        # differing only in font colour) -- `feature_emphasis_colour` must
+        # still clear the plain text floor against that shared PRIMARY.
         hue = sidebar._repo_hue("orchids")
-        fill = sidebar._feature_fill_colour("failed", hue)
-        muted_name = sidebar._muted_toward(sidebar._feature_name_colour("failed"), fill)
-        fg = sidebar.ensure_contrast(muted_name, fill, sidebar._CONTRAST_MIN_TEXT)
-        self.assertGreaterEqual(sidebar.contrast_ratio(fg, fill), sidebar._CONTRAST_MIN_TEXT)
+        primary = sidebar.repo_colour_roles(hue).primary
+        fg = sidebar.feature_emphasis_colour(primary)
+        self.assertGreaterEqual(sidebar.contrast_ratio(fg, primary), sidebar._CONTRAST_MIN_TEXT)
 
 
 class FeatureRowContrastIsCalculatedTests(unittest.TestCase):
-    """`_draw_feature_row`'s hard rule (2026-07-27): it must run every
-    style colour through `ensure_contrast` against the row's own fill,
-    exactly as `_draw_step_row` already did -- this was defect 2's
-    proximate cause (a feature row reading as dark grey-purple text on a
-    dark purple band, at the limit of legibility)."""
+    """`_draw_feature_row`'s falling-block core (operator, 2026-07-28)
+    shares the header's own PRIMARY background and text-colour mechanism
+    (`feature_emphasis_colour`/`header_emphasis_colour`) rather than the
+    retired per-status muted cell styles -- every repo's PRIMARY must still
+    produce a compliant feature-row text colour, DONE's own separate flat
+    green band included."""
 
-    def test_every_status_produces_a_compliant_name_colour(self):
-        hue = sidebar._repo_hue("orchids")
-        layout = sidebar._feature_row_layout("○", "Some feature", None, 40, None)
-        for status in (None, "idle", "stale", "failed", "working", "done"):
-            fill_rgb = sidebar._feature_fill_colour(status, hue)
-            styles = sidebar._feature_row_cell_styles(layout, status, hue["accent"], fill_rgb)
-            name_colour = styles[1]  # first character of the name segment
+    def test_every_repo_produces_a_compliant_falling_block_text_colour(self):
+        for repo in ("orchids", "signmc", "widgets", "throwy"):
+            hue = sidebar._repo_hue(repo)
+            primary = sidebar.repo_colour_roles(hue).primary
+            fg = sidebar.feature_emphasis_colour(primary)
             self.assertGreaterEqual(
-                sidebar.contrast_ratio(name_colour, fill_rgb), sidebar._CONTRAST_MIN_TEXT,
-                f"status={status} name colour {name_colour} on fill {fill_rgb} is not legible",
+                sidebar.contrast_ratio(fg, primary), sidebar._CONTRAST_MIN_TEXT,
+                f"{repo}: feature text {fg} on primary {primary} is not legible",
             )
+
+    def test_done_status_keeps_its_own_compliant_green_band(self):
+        fg = sidebar.ensure_contrast(sidebar.GREEN, sidebar.FILL_GREEN, sidebar._CONTRAST_MIN_TEXT)
+        self.assertGreaterEqual(sidebar.contrast_ratio(fg, sidebar.FILL_GREEN), sidebar._CONTRAST_MIN_TEXT)
 
 
 class HeaderContrastIsCalculatedTests(unittest.TestCase):
     """The project header's core sits on a single, uniform PRIMARY
-    background (operator spec, 2026-07-28, superseding the earlier
-    per-column monotonic gradient), so one contrast check IS the whole
-    row's title check now -- but `_draw_header` still must not skip it.
-    `_draw_header` muted its title toward the band but never checked the
-    result, which left the project name -- the most important label in the
-    pane -- measuring 3.02 against its own band where text wants 4.5.
-    Measured from the bytes the terminal actually received, not from
-    reading the code."""
+    background, so one contrast check IS the whole row's title check now
+    -- but `_draw_header` still must not skip it. The title is now the
+    MOST emphasized text in the sidebar rather than the least (operator
+    ruling, 2026-07-28: "the project is rendered as the least readable,
+    least emphasized text of the whole sidebar... I think that the project
+    header's text should become the MOST emphasized") -- `header_emphasis_
+    colour` runs `TEXT` straight through `ensure_contrast` at the higher
+    `_CONTRAST_MIN_CONTENT` floor, never muted toward the background first
+    (that muting-before-checking is what produced the original defect: a
+    title that cleared a low WCAG floor and still measured near-zero on
+    APCA against a typical repo accent)."""
 
     def test_title_is_legible_against_the_primary_core(self):
         for repo in ("orchids", "signmc", "widgets", "throwy", "a-repo-with-no-assigned-hue"):
             hue = sidebar._repo_hue(repo)
             bg = sidebar.repo_colour_roles(hue).primary
-            fg = sidebar.ensure_contrast(
-                sidebar._muted_toward(sidebar.HEADER_FG, bg), bg,
-                sidebar._CONTRAST_MIN_TEXT,
-            )
+            fg = sidebar.header_emphasis_colour(bg)
             self.assertGreaterEqual(
-                sidebar.contrast_ratio(fg, bg), sidebar._CONTRAST_MIN_TEXT,
+                sidebar.contrast_ratio(fg, bg), sidebar._CONTRAST_MIN_CONTENT,
                 f"{repo} header core: {fg} on {bg} is not legible",
             )
 
@@ -2732,49 +2736,46 @@ class HeaderContrastIsCalculatedTests(unittest.TestCase):
             sidebar.contrast_ratio(fg, bg), sidebar._CONTRAST_MIN_TEXT)
 
 
-class HeaderRampVariantSwitchTests(unittest.TestCase):
-    """Temporary A/B switch (operator, 2026-07-28): his own dictated
-    "three cells" and the tmux reference's own "two cells, four steps via
-    the half-block trick" are two different builds, and he was never
-    asked to pick explicitly -- `SIDEBAR_HEADER_RAMP_VARIANT` lets two
-    panes differ ONLY in this one knob until he does. Unset/unknown must
-    fall back to the default variant, never raise (this file's own
-    fail-open rule for anything environment-sourced)."""
+class FallingBlockRowTests(unittest.TestCase):
+    """The header/feature "falling block" layout (operator, 2026-07-28,
+    superseding the earlier `SIDEBAR_HEADER_RAMP_VARIANT` two/three-cell
+    A/B switch entirely — that mechanism and its tests are retired along
+    with the symmetric ramp they governed): a solid PRIMARY core flush
+    left, falling away to SECONDARY over however many columns the pane
+    has left, via the eighth-resolution `_LEFT_EIGHTHS` block ladder."""
 
-    def setUp(self):
-        self._had = "SIDEBAR_HEADER_RAMP_VARIANT" in os.environ
-        self._old = os.environ.get("SIDEBAR_HEADER_RAMP_VARIANT")
-        self.addCleanup(self._restore)
+    def test_core_width_is_text_plus_one_space_each_side(self):
+        self.assertEqual(sidebar.falling_block_core_width("orchids"), len("orchids") + 2)
 
-    def _restore(self):
-        if self._had:
-            os.environ["SIDEBAR_HEADER_RAMP_VARIANT"] = self._old
-        else:
-            os.environ.pop("SIDEBAR_HEADER_RAMP_VARIANT", None)
+    def test_fade_uses_only_the_two_named_colours(self):
+        primary, secondary = (172, 136, 214), (40, 31, 54)
+        cells = sidebar.falling_block_fade_colours(primary, secondary, 5)
+        self.assertEqual(len(cells), 5)
+        for _ch, fg, bg in cells:
+            self.assertIn(fg, (primary, secondary))
+            self.assertIn(bg, (primary, secondary))
 
-    def test_default_is_three_cell_when_unset(self):
-        os.environ.pop("SIDEBAR_HEADER_RAMP_VARIANT", None)
-        self.assertEqual(sidebar._header_ramp_cells(), 3)
+    def test_fade_is_monotonic_from_primary_toward_secondary(self):
+        # cell 0 (adjacent to the core) must be at least as "primary" as
+        # the last cell (adjacent to the pane edge) -- verified via the
+        # glyph's own eighths fill level, not a colour distance, since
+        # every cell draws from just the two named colours.
+        cells = sidebar.falling_block_fade_colours((200, 200, 200), (0, 0, 0), 8)
+        fill_levels = [sidebar._LEFT_EIGHTHS.index(ch) if ch in sidebar._LEFT_EIGHTHS else None
+                       for ch, _fg, _bg in cells]
+        # a solid "primary" cell (space, fg==bg==primary) reads as fully
+        # filled; a solid "secondary" cell reads as empty -- normalise both
+        # space cases by their actual colour instead of the shared glyph.
+        def _level(cell):
+            ch, fg, bg = cell
+            if ch == " ":
+                return 8 if fg == (200, 200, 200) else 0
+            return sidebar._LEFT_EIGHTHS.index(ch)
+        levels = [_level(c) for c in cells]
+        self.assertEqual(levels, sorted(levels, reverse=True))
 
-    def test_two_cell_variant(self):
-        os.environ["SIDEBAR_HEADER_RAMP_VARIANT"] = "two-cell"
-        self.assertEqual(sidebar._header_ramp_cells(), 2)
-
-    def test_three_cell_variant(self):
-        os.environ["SIDEBAR_HEADER_RAMP_VARIANT"] = "three-cell"
-        self.assertEqual(sidebar._header_ramp_cells(), 3)
-
-    def test_unrecognised_value_falls_back_to_default(self):
-        os.environ["SIDEBAR_HEADER_RAMP_VARIANT"] = "bogus"
-        self.assertEqual(sidebar._header_ramp_cells(), 3)
-
-    def test_gradient_threshold_moves_with_the_variant(self):
-        # "orchids" core is 9 cells wide (see _header_core_width) -- the
-        # two-cell variant needs 4 fewer columns than the three-cell one
-        # to afford a full ramp.
-        self.assertFalse(sidebar._header_gradient_fits("orchids", 14, ramp_cells=3))
-        self.assertTrue(sidebar._header_gradient_fits("orchids", 14, ramp_cells=2))
-        self.assertTrue(sidebar._header_gradient_fits("orchids", 15, ramp_cells=3))
+    def test_no_fade_when_width_is_exactly_the_core(self):
+        self.assertEqual(sidebar.falling_block_fade_colours((1, 2, 3), (4, 5, 6), 0), [])
 
 
 class TaskRowPaintsItsOwnBackgroundTests(unittest.TestCase):
@@ -2786,14 +2787,14 @@ class TaskRowPaintsItsOwnBackgroundTests(unittest.TestCase):
     also put its contrast outside anyone's control."""
 
     def test_name_colour_is_legible_against_the_band_for_every_status(self):
+        # "done" no longer carries GREEN (operator ruling, 2026-07-28: "the
+        # green is not green enough... remove the green from that" -- the
+        # row's own checkmark carries done-ness instead, same drop already
+        # made for the subagent line).
         hue = sidebar._repo_hue("orchids")
         bg = hue["fill"]
         for status in ("working", "done", "failed", "idle", "stale", None):
-            text_fg = (
-                sidebar.GREEN if status == "done"
-                else sidebar.MUTED if status == "failed"
-                else sidebar.TEXT
-            )
+            text_fg = sidebar.MUTED if status == "failed" else sidebar.TEXT
             resolved = sidebar.ensure_contrast(text_fg, bg, sidebar._CONTRAST_MIN_TEXT)
             self.assertGreaterEqual(
                 sidebar.contrast_ratio(resolved, bg), sidebar._CONTRAST_MIN_TEXT,
@@ -2852,7 +2853,7 @@ class SelectionHighlightTests(unittest.TestCase):
         content = sidebar.content_colour_base(task_colour)
         open_stage = sidebar.open_stage_colour(content)
         backgrounds_needing_text = [
-            sidebar._feature_fill_colour("working", hue),
+            sidebar.repo_colour_roles(hue).primary,  # feature row falling-block core
             hue["fill"],  # task row band
             content,  # step row
             open_stage,  # agent/subagent open block

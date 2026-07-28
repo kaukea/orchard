@@ -111,8 +111,33 @@ _ACCORDION_STEP_GLYPH = {"done": "✓", "active": "⠧", "todo": ""}
 # the same meaning. Index 0 still renders its own (emptiest) glyph rather
 # than a blank column — a task at zero progress still exists.
 _PROGRESS_CIRCLES = "○◔◑◕●"
-_HEADER_RAMP_IN = "▐"   # left ramp (entering the core): glyph fg on the RIGHT half — nearer the core
-_HEADER_RAMP_OUT = "▌"  # right ramp (leaving the core): glyph fg on the LEFT half — nearer the core
+
+# Eighth-resolution LEFT block ladder (index 0 = empty/space .. 8 = full
+# block) — lets ONE cell show up to 9 distinguishable fill levels of one
+# colour over another via a single glyph (fg = the fraction filled from
+# the left, bg = the remainder) — the header/feature "falling block"
+# gradient's own sub-cell resolution (operator, 2026-07-28: "the
+# block-element range gives you finer steps than you may think... the
+# eighth-resolution ladder is available at both ends"). Only the LEFT
+# series exists as literal Unicode glyphs; a RIGHT-hand step is
+# synthesised by swapping a LEFT glyph's own fg/bg (a left three-quarters
+# block with its colours reversed reads as a right one-quarter block) —
+# not needed by this file's own single left-to-right fade (see
+# `sidebar_paint_shared.falling_block_fade_colours`), but the reason the
+# ladder works at both ends.
+_LEFT_EIGHTHS = " ▏▎▍▌▋▊▉█"
+
+# Feature row identity marker (operator, 2026-07-28, superseding an
+# earlier "ƒ" draft the same day: "so 🧩/<human feature name>" — U+1F9E9
+# JIGSAW PUZZLE PIECE, then a literal "/", then the feature's own name).
+# The emoji carries its own colour already, so it needs no contrast
+# treatment of its own against the row's background. TWO cells wide
+# (`unicodedata.east_asian_width` reports "W", verified — not assumed,
+# since a wide glyph in a leading position has already caused a row-merge
+# bug in this file, see `_draw_feature_row`'s own `cell_col` comment in
+# sidebar_paint_feature.py) plus one more for the literal "/" — three
+# cells of chrome before the name, not two.
+FEATURE_MARKER = "🧩"
 
 # The one-column task-related-row indent (operator ruling, 2026-07-28, item
 # 11: "the indent s quarter or half block left, forgeground THURD

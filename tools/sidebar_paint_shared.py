@@ -13,8 +13,9 @@ from __future__ import annotations
 
 from sidebar_colour import MUTED, WHITE, _CONTRAST_MIN_MARK, ensure_contrast, lerp, task_chain_roles  # noqa: E402
 from sidebar_curses_colour import _ColourCache, _safe_addch, _safe_addstr  # noqa: E402
-from sidebar_glyphs import _INDENT_GLYPH  # noqa: E402
+from sidebar_glyphs import _INDENT_GLYPH, _LEFT_EIGHTHS  # noqa: E402
 from sidebar_rows import Row  # noqa: E402
+from sidebar_text import _cell_width, _truncate  # noqa: E402
 
 
 # --------------------------------------------------------------------------
@@ -113,3 +114,88 @@ _SELECTION_LIFT_FRACTION = 0.30
 
 def _selection_highlight(bg: tuple[int, int, int] | None) -> tuple[int, int, int]:
     return lerp(bg if bg is not None else (0, 0, 0), WHITE, _SELECTION_LIFT_FRACTION)
+
+
+# --------------------------------------------------------------------------
+# "Falling block" row: a solid PRIMARY core (the text) flush at the LEFT,
+# falling away to SECONDARY toward the right edge — shared by the project
+# header and the feature row (operator, 2026-07-28: "the feature should do
+# exactly the same [as the project]... on the SAME BACKGROUND... A longer
+# gradient using more block steps... Both for the project and for the
+# feature" — replaces the earlier symmetric two/three-cell ramp entirely).
+# The fade is TWO named colours only (no intermediate RGB lerp) dithered
+# via the eighth-resolution block ladder (`_LEFT_EIGHTHS`), so it reads
+# smoothly across however many columns the pane actually has past the
+# core, however few or many that is.
+# --------------------------------------------------------------------------
+
+_FALLING_BLOCK_PAD = 1  # one space of padding each side of the core text
+
+
+def falling_block_core_width(text: str) -> int:
+    return _cell_width(text) + 2 * _FALLING_BLOCK_PAD
+
+
+def _falling_block_core_text(text: str, core_width: int) -> str:
+    """`text`, LEFT-aligned (not centred — the core anchors the pane's left
+    edge, operator: "fold on the left"), padded with one space each side,
+    truncated with an ellipsis if `core_width` can't hold it whole."""
+    if core_width <= 0:
+        return ""
+    inner_width = max(core_width - 2 * _FALLING_BLOCK_PAD, 0)
+    shown = _truncate(text, inner_width)
+    pad = max(inner_width - _cell_width(shown), 0)
+    body = (" " * _FALLING_BLOCK_PAD) + shown + (" " * pad) + (" " * _FALLING_BLOCK_PAD)
+    return body[:core_width]
+
+
+def falling_block_fade_colours(
+    primary: tuple[int, int, int], secondary: tuple[int, int, int], fade_width: int,
+) -> list[tuple[str, tuple[int, int, int], tuple[int, int, int]]]:
+    """(glyph, fg, bg) for each of `fade_width` cells, left (adjacent to
+    the core, mostly PRIMARY) to right (the pane edge, mostly SECONDARY) —
+    eighth-resolution via `_LEFT_EIGHTHS`, using only the two named
+    colours (operator, 2026-07-28: "the eighth-resolution ladder... gives
+    you finer steps than you may think" — up to 9 distinguishable levels
+    per cell from exactly two colours, rather than needing an intermediate
+    RGB computed for every cell) — smooth across as few or as many cells
+    as the pane actually affords past the core, which is what "reads as
+    falling away toward the edge of the screen" needs: a long gradient
+    where the pane is wide, still a legible one where it is narrow."""
+    if fade_width <= 0:
+        return []
+    cells = []
+    for i in range(fade_width):
+        fraction = 1.0 - (i + 0.5) / fade_width
+        k = max(0, min(8, round(fraction * 8)))
+        if k <= 0:
+            cells.append((" ", secondary, secondary))
+        elif k >= 8:
+            cells.append((" ", primary, primary))
+        else:
+            cells.append((_LEFT_EIGHTHS[k], primary, secondary))
+    return cells
+
+
+def _draw_falling_block_row(
+    stdscr, y: int, width: int, text: str,
+    primary: tuple[int, int, int], secondary: tuple[int, int, int], text_fg: tuple[int, int, int],
+    colours: _ColourCache, extra_attr: int = 0,
+) -> None:
+    """Paints the shared header/feature-row layout: a solid `primary` core
+    containing `text` (in `text_fg`), flush left, then a `falling_block_
+    fade_colours` fade to `secondary` filling the rest of `width`. Every
+    column gets an explicit `colours.pair(fg, bg)` — no column is ever left
+    to inherit whatever a previous row painted (the correctness half of
+    this redesign, not just its look)."""
+    if width <= 0:
+        return
+    core_width = min(falling_block_core_width(text), width)
+    core_text = _falling_block_core_text(text, core_width)
+    core_attr = colours.pair(text_fg, primary) | extra_attr
+    for i in range(core_width):
+        ch = core_text[i] if i < len(core_text) else " "
+        _safe_addch(stdscr, y, i, ch, core_attr)
+    fade_width = width - core_width
+    for i, (ch, fg, bg) in enumerate(falling_block_fade_colours(primary, secondary, fade_width)):
+        _safe_addch(stdscr, y, core_width + i, ch, colours.pair(fg, bg) | extra_attr)

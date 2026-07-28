@@ -1,30 +1,88 @@
-"""RGB colour math for the sidebar renderer: the mock-canonical palette,
-per-repo hue derivation, the PRIMARY->SECONDARY->THIRD->FOURTH colour-role
-chain (operator ruling, 2026-07-28), and WCAG contrast enforcement. Pure
-functions throughout -- no curses, no Row, no model types; every colour
-another module draws with is computed here first.
+"""RGB colour math for the sidebar renderer: the Dracula surface/text
+palette, per-repo hue derivation, the PRIMARY->SECONDARY->THIRD->FOURTH
+colour-role chain (operator ruling, 2026-07-28), and WCAG contrast
+enforcement. Pure functions throughout -- no curses, no Row, no model
+types; every colour another module draws with is computed here first.
 """
 from __future__ import annotations
 
 import colorsys
-import os
 import zlib
 from dataclasses import dataclass
 
 
+def lerp(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
+    return tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+
 # --------------------------------------------------------------------------
-# Mock-canonical palette and glyph vocabulary (bus-message-specifying B5) —
-# copied verbatim from sidebar-mock.py; never re-derived.
+# Dracula palette (operator ruling, 2026-07-28: "we start with Dracula, and
+# we will provide a theme functionality later to choose another color set" —
+# theme SWITCHING is a later feature; adopting this one palette is this
+# step's own scope). MIT licence — https://github.com/dracula/dracula-theme,
+# (c) Zeno Rocha and contributors; vendored verbatim as eleven fixed RGB
+# triples. `tools/palette-probe.py` prints and measures this exact set.
+#
+# This REPLACES the old derived-hue chain: every render colour used to be
+# COMPUTED — `_chain_step` (now retired, see git history) rotated a hue and
+# nudged its lightness/saturation, applied twice in a row from an already-
+# dark base (SECONDARY). Measured, that produced adjacent surfaces at APCA/
+# WCAG contrasts around 1.37 and 1.47 — roughly half of distinguishable —
+# which is why the pre-Dracula render read as one dark mass. Colours below
+# are CHOSEN from this designed set instead, never computed; identity is
+# carried by PRIMARY (`_repo_hue`'s own per-repo accent, untouched by this
+# adoption) and by each task's own jittered colour (`task_colour_base` in
+# `sidebar_colour_lineage.py`, also untouched) — this file's own THIRD/
+# FOURTH (`repo_colour_roles`) are now just the palette's two neutral
+# surface tones, fixed, never varying by repo or feature.
+#
+# Readability here is judged by APCA (`tools/colour-probe.py`'s `apca_lc`),
+# not the WCAG ratio this file's own `ensure_contrast` still enforces as a
+# floor — the WCAG ratio is unreliable on dark backgrounds (its `+0.05`
+# additive term flatters low-luminance pairs), which is how text used to
+# clear that floor and still be unreadable. APCA is a judgement tool for
+# CHOOSING these values, not a replacement for the floor `ensure_contrast`
+# enforces everywhere below (that WCAG-ratio enforcement mechanism itself
+# is unchanged by this step — a separate, larger piece of work). Never
+# maximised: white scores highest of anything against a dark background
+# and is the brightest thing a screen emits, which is not the goal.
 # --------------------------------------------------------------------------
 
-HEADER_FG = (0xB6, 0xBA, 0xC6)
-TEXT = (0xD0, 0xD5, 0xDF)
-MUTED = (0x84, 0x89, 0x94)
-GREEN = (0x76, 0xC8, 0x8E)
-GREEN_SOFT = (0x60, 0x9E, 0x72)
-AMBER = (0xC6, 0x98, 0x54)
-FILL_GREEN = (0x17, 0x2B, 0x1F)
-WHITE = (0xFF, 0xFF, 0xFF)
+DRACULA_BASE = (0x28, 0x2A, 0x36)
+DRACULA_LINE = (0x44, 0x47, 0x5A)
+DRACULA_FG = (0xF8, 0xF8, 0xF2)
+DRACULA_COMMENT = (0x62, 0x72, 0xA4)
+DRACULA_CYAN = (0x8B, 0xE9, 0xFD)
+DRACULA_GREEN = (0x50, 0xFA, 0x7B)
+DRACULA_ORANGE = (0xFF, 0xB8, 0x6C)
+DRACULA_PINK = (0xFF, 0x79, 0xC6)
+DRACULA_PURPLE = (0xBD, 0x93, 0xF9)
+DRACULA_RED = (0xFF, 0x55, 0x55)
+DRACULA_YELLOW = (0xF1, 0xFA, 0x8C)
+
+# Role mapping chosen for this step (recorded here, not just in the
+# changelog, since every later reader of this file needs to know WHICH
+# Dracula colour plays which part): FG is the sidebar's one body-text tone
+# (`TEXT`/`HEADER_FG` — the mock used two near-white greys for these, which
+# Dracula's own single designed foreground now replaces); COMMENT is the
+# recede/muted tone AND the gutter/indent-glyph foreground (`MUTED`/THIRD);
+# BASE is the deepest neutral surface (FOURTH — a step row's own
+# background); GREEN/ORANGE are still the done/badge accents (`GREEN`/
+# `AMBER`); CYAN is the activity line's own distinct accent (`ACTIVITY_
+# ACCENT`, see `sidebar_paint_identity.py`) — chosen because it is neither
+# the body-text tone nor a status colour already in use elsewhere on the
+# same row. `GREEN_SOFT`/`FILL_GREEN` are blends toward the palette's own
+# neutral tones rather than new hand-picked RGBs, so they still read as
+# "the same green, quieter" rather than an unrelated colour.
+HEADER_FG = DRACULA_FG
+TEXT = DRACULA_FG
+MUTED = DRACULA_COMMENT
+GREEN = DRACULA_GREEN
+GREEN_SOFT = lerp(DRACULA_GREEN, DRACULA_COMMENT, 0.5)
+AMBER = DRACULA_ORANGE
+FILL_GREEN = lerp(DRACULA_BASE, DRACULA_GREEN, 0.12)
+ACTIVITY_ACCENT = DRACULA_CYAN
+WHITE = (0xFF, 0xFF, 0xFF)  # ensure_contrast's/selection-lift's extreme target — a mechanism, not a body-text colour; never used to maximise readability for its own sake
 
 # Per-repo hue triple (header/fill/accent). `orchids`/`signmc` are pinned to
 # the mock's exact RGBs (case-insensitive lookup, see `_repo_hue`); any other
@@ -56,9 +114,6 @@ MODEL_TIERS = {
     "opus": (0xA4, 0x82, 0xDC),
     "fable": (0xD6, 0xAC, 0x60),
 }
-
-def lerp(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
-    return tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 def _muted_toward(
     fg: tuple[int, int, int], bg: tuple[int, int, int], amount: float = 0.35,
@@ -119,87 +174,48 @@ class ColourRoles:
     fourth: tuple[int, int, int]
 
 def repo_colour_roles(hue: dict[str, tuple[int, int, int]]) -> ColourRoles:
-    """A repo hue's five-role chain (operator ruling, 2026-07-28, verbatim:
-    "from the SECONDARY we derive a THIRD... for whichi wederive the
-    FOURTh"): PRIMARY/SECONDARY are no new palette, both fields the hue
-    triple already carries (`"accent"`/`"fill"`); THIRD and FOURTH are each
-    one `_chain_step` further down the SAME chain — never independent
-    lookups. FIFTH is deliberately NOT a field here: he calls it "the stage
-    as today", i.e. the existing per-TASK `open_stage_colour(content_
-    colour_base(task_colour))` value, unchanged by this chain — a repo-wide
-    dataclass has no way to carry a per-task tone, and none was asked for."""
-    secondary = hue["fill"]
-    third = _chain_step(secondary)
-    fourth = _chain_step(third)
-    return ColourRoles(primary=hue["accent"], secondary=secondary, third=third, fourth=fourth)
+    """A repo hue's four-role chain: PRIMARY/SECONDARY are no new palette,
+    both fields the hue triple already carries (`"accent"`/`"fill"`).
 
-# Fixed, never hashed (operator, 2026-07-28: "a given identity always
-# resolves to the same colour, so nothing shifts as the pane repaints" —
-# every field of `ColourRoles` is a pure function of the repo's own hue). A
-# bare lightness lerp alone would leave THIRD/FOURTH sitting in exactly
-# SECONDARY's own hue, which is what his separate ruling rules out ("dont
-# stay in he same tones... an adjacent colour tone" — not the SAME family,
-# not a disconnected one either): each link below rotates the hue by a
-# small fixed amount as well as lightening/desaturating, so successive
-# links buy contrast headroom from an adjacent hue rather than from
-# lightness alone — the tension he flagged, since each link sits closer to
-# its neighbour and the 4.5/3.0 floors get harder to clear every step.
-_CHAIN_HUE_STEP_DEGREES = 18.0
-_CHAIN_LIGHTNESS_STEP = 0.09
-_CHAIN_SATURATION_FACTOR = 0.92
+    THIRD and FOURTH used to be each one `_chain_step` further down the
+    same chain — a fixed hue rotation plus a lightening/desaturating nudge,
+    applied twice in a row from SECONDARY (an already-dark tone). Retired
+    (operator ruling, 2026-07-28, adopting Dracula: "colours are chosen
+    from a designed palette, not computed" — see the module docstring's
+    Dracula section for the measured adjacent-surface contrast that made):
+    THIRD/FOURTH are now the palette's own two neutral surface tones,
+    MUTED (Dracula COMMENT — the gutter/indent-glyph foreground) and
+    DRACULA_BASE (the deepest surface — every step row's own background),
+    fixed and never varying by repo or feature. Repo/feature identity is
+    unaffected — it is still carried by PRIMARY/SECONDARY above (unchanged
+    by this) and by each task's own jittered colour (`task_colour_base` in
+    `sidebar_colour_lineage.py`, also unchanged).
 
-def _chain_step(base: tuple[int, int, int]) -> tuple[int, int, int]:
-    """One link of the PRIMARY -> SECONDARY -> THIRD -> FOURTH -> FIFTH
-    chain: a fixed hue rotation plus a lightening/desaturating nudge (see
-    the constants above) — deterministic, same input always yields the
-    same output."""
-    h, l, s = colorsys.rgb_to_hls(*(c / 255 for c in base))
-    h = (h + _CHAIN_HUE_STEP_DEGREES / 360.0) % 1.0
-    l = min(l + _CHAIN_LIGHTNESS_STEP, 1.0)
-    s = max(s * _CHAIN_SATURATION_FACTOR, 0.0)
-    r, g, b = colorsys.hls_to_rgb(h, l, s)
-    return (round(r * 255), round(g * 255), round(b * 255))
+    FIFTH is deliberately NOT a field here: he calls it "the stage as
+    today", i.e. the existing per-TASK `open_stage_colour(content_colour_
+    base(task_colour))` value — a repo-wide dataclass has no way to carry
+    a per-task tone, and none was asked for."""
+    return ColourRoles(primary=hue["accent"], secondary=hue["fill"], third=MUTED, fourth=DRACULA_BASE)
 
-# The one open choice this step builds BOTH sides of rather than picks
-# (operator: "the axis is repository-uniform versus per-feature" — never
-# per-task): whether the THIRD/FOURTH half of the chain (task row
-# background, indent glyph, every step row background) is rooted at the
-# REPO's own SECONDARY (one chain shared by every feature under it — the
-# only behaviour that has ever existed here, and the default) or re-rooted
-# at each FEATURE's own colour (`feature_colour_base`), so sibling features
-# in the same repo get visually distinct task/step palettes. PRIMARY/
-# SECONDARY themselves never move with this switch: the header and the
-# feature row's own band stay repo-wide in both scopes — he pinned
-# SECONDARY to the feature row's existing background unconditionally, and
-# nothing about that is in play here.
-_COLOUR_SCOPE_ENV = "SIDEBAR_COLOUR_SCOPE"
-_COLOUR_SCOPE_VALUES = {"repo", "feature"}
-_COLOUR_SCOPE_DEFAULT = "repo"
-
-def _colour_scope() -> str:
-    """`repo` (default, unset, or unrecognised — same fail-open rule this
-    file uses everywhere for environment-sourced input) or `feature`."""
-    value = os.environ.get(_COLOUR_SCOPE_ENV, _COLOUR_SCOPE_DEFAULT)
-    return value if value in _COLOUR_SCOPE_VALUES else _COLOUR_SCOPE_DEFAULT
+# Retired along with `_chain_step` (operator ruling, 2026-07-28, adopting
+# Dracula): `SIDEBAR_COLOUR_SCOPE=feature` used to re-root THIRD/FOURTH at
+# each feature's own colour instead of the repo's, by running the SAME
+# computed chain from a different starting point — a way of choosing
+# between two BUILT-but-unpicked options over a mechanism that no longer
+# exists now that THIRD/FOURTH are fixed designed tones rather than
+# anything computed from a base. There is nothing left to re-root.
 
 def task_chain_roles(
     hue: dict[str, tuple[int, int, int]], feature_colour: tuple[int, int, int] | None,
 ) -> ColourRoles:
-    """THIRD/FOURTH for a task/step/indent row: `repo_colour_roles(hue)`
-    unchanged in "repo" scope (the default), or re-rooted at `feature_
-    colour` (this row's owning feature's own grade-1 colour) in "feature"
-    scope — two more `_chain_step` links from the feature's own colour,
-    the same distance SECONDARY sits from THIRD/FOURTH in the repo-scope
-    chain, so the two scopes are structurally comparable. Falls back to
-    the repo scope when a row has no feature colour to re-root on (should
-    not happen in practice — every task-bearing row carries one — but
-    never crashes if it does)."""
-    roles = repo_colour_roles(hue)
-    if _colour_scope() != "feature" or feature_colour is None:
-        return roles
-    third = _chain_step(feature_colour)
-    fourth = _chain_step(third)
-    return ColourRoles(primary=roles.primary, secondary=roles.secondary, third=third, fourth=fourth)
+    """THIRD/FOURTH for a task/step/indent row — always `repo_colour_
+    roles(hue)` (see that function's docstring: both are fixed Dracula
+    surface tones now, not a computed chain). `feature_colour` is accepted
+    but unused, kept only so every existing call site (`_draw_step_row`/
+    `_draw_identity_block`/`_draw_subagent_row`/`_open_block_bg`) stays
+    unchanged — the per-feature re-rooting this parameter used to enable
+    is retired along with `_chain_step`, its only reason to exist."""
+    return repo_colour_roles(hue)
 
 def colour_ramp_steps(
     primary: tuple[int, int, int], secondary: tuple[int, int, int], steps: int,
@@ -332,6 +348,50 @@ def ensure_contrast(
         if contrast_ratio(candidate, bg) >= min_ratio:
             return candidate
     return target
+
+# --------------------------------------------------------------------------
+# Header/feature "falling block" core text colour (operator, 2026-07-28:
+# "the project is rendered as the least readable, least emphasized text of
+# the whole sidebar... I think that the project header's text should
+# become the MOST emphasized" — the opposite of what `_muted_toward`
+# against the background used to produce). Judged by APCA, not the WCAG
+# ratio (see the Dracula section above) — but `ensure_contrast`'s own
+# WHITE-vs-BLACK extreme selection already picks the higher-APCA polarity
+# here in practice (verified against every `REPO_HUES`/`FALLBACK_HEADER_
+# HUES` accent), so no separate APCA-driven branch is needed: the higher
+# `_CONTRAST_MIN_CONTENT` floor (7.0, the same "clears comfortably at a
+# distance" tier already used for step content) is what actually pushes it
+# to the stronger extreme rather than stopping the moment 4.5 clears.
+# --------------------------------------------------------------------------
+
+def header_emphasis_colour(bg: tuple[int, int, int]) -> tuple[int, int, int]:
+    """The project header's own falling-block core text colour — run
+    through `ensure_contrast` directly (never `_muted_toward` first, which
+    is what produced the original defect: APCA near zero against a typical
+    repo accent, because the text was dimmed toward the background BEFORE
+    ever being contrast-checked)."""
+    return ensure_contrast(TEXT, bg, _CONTRAST_MIN_CONTENT)
+
+# A fixed fraction, not a re-hash or a different starting hue (operator,
+# 2026-07-28: "the feature should do exactly the same [gradient/
+# background]... maybe in a slightly different color for the font" — same
+# background family, differing only in font colour). Blending the
+# header's OWN resolved colour a small fraction toward the shared
+# background guarantees a real, visible difference from the header
+# regardless of which extreme (black/white) that background favours —
+# picking a different STARTING hue does not: `ensure_contrast` converges
+# to the exact same pure black/white once a background demands the full
+# push, which erases any "slightly different" starting point.
+_FEATURE_FONT_BLEND_TOWARD_BG = 0.22
+
+def feature_emphasis_colour(bg: tuple[int, int, int]) -> tuple[int, int, int]:
+    """The feature row's own falling-block core text colour — the header's
+    resolved colour, blended toward the (shared) background and re-clamped
+    at the PLAIN text floor (`_CONTRAST_MIN_TEXT`, not the header's higher
+    one — the header is deliberately the MORE emphasized of the two, per
+    the ruling above)."""
+    header_fg = header_emphasis_colour(bg)
+    return ensure_contrast(lerp(header_fg, bg, _FEATURE_FONT_BLEND_TOWARD_BG), bg, _CONTRAST_MIN_TEXT)
 
 # --------------------------------------------------------------------------
 # Identity line ("<doing> ⋮ <role> ⋮ <model>", NBSP-glued, model truncated)
