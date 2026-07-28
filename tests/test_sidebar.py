@@ -44,6 +44,7 @@ if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
 import sidebar  # noqa: E402
+import sidebar_curses_colour  # noqa: E402
 
 from support import make_repo  # noqa: E402
 
@@ -2207,8 +2208,12 @@ class DirectColourTests(unittest.TestCase):
             self.assertFalse(sidebar._truecolor_advertised())
 
     def test_select_display_term_upgrades_when_truecolor_and_entry_exists(self):
+        # Patched on sidebar_curses_colour, not sidebar -- `_select_display_
+        # term` is DEFINED there (module split, 2026-07-28) and resolves
+        # `_terminfo_has_direct_colour` against its OWN module globals, not
+        # whatever `sidebar` re-exports the name as.
         with mock.patch.dict(os.environ, {"COLORTERM": "truecolor"}), \
-             mock.patch.object(sidebar, "_terminfo_has_direct_colour", return_value=True):
+             mock.patch.object(sidebar_curses_colour, "_terminfo_has_direct_colour", return_value=True):
             self.assertEqual(sidebar._select_display_term("tmux-256color"), "tmux-direct")
 
     def test_select_display_term_unchanged_without_truecolor(self):
@@ -2217,7 +2222,7 @@ class DirectColourTests(unittest.TestCase):
 
     def test_select_display_term_unchanged_when_entry_missing(self):
         with mock.patch.dict(os.environ, {"COLORTERM": "truecolor"}), \
-             mock.patch.object(sidebar, "_terminfo_has_direct_colour", return_value=False):
+             mock.patch.object(sidebar_curses_colour, "_terminfo_has_direct_colour", return_value=False):
             self.assertEqual(sidebar._select_display_term("tmux-256color"), "tmux-256color")
 
 
