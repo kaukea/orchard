@@ -2701,28 +2701,48 @@ class FeatureRowContrastIsCalculatedTests(unittest.TestCase):
 
 
 class HeaderContrastIsCalculatedTests(unittest.TestCase):
-    """The project header carries a per-repo GRADIENT, so every column is a
-    different background and one contrast check for the whole row would be
-    wrong for most of it. `_draw_header` muted its title toward the band but
-    never checked the result, which left the project name -- the most
-    important label in the pane -- measuring 3.02 against its own band where
-    text wants 4.5. Measured from the bytes the terminal actually received,
-    not from reading the code."""
+    """The project header's core sits on a single, uniform PRIMARY
+    background (operator spec, 2026-07-28, superseding the earlier
+    per-column monotonic gradient), so one contrast check IS the whole
+    row's title check now -- but `_draw_header` still must not skip it.
+    `_draw_header` muted its title toward the band but never checked the
+    result, which left the project name -- the most important label in the
+    pane -- measuring 3.02 against its own band where text wants 4.5.
+    Measured from the bytes the terminal actually received, not from
+    reading the code."""
 
-    def test_title_is_legible_against_every_gradient_column(self):
-        for repo in ("orchids", "widgets", "throwy", "a-repo-with-no-assigned-hue"):
+    def test_title_is_legible_against_the_primary_core(self):
+        for repo in ("orchids", "signmc", "widgets", "throwy", "a-repo-with-no-assigned-hue"):
             hue = sidebar._repo_hue(repo)
-            width = 42
-            for col in range(width):
-                bg = sidebar.header_gradient_colour(hue, col, width)
-                fg = sidebar.ensure_contrast(
-                    sidebar._muted_toward(sidebar.HEADER_FG, bg), bg,
-                    sidebar._CONTRAST_MIN_TEXT,
-                )
-                self.assertGreaterEqual(
-                    sidebar.contrast_ratio(fg, bg), sidebar._CONTRAST_MIN_TEXT,
-                    f"{repo} header column {col}: {fg} on {bg} is not legible",
-                )
+            bg = sidebar.repo_colour_roles(hue).primary
+            fg = sidebar.ensure_contrast(
+                sidebar._muted_toward(sidebar.HEADER_FG, bg), bg,
+                sidebar._CONTRAST_MIN_TEXT,
+            )
+            self.assertGreaterEqual(
+                sidebar.contrast_ratio(fg, bg), sidebar._CONTRAST_MIN_TEXT,
+                f"{repo} header core: {fg} on {bg} is not legible",
+            )
+
+    def test_ramp_steps_tame_from_primary_to_secondary_without_restating_primary(self):
+        """`colour_ramp_steps` is the reusable primitive both the header
+        ramp and a future ownership-tracking consumer share (operator,
+        2026-07-28) -- it must taper monotonically channel-by-channel
+        TOWARD `secondary` (never overshoot, never brighten back toward a
+        highlight), never repeat `primary` itself, and land exactly on
+        `secondary` at its last step."""
+        for repo in ("orchids", "signmc"):
+            hue = sidebar._repo_hue(repo)
+            roles = sidebar.repo_colour_roles(hue)
+            steps = sidebar.colour_ramp_steps(roles.primary, roles.secondary, 6)
+            self.assertEqual(len(steps), 6)
+            self.assertEqual(steps[-1], roles.secondary)
+            self.assertNotEqual(steps[0], roles.primary)
+            distances = [
+                sum((a - b) ** 2 for a, b in zip(step, roles.secondary))
+                for step in [roles.primary] + steps
+            ]
+            self.assertEqual(distances, sorted(distances, reverse=True))
 
     def test_paused_header_is_legible_too(self):
         bg = sidebar.PAUSED_HEADER_GRAY

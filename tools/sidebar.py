@@ -106,12 +106,19 @@ mock (REPO_HUES, MODEL_TIERS, HEADER_FG/TEXT/MUTED/GREEN/GREEN_SOFT/AMBER/
 FILL_GREEN, PHASES, ROLE_EMOJI, LOCATION_BADGES, NBSP) is copied from it
 verbatim, not re-derived.
 
-The project header is a left-to-right GRADIENT (`header_gradient_colour`)
-from the repo's own exact hue (`REPO_HUES[repo]["header"]`, column 0 —
-still resolved through the direct-colour terminfo path, never approximated
-away) toward that same repo's dimmer `"fill"` hue — no new palette, the
-gradient is built purely from the triple the repo already owns. A feature
-row's full-width dimmer background band uses that same `"fill"` hue,
+The project header is a centred BLOCK (operator spec, 2026-07-28,
+superseding the earlier monotonic left-to-right gradient): a fixed-size
+core — the title, one space of padding each side — filled with the repo's
+PRIMARY colour (`repo_colour_roles(hue).primary`, i.e. `hue["accent"]`,
+still resolved through the direct-colour terminfo path, never
+approximated away), flanked by `_HEADER_RAMP_CELLS` cells of gradient EACH
+side that tame the primary down toward the SECONDARY (`hue["fill"]`),
+mirrored, with flat secondary fill beyond that to the row's edges — no new
+palette, every tone is built from the triple the repo already owns (see
+`_draw_header`). The title is never shrunk to make room for the ramp: a
+pane too narrow for the full title AND the full ramp drops the ramp
+entirely and renders a flat primary block instead. A feature row's
+full-width dimmer background band uses that same `"fill"` hue,
 unconditionally (every feature row, any status — it is what makes a feature
 visibly not a task, see `_draw_feature_row`). The accordion's ACTIVE step
 carries the KITT sweep — a bright cell with a two-column fading tail,
@@ -382,18 +389,50 @@ def _repo_hue(repo_name: str) -> dict[str, tuple[int, int, int]]:
     return _derive_fallback_hue(FALLBACK_HEADER_HUES[index])
 
 
-def header_gradient_colour(
-    hue: dict[str, tuple[int, int, int]], col: int, width: int,
-) -> tuple[int, int, int]:
-    """The header background colour at column `col` of `width` — a
-    left-to-right gradient built FROM the repo's own exact hue triple
-    (operator spec, 2026-07-26: no new palette), column 0 the exact
-    `hue["header"]` — the same RGB a direct-colour terminal must still
-    resolve — fading toward that repo's own dimmer `hue["fill"]` at the
-    far edge."""
-    if width <= 1:
-        return hue["header"]
-    return lerp(hue["header"], hue["fill"], col / (width - 1))
+# --------------------------------------------------------------------------
+# Repo colour ROLES (operator ruling, 2026-07-28: "primay -> gradient ->
+# secondary. we reuse that later for ownership tracking") — a repo hue's
+# PRIMARY (its own intense, saturated identity colour — the same
+# `hue["accent"]` `feature_colour_base` already uses as a feature's grade-1
+# base) and SECONDARY (the dimmer tone every fill/background band already
+# lands on — `hue["fill"]`), named and derived in exactly ONE place. The
+# header below is the FIRST consumer, not the owner: a later
+# ownership-tracking feature is expected to reuse this identical pair for a
+# different purpose, so nothing about deriving primary/secondary may live
+# inside `_draw_header` itself, and `colour_ramp_steps`'s step COUNT is a
+# parameter precisely so that future caller can ask for its own number of
+# steps over the same pair without this function changing.
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ColourRoles:
+    primary: tuple[int, int, int]
+    secondary: tuple[int, int, int]
+
+
+def repo_colour_roles(hue: dict[str, tuple[int, int, int]]) -> ColourRoles:
+    """A repo hue's PRIMARY/SECONDARY pair — no new palette, both are
+    fields the hue triple already carries (`"accent"`/`"fill"`)."""
+    return ColourRoles(primary=hue["accent"], secondary=hue["fill"])
+
+
+def colour_ramp_steps(
+    primary: tuple[int, int, int], secondary: tuple[int, int, int], steps: int,
+) -> list[tuple[int, int, int]]:
+    """`steps` tones taming FROM `primary` TOWARD `secondary` (operator
+    correction, 2026-07-28: "In our cse the colour step are inverted" /
+    "we dont highlight, we tame with the gradient" — interpolate OUTWARD
+    from the intense colour toward the fade colour; never derive a ramp by
+    brightening FROM the fade colour INTO a highlight, which is what a
+    literal reading of a tmux-style highlight ramp would give). Step `i`
+    (0-based) is `lerp(primary, secondary, (i + 1) / steps)`, so the LAST
+    tone lands exactly on `secondary` and `primary` itself is never
+    restated — the caller's own core block already owns that exact tone
+    verbatim. The step count is the only per-caller knob, never
+    hardcoded — see the module comment above."""
+    if steps <= 0:
+        return []
+    return [lerp(primary, secondary, (i + 1) / steps) for i in range(steps)]
 
 
 # --------------------------------------------------------------------------
@@ -1944,47 +1983,143 @@ def _safe_addch(stdscr, y: int, x: int, ch: str, attr: int) -> None:
 
 # --------------------------------------------------------------------------
 # Curses drawing — repo header
+#
+# BLOCK layout (operator spec, 2026-07-28, reproducing the operator's own
+# tmux `window-status-current-format` technique against the repo's own
+# hue): a fixed-size CORE (" TITLE ", filled with PRIMARY) sits centred in
+# the row, flanked by `_HEADER_RAMP_CELLS` gradient cells each side that
+# TAME the primary down toward SECONDARY (mirrored), with flat secondary
+# fill beyond that to the row's edges. Each ramp cell carries TWO of the
+# `_HEADER_RAMP_STEPS` interpolated tones at once via a half-block glyph
+# (`▐`/`▌`) — one tone as the glyph's foreground (the half nearer the
+# core), the other as its background (the half nearer the fill) — the same
+# trick that lets tmux's own two-cell ramp read as four steps, scaled here
+# to three cells reading as six. "No space for gradients, no gradient,
+# easy" (operator, 2026-07-28): the title is NEVER shrunk to make room for
+# the ramp — `_header_gradient_fits` is the one threshold that decides
+# ramp-or-not, computed from the title's OWN untruncated width, never the
+# reverse.
 # --------------------------------------------------------------------------
+
+_HEADER_RAMP_CELLS = 3
+_HEADER_RAMP_STEPS = _HEADER_RAMP_CELLS * 2
+_HEADER_RAMP_IN = "▐"   # left ramp (entering the core): glyph fg on the RIGHT half — nearer the core
+_HEADER_RAMP_OUT = "▌"  # right ramp (leaving the core): glyph fg on the LEFT half — nearer the core
+
+
+def _header_core_width(title: str) -> int:
+    """The core's own width — the title's cell width plus one space of
+    padding each side — computed independently of the available row width,
+    since the title is what decoration yields to, never the reverse."""
+    return _cell_width(title) + 2
+
+
+def _header_gradient_fits(title: str, width: int) -> bool:
+    """True once `width` can hold the title's own FULL core plus a FULL
+    ramp on each side. This is the one on/off switch (operator: "no space
+    for gradients, no gradient, easy") — there is no partial ramp and the
+    title is never truncated to manufacture room for one."""
+    return width >= _header_core_width(title) + 2 * _HEADER_RAMP_CELLS
+
+
+def _header_ramp_tone(
+    steps: list[tuple[int, int, int]], k: int,
+) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """(inner, outer) tones for ramp cell `k` (0 = adjacent to the core,
+    `_HEADER_RAMP_CELLS - 1` = adjacent to the flat fill) — identical
+    mapping on both sides of the core; only the glyph (and so which
+    physical half of the cell "inner" lands on) differs between them."""
+    return steps[2 * k], steps[2 * k + 1]
+
 
 def _draw_header(
     stdscr, y: int, width: int, title: str, paused: bool, selected: bool,
     colours: _ColourCache,
 ) -> None:
-    """Per-repo hue GRADIENT block (operator spec, 2026-07-26 — supersedes
-    the earlier solid fill: "centered, with a gradient", built from the
-    exact per-repo hue via `header_gradient_colour`, column 0 always the
-    exact `_repo_hue(title)["header"]` RGB so a direct-colour terminal
-    still resolves it precisely) with the centred title drawn on top,
-    thin (never bold) and never bold — STATIC, no per-frame movement.
-    PAUSED stays flat light-gray, no gradient. `selected` here means "the
-    cursor is here AND the user has actually moved it" (see `_draw`'s
-    `has_moved`/`main`'s tracking of it) — the resting first frame never
-    inverts a header merely because `selected == 0` happens to default
-    there; A_REVERSE only appears once the operator has genuinely
-    navigated. The title's "thin" look is `_muted_toward`, blended toward
-    its own column's background — never `curses.A_DIM` (see that
-    function's docstring for why).
+    """Per-repo BLOCK header (operator spec, 2026-07-28 — supersedes the
+    earlier monotonic left-to-right gradient: "brighter, intense... each
+    side a 3 cell gradient to the first fade colour, block layout like the
+    window name in the status bar", corrected same day to tame OUTWARD
+    from the intense colour rather than highlight inward — see
+    `colour_ramp_steps`). PAUSED stays flat light-gray, no gradient, exactly
+    as before. `selected` means "the cursor is here AND the user has
+    actually moved it" (see `_draw`'s `has_moved`) — A_REVERSE never
+    appears merely because `selected == 0` is the resting default.
 
-    The muted title is then run through `ensure_contrast` against its OWN
-    column's background, because the gradient means every column is a
-    different background and a single check would be wrong for most of
-    them. Muting blends the title toward its band, as intended, but never
-    past the point of being readable — the same hard rule (contrast is
-    calculated, never eyeballed) that `_draw_feature_row` and
-    `_draw_step_row` already follow. Omitting it here left the project
-    name, the most important label in the pane, measuring 3.02 against its
-    own band where text wants 4.5."""
-    hue = _repo_hue(title)
-    text = render_header_line(title, width)
+    The title's "thin" look is still `_muted_toward` (never `curses.A_DIM`,
+    see that function's docstring), run through `ensure_contrast` against
+    whatever it actually sits on (`PAUSED_HEADER_GRAY` or the primary) —
+    the fixed crossover-aware helper, never an assumed black/white or a
+    `luminance < 0.5` threshold (that was the bug, see `ensure_contrast`'s
+    own docstring). The core's background is uniform, so — unlike the old
+    per-column gradient — this is computed ONCE per row, not once per
+    column.
+
+    Both non-paused branches below reserve the row's own literal LAST
+    column for background only, via `render_header_line(title, width - 1)`
+    (never the title's own trailing glyph): `_safe_addch` blanks whatever
+    character lands on that column to a plain space, and a multi-byte
+    ellipsis landing there used to vanish silently rather than render (a
+    long repo name truncating to "orc" with no "…" at width 4) — the same
+    one-column reservation `_step_row_display_text`/`_draw_feature_row`/
+    `_draw_task_row` already make. The gradient branch does not need the
+    same reservation for its own ramp glyphs: the outermost ramp cell's
+    "outer" tone is already exactly `secondary` (`_header_ramp_tone`), so
+    if that glyph happens to land on the last column and gets blanked to a
+    plain space, what shows through is that same flat secondary tone —
+    correct, not merely harmless."""
     reverse = curses.A_REVERSE if selected else 0
-    for col in range(width):
-        bg_rgb = PAUSED_HEADER_GRAY if paused else header_gradient_colour(hue, col, width)
-        ch = text[col] if col < len(text) else " "
-        fg = HEADER_FG
-        if ch != " ":
-            fg = ensure_contrast(_muted_toward(fg, bg_rgb), bg_rgb, _CONTRAST_MIN_TEXT)
-        attr = colours.pair(fg, bg_rgb) | reverse
-        _safe_addch(stdscr, y, col, ch, attr)
+    if width <= 0:
+        return
+
+    def _draw_flat_block(bg: tuple[int, int, int]) -> None:
+        text = render_header_line(title, max(width - 1, 0))
+        fg = ensure_contrast(_muted_toward(HEADER_FG, bg), bg, _CONTRAST_MIN_TEXT)
+        attr = colours.pair(fg, bg) | reverse
+        for col in range(width):
+            ch = text[col] if col < len(text) else " "
+            _safe_addch(stdscr, y, col, ch, attr)
+
+    if paused:
+        _draw_flat_block(PAUSED_HEADER_GRAY)
+        return
+
+    hue = _repo_hue(title)
+    roles = repo_colour_roles(hue)
+    primary, secondary = roles.primary, roles.secondary
+
+    if not _header_gradient_fits(title, width):
+        _draw_flat_block(primary)
+        return
+
+    core_width = _header_core_width(title)
+    decorated_width = core_width + 2 * _HEADER_RAMP_CELLS
+    left_fill = (width - decorated_width) // 2
+    right_fill = (width - decorated_width) - left_fill
+
+    ramp = colour_ramp_steps(primary, secondary, _HEADER_RAMP_STEPS)
+    core_fg = ensure_contrast(_muted_toward(HEADER_FG, primary), primary, _CONTRAST_MIN_TEXT)
+    core_attr = colours.pair(core_fg, primary) | reverse
+    fill_attr = colours.pair(MUTED, secondary) | reverse
+
+    col = 0
+    for _ in range(left_fill):
+        _safe_addch(stdscr, y, col, " ", fill_attr)
+        col += 1
+    for k in reversed(range(_HEADER_RAMP_CELLS)):
+        inner, outer = _header_ramp_tone(ramp, k)
+        _safe_addch(stdscr, y, col, _HEADER_RAMP_IN, colours.pair(inner, outer) | reverse)
+        col += 1
+    for ch in f" {title} ":
+        _safe_addch(stdscr, y, col, ch, core_attr)
+        col += 1
+    for k in range(_HEADER_RAMP_CELLS):
+        inner, outer = _header_ramp_tone(ramp, k)
+        _safe_addch(stdscr, y, col, _HEADER_RAMP_OUT, colours.pair(inner, outer) | reverse)
+        col += 1
+    for _ in range(right_fill):
+        _safe_addch(stdscr, y, col, " ", fill_attr)
+        col += 1
 
 
 # --------------------------------------------------------------------------
