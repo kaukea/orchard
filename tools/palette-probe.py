@@ -182,8 +182,40 @@ def themes():
     print()
 
 
+
+
+def activity_line_treatments():
+    """The activity line has to be readable AND visibly a different kind of
+    thing from the stage names around it. The palette's comment tone gave the
+    second without the first; matching the body text gives the first without
+    the second. These are the ways to have both."""
+    base, night = rgb("#282a36"), rgb("#14151c")
+    body_dark, body_night = rgb("#f8f8f2"), rgb("#e8d5a8")
+    quote = ' ▌“sweeping” — landscaper'.ljust(34)
+    stage = ' ▌⠧ ʙᴜɪʟᴅɪɴɢ'.ljust(34)
+
+    def show(label, bg, body, fg, sgr=""):
+        lc = abs(apca_lc(fg, bg))
+        line = (f"\x1b[38;2;{fg[0]};{fg[1]};{fg[2]}m"
+                f"\x1b[48;2;{bg[0]};{bg[1]};{bg[2]}m{sgr}{quote}\x1b[0m")
+        above = (f"\x1b[38;2;{body[0]};{body[1]};{body[2]}m"
+                 f"\x1b[48;2;{bg[0]};{bg[1]};{bg[2]}m{stage}\x1b[0m")
+        print(f"  {label:<34} APCA {lc:5.1f}\n    {above}\n    {line}\n")
+
+    for name, bg, body, accent in (
+            ("DARK", base, body_dark, rgb("#8be9fd")),
+            ("NIGHT", night, body_night, _dim(rgb("#8be9fd"), 0.72))):
+        print(f"\n\x1b[1m{name}\x1b[0m — stage row above, activity line below\n")
+        show("1. same as body (today)", bg, body, body)
+        show("2. same colour, italic", bg, body, body, "\x1b[3m")
+        show("3. a different hue", bg, body, accent)
+        show("4. different hue, italic", bg, body, accent, "\x1b[3m")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "themes":
         themes()
+    elif len(sys.argv) > 1 and sys.argv[1] == "activity":
+        activity_line_treatments()
     else:
         main()
