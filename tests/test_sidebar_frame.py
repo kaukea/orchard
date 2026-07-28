@@ -348,17 +348,21 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         lines = self._capture_when_ready()
         stripped = [_strip_sgr(line) for line in lines]
 
-        # The header row is a FULL-WIDTH BLOCK (operator spec, 2026-07-28,
-        # restated same day: "the gradient cells to reach the sides of the
-        # pane"): the ramp cells sit flush against BOTH pane edges -- no
-        # leading/trailing space of flat fill any more -- with the title's
-        # padded core filling whatever is left between them. This pane is
-        # wide enough (PANE_WIDTH=60) for the default variant's full ramp.
+        # The header row is a FALLING BLOCK (operator spec, 2026-07-28,
+        # superseding the earlier symmetric two/three-cell ramp reaching
+        # BOTH pane edges: "the gradient should only be on the left...
+        # falling towards the end of the screen"): the title's own core
+        # sits solid at column 0, falling away toward SECONDARY over the
+        # rest of the row via the eighth-resolution block ladder. This
+        # pane is wide enough (PANE_WIDTH=60) for the fade to actually
+        # show.
         header_idx = next(i for i, l in enumerate(stripped) if "orchids" in l)
         self.assertTrue(_has_any_bg(lines[header_idx]))
-        self.assertTrue(stripped[header_idx].startswith(sidebar._HEADER_RAMP_IN))
-        self.assertIn(sidebar._HEADER_RAMP_IN, stripped[header_idx])
-        self.assertIn(sidebar._HEADER_RAMP_OUT, stripped[header_idx])
+        self.assertTrue(stripped[header_idx].startswith(" orchids"))
+        self.assertTrue(
+            any(ch in stripped[header_idx] for ch in sidebar._LEFT_EIGHTHS[1:-1]),
+            f"no fade glyph found in the header row: {stripped[header_idx]!r}",
+        )
 
         done_idx = next(
             i for i, l in enumerate(stripped)
@@ -367,9 +371,15 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         self.assertTrue(_has_fg(lines[done_idx], sidebar.GREEN)
                          or _has_fg(lines[done_idx], sidebar.GREEN_SOFT))
 
+        # The "working" feature row's own glyph now CYCLES through
+        # `SPINNER_FRAMES` by tick (operator ruling, 2026-07-28: "the
+        # spinner doesn't spin" — it was frozen on a single fixed frame
+        # everywhere `STATUS_EMOJI["working"]` was drawn) rather than
+        # staying statically "⠧" — any spinner frame is a valid capture,
+        # never just that one.
         working_idx = next(
             i for i, l in enumerate(stripped)
-            if "⠧" in l and "sidebar titling" in l
+            if any(f in l for f in sidebar.SPINNER_FRAMES) and "sidebar titling" in l
         )
         self.assertLess(done_idx, working_idx)
         self.assertTrue(_has_any_bg(lines[working_idx]))

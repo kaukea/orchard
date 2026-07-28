@@ -11,7 +11,12 @@ from dataclasses import dataclass, field
 
 from sidebar_colour import _repo_hue  # noqa: E402
 from sidebar_colour_lineage import feature_colour_base, task_colour_base  # noqa: E402
-from sidebar_glyphs import TARGET_SEPARATOR, _ACCORDION_STEP_GLYPH, _PROGRESS_CIRCLES  # noqa: E402
+from sidebar_glyphs import (  # noqa: E402
+    FEATURE_MARKER,
+    TARGET_SEPARATOR,
+    _ACCORDION_STEP_GLYPH,
+    _PROGRESS_CIRCLES,
+)
 from sidebar_text import small_caps  # noqa: E402
 from sidebar_model import (  # noqa: E402
     TERMINAL_TASK_STATUSES,
@@ -208,54 +213,51 @@ def _assign_task_colours(
     return assigned
 
 
-def _sole_same_named_task(feature: Feature) -> Task | None:
-    """The feature's one task, when it is the ONLY task and shares the
-    feature's exact name — the case a name-drop applies to (sidebar-
-    teamwork defect 4: with one task of the same name, the feature's own
-    band and the task row directly beneath it repeated the identical
-    string). None otherwise, including when the feature simply has no
-    tasks yet."""
-    if len(feature.tasks) == 1 and feature.tasks[0].name == feature.name:
-        return feature.tasks[0]
-    return None
+def _feature_display_label(feature: Feature) -> str:
+    """The feature row's own displayed text (operator, 2026-07-28: "so
+    🧩/<human feature name>" — U+1F9E9 JIGSAW PUZZLE PIECE, then a literal
+    "/", then the feature's own name). `feature.name` already resolves
+    through `_identity_task_keys`'s precedence (explicit `identity.
+    feature_name`, then the middle segment of an `f/<feature>/<task>`
+    identifier) down to `_finalize_feature`'s own existing honest fallback
+    — the bare `feature_id` — when NEITHER is available. That bare-
+    fallback case is told apart here by `feature.name == feature.
+    feature_id` (true only when nothing was ever resolved) and rendered
+    WITHOUT the marker: prefixing a raw internal identifier with "the
+    marker for a human name" would itself be an invented claim that a real
+    name exists. Chosen and reported, not decided silently."""
+    if feature.name == feature.feature_id:
+        return feature.name
+    return f"{FEATURE_MARKER}/{feature.name}"
 
 
 def _feature_rows(feature: Feature, repo_name: str, depth: int) -> list[Row]:
+    """A feature's own row, followed by each of its open tasks (each a
+    genuinely DIFFERENT segment of the same `f/<feature>/<task>` identifier
+    where that shape is available — `_identity_task_keys` in sidebar_model.
+    py resolves the feature row's own name and each task's own name from
+    different segments of it, so the two rows carry different text by
+    construction; there is no longer a name to drop or blank (the retired
+    `_sole_same_named_task`/name-drop rule this replaced existed only to
+    paper over the two rows showing the identical borrowed string)."""
     target = f"{repo_name}{TARGET_SEPARATOR}{feature.name}"
-    rows = [Row(depth=depth, kind="feature", target=target, label=feature.name,
+    rows = [Row(depth=depth, kind="feature", target=target, label=_feature_display_label(feature),
                  status=feature.status, repo_name=repo_name)]
     if _feature_collapsed(feature):
         return rows
     hue = _repo_hue(repo_name)
     task_colours = _assign_task_colours(hue, feature.feature_id, feature.tasks)
     # This feature's own grade-1 colour — computed once here (mirrors `task_
-    # colours` above) and threaded onto every row below so `task_chain_
-    # roles` can re-root the THIRD/FOURTH chain on it when `SIDEBAR_COLOUR_
-    # SCOPE=feature`; unused (but harmless to carry) in the default "repo"
-    # scope.
+    # colours` above) and threaded onto every row below via `Row.feature_
+    # colour`. `task_chain_roles` no longer re-roots THIRD/FOURTH on it
+    # (that mechanism was retired along with `_chain_step` — Dracula
+    # adoption, 2026-07-28: THIRD/FOURTH are fixed designed tones now, not
+    # a computed chain), but the field is harmless to keep threading.
     feature_colour = feature_colour_base(hue, feature.feature_id)
-    dropped_name_task = _sole_same_named_task(feature)
     for task in feature.tasks:
-        task_rows = _task_rows(task, target, depth + 1,
+        rows.extend(_task_rows(task, target, depth + 1,
                                 task_colour=task_colours.get(task.task_id),
-                                feature_colour=feature_colour)
-        if task is dropped_name_task:
-            # NAME-DROP, not a row-drop (Decision-106: nothing is hidden
-            # except by the two collapses) — the task row still carries
-            # its own glyph, progress circle and accordion; only the
-            # string identical to the feature's own name above it drops.
-            #
-            # sidebar-teamwork defect (c): dropping straight to "" left a
-            # row with a marker, a status glyph and nothing else -- the
-            # feature band above already carries the shared name (it has
-            # nothing else to show, and stays real per operator ruling even
-            # unpopulated), so it keeps the name; this row falls back to
-            # its own status word instead of going blank, which is real,
-            # own information (Decision-098: the task is what persists and
-            # carries the terminal state) and never a repeat of the string
-            # already on the band above.
-            task_rows[0].label = task.status.replace("_", " ")
-        rows.extend(task_rows)
+                                feature_colour=feature_colour))
     return rows
 
 

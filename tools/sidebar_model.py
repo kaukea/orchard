@@ -915,18 +915,54 @@ def _agent_key_sort(key: AgentKey) -> tuple[str, str, str]:
     return sid, parent or "", agent_name or ""
 
 
-def _identity_task_keys(identity: dict, label: str | None, sid: str) -> tuple[str, str, str, str]:
+_FEATURE_TASK_ID_RE = re.compile(r"^f/([^/]+)/([^/]+)$")
+
+
+def _split_feature_task_id(task_id: str) -> tuple[str, str] | None:
+    """(feature segment, task segment) when `task_id` has the `f/<feature>/
+    <task>` shape a task identifier carries going forward (operator,
+    2026-07-28: "we make the feature name the prefix of the task name
+    moving forward, so f/sidebar/themes"); None for anything else —
+    including today's own branch, a single segment (`f/sidebar-teamwork`)
+    — DEGRADE HONESTLY, never invent a split that isn't there."""
+    match = _FEATURE_TASK_ID_RE.match(task_id)
+    return (match.group(1), match.group(2)) if match else None
+
+
+def _identity_task_keys(
+    identity: dict, label: str | None, sid: str,
+) -> tuple[str, str | None, str, str]:
     """(feature_id, feature_name, task_id, task_name) from an agent's
-    identity block, defaulting per the DATA CONTRACT (2026-07-26): `task`
-    absent -> the feature id; `task_name` absent -> the feature name.
-    `feature`/`feature_name` themselves fall back to the announced label,
-    then the bare session id — a session with events always lands
-    somewhere (operator ruling, 2026-07-26), even with no identity at all
-    (the gardener's own root session, notably, posts none)."""
+    identity block. `feature`/`task` themselves still fall back to the
+    announced label, then the bare session id (a session with events
+    always lands somewhere, operator ruling 2026-07-26) — those are
+    internal KEYS, not displayed names, so a session/label standing in for
+    a missing one is not an invented name.
+
+    `feature_name` is NEVER a borrowed label/session id any more (operator
+    ruling, 2026-07-28, correcting a prior report that no feature-level
+    name existed at all: `identity.feature_name` is the authored human
+    name and already rides the wire — the renderer previously discarded it
+    and fell through to a borrowed label instead, which is why the wrong
+    text showed). Precedence: the explicit `feature_name` (or its `name`
+    alias, kept for a reader on the older shape) wins outright; failing
+    that, the middle segment of a `task_id` with the `f/<feature>/<task>`
+    shape; failing THAT, None — nothing invented, left for the caller
+    (`_finalize_feature`) to fall back to the bare `feature_id`, its own
+    existing honest degradation.
+
+    `task_name` follows the same shape-derived option (the LAST segment)
+    ahead of the old blind reuse of `feature_name`, falling back to
+    `task_id` itself only if truly nothing else is available (Task.name is
+    never None)."""
     feature_id = identity.get("feature") or label or sid
-    feature_name = identity.get("feature_name") or identity.get("name") or label or sid
     task_id = identity.get("task") or feature_id
-    task_name = identity.get("task_name") or feature_name
+    split = _split_feature_task_id(task_id)
+    feature_name = (
+        identity.get("feature_name") or identity.get("name")
+        or (split[0] if split else None)
+    )
+    task_name = identity.get("task_name") or (split[1] if split else None) or feature_name or task_id
     return feature_id, feature_name, task_id, task_name
 
 

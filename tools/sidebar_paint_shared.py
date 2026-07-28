@@ -139,14 +139,20 @@ def falling_block_core_width(text: str) -> int:
 def _falling_block_core_text(text: str, core_width: int) -> str:
     """`text`, LEFT-aligned (not centred — the core anchors the pane's left
     edge, operator: "fold on the left"), padded with one space each side,
-    truncated with an ellipsis if `core_width` can't hold it whole."""
+    truncated with an ellipsis if `core_width` can't hold it whole. The
+    result's own CELL width (`_cell_width`, not `len()`) is exactly
+    `core_width` by construction — `shown` is already cell-bounded by
+    `_truncate` and `pad` is computed in cells, so nothing here ever slices
+    the result by CHARACTER count (a wide glyph, e.g. the feature row's own
+    "❌"/"🧩", is one character but two cells — character-slicing a string
+    that contains one is exactly what corrupted this row before, see
+    `_draw_falling_block_row`'s own note)."""
     if core_width <= 0:
         return ""
     inner_width = max(core_width - 2 * _FALLING_BLOCK_PAD, 0)
     shown = _truncate(text, inner_width)
     pad = max(inner_width - _cell_width(shown), 0)
-    body = (" " * _FALLING_BLOCK_PAD) + shown + (" " * pad) + (" " * _FALLING_BLOCK_PAD)
-    return body[:core_width]
+    return (" " * _FALLING_BLOCK_PAD) + shown + (" " * pad) + (" " * _FALLING_BLOCK_PAD)
 
 
 def falling_block_fade_colours(
@@ -187,15 +193,33 @@ def _draw_falling_block_row(
     fade_colours` fade to `secondary` filling the rest of `width`. Every
     column gets an explicit `colours.pair(fg, bg)` — no column is ever left
     to inherit whatever a previous row painted (the correctness half of
-    this redesign, not just its look)."""
+    this redesign, not just its look).
+
+    `core_text`'s CHARACTER index and its terminal COLUMN are the same
+    number only when every character drawn so far was one cell wide — the
+    feature row's own content routinely isn't (`❌`/`🧩` are both two-cell,
+    East-Asian-Wide glyphs). Advancing the draw column by each character's
+    OWN `_cell_width` (rather than by one) is the same fix `_draw_feature_
+    row` already needed for exactly this reason before this redesign
+    (sidebar-teamwork, live pane capture, 2026-07-28) — found again here
+    the same way: a real capture at width 37 showed a stray "l" (the next
+    row's own leading letter) appended past the core, from this loop
+    writing a two-cell glyph at column `i` and then advancing by one
+    instead of two, silently drifting every column after it."""
     if width <= 0:
         return
     core_width = min(falling_block_core_width(text), width)
     core_text = _falling_block_core_text(text, core_width)
     core_attr = colours.pair(text_fg, primary) | extra_attr
-    for i in range(core_width):
-        ch = core_text[i] if i < len(core_text) else " "
-        _safe_addch(stdscr, y, i, ch, core_attr)
+    col = 0
+    for ch in core_text:
+        if col >= core_width:
+            break
+        _safe_addch(stdscr, y, col, ch, core_attr)
+        col += _cell_width(ch)
+    while col < core_width:
+        _safe_addch(stdscr, y, col, " ", core_attr)
+        col += 1
     fade_width = width - core_width
     for i, (ch, fg, bg) in enumerate(falling_block_fade_colours(primary, secondary, fade_width)):
         _safe_addch(stdscr, y, core_width + i, ch, colours.pair(fg, bg) | extra_attr)

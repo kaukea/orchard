@@ -18,7 +18,6 @@ from sidebar_colour import (  # noqa: E402
     _CONTRAST_MIN_TEXT,
     ensure_contrast,
 )
-from sidebar_colour_lineage import feature_colour_base  # noqa: E402
 from sidebar_curses_colour import _ColourCache, _safe_addch, _safe_addstr  # noqa: E402
 from sidebar_glyphs import SPINNER_FRAMES, STATUS_EMOJI  # noqa: E402
 from sidebar_paint_shared import _selection_highlight  # noqa: E402
@@ -90,8 +89,20 @@ def _draw_task_row(
     defect 4) rather than `curses.A_REVERSE` — every foreground below is
     already run through `ensure_contrast` against `bg`, so substituting the
     lifted background before those calls keeps the guarantee
-    automatically."""
-    bg = row.task_colour or feature_colour_base(hue)
+    automatically.
+
+    A TERMINAL task carries no `task_colour` of its own (`_assign_task_
+    colours` skips it — its slot is simply freed for reuse, operator
+    ruling 2026-07-26); this row's own fallback for that case is `hue
+    ["fill"]` (SECONDARY), never `hue["accent"]` (PRIMARY) — found here:
+    PRIMARY is now the header/feature row's own shared falling-block
+    background (this step's Dracula/falling-block redesign), so a terminal
+    task falling back to it would paint the EXACT SAME colour as its own
+    feature row immediately above, reading as one merged band rather than
+    two rows. SECONDARY was already the feature row's OWN background before
+    this step and is unused by any row again now, so it is free to be this
+    row's own distinct fallback tone instead."""
+    bg = row.task_colour or hue["fill"]
     if selected:
         bg = _selection_highlight(bg)
     attr_extra = curses.A_BOLD if selected else 0

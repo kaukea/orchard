@@ -1417,22 +1417,20 @@ class FlattenTests(unittest.TestCase):
             ["b-done", "d-done", "a-working", "c-idle"],
         )
 
-    def test_sole_same_named_task_shows_its_status_rather_than_nothing(self):
-        # A feature with exactly one task of the SAME name used to repeat the
-        # identical string on both rows. Decision-106 forbids hiding either row
-        # ("nothing is ever hidden except by the two collapses"), so the fix was
-        # a NAME-DROP rather than a row-drop -- and this test asserted the task
-        # row's label became the empty string.
-        #
-        # The operator judged that on screen on 2026-07-28 and it was wrong: an
-        # empty label left a row carrying a marker, a status glyph and a
-        # progress circle with nothing to READ. Not repeating the feature's
-        # string is right; having nothing of its own to say is not. The task row
-        # now falls back to its own status word, which is real information the
-        # feature band above it does not already carry.
-        #
-        # This test previously asserted the blank, so it locked in the defect
-        # and passed while the screen was wrong.
+    def test_name_drop_rule_is_retired(self):
+        # A feature and its sole task sharing the identical NAME used to
+        # trigger a NAME-DROP (the task row fell back to its own status
+        # word instead of repeating the string). Retired (operator,
+        # 2026-07-28: "neither are correct" -- rejecting both the blank and
+        # the status-word drafts): the actual fix is upstream, in
+        # `_identity_task_keys` deriving genuinely different feature/task
+        # names from `identity.feature_name` or an `f/<feature>/<task>`
+        # identifier's own segments, so the two rows carry different text
+        # BY CONSTRUCTION rather than by a downstream patch. This test
+        # builds the model directly (bypassing that upstream resolution,
+        # same as a real Feature/Task pair that happens to share a name)
+        # to confirm the rows now show their own labels PLAINLY, with no
+        # special-casing left in `sidebar_rows.py`.
         task = sidebar.Task(task_id="t", name="Close family fakes", status="working",
                              steps=[sidebar.Step(name="building", state="active")])
         feature = sidebar.Feature(feature_id="f", name="Close family fakes",
@@ -1444,10 +1442,8 @@ class FlattenTests(unittest.TestCase):
         rows = sidebar.flatten(fleet)
         feature_row = next(r for r in rows if r.kind == "feature")
         task_row = next(r for r in rows if r.kind == "task")
-        self.assertEqual(feature_row.label, "Close family fakes")
-        self.assertEqual(task_row.label, "working")
-        self.assertNotEqual(task_row.label, feature_row.label)
-        self.assertTrue(task_row.label.strip())
+        self.assertEqual(feature_row.label, "🧩/Close family fakes")
+        self.assertEqual(task_row.label, "Close family fakes")
         # the row itself, its progress circle and its accordion are all
         # still there -- only the redundant string is gone.
         self.assertIsNotNone(task_row.progress_glyph)

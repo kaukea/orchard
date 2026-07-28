@@ -370,9 +370,18 @@ class SidebarGeometrySweepTests(unittest.TestCase):
                     return i
             return None
 
-        alpha_idx = find("ALPHA")
-        bravo_idx = find("BRAVO")
-        charlie_idx = find("CHARLIE")
+        # Shortened to the first 3 letters, not the full word: the feature
+        # row's own identity marker (operator, 2026-07-28 — "🧩/<feature
+        # name>", 3 cells of chrome before the name even starts, "count it
+        # as three, not two") now eats into the same truncation budget the
+        # name itself used to have exclusively, so at this sweep's own
+        # narrowest width (12x24, "far below any width this renderer has
+        # ever been judged at") the full word no longer survives -- 3
+        # letters reliably do, here and at every wider geometry this sweep
+        # covers.
+        alpha_idx = find("ALP")
+        bravo_idx = find("BRA")
+        charlie_idx = find("CHA")
 
         if alpha_idx is None:
             fail("visibility", "ALPHA feature row not found at all")
