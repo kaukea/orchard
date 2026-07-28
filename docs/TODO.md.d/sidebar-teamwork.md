@@ -630,6 +630,21 @@ Each was found during this feature and is out of its scope. None is fixed here.
     arrive on messages, so the signal exists. What does not exist is a safe way for an agent
     to compute over it by hand.
 
+11. **THE FEATURE LEVEL HAS NO NAME OF ITS OWN, BECAUSE THE WORKFLOW NEVER FILLS ONE IN.**
+    Operator, 2026-07-28, looking at the feature row on his own pane: *"the content right
+    now is the content of the task name, and it's not the right one either ... It has no
+    content of its own because we haven't filled it in from the workflow correctly."*
+
+    So the row a feature occupies is currently borrowing a task's name, and not even the
+    right task's. This is not a renderer defect — the renderer can only draw what reaches
+    it — and it is not fixable inside this round: the feature level is real by his ruling
+    but is *"just not in the workflow yet"*, so nothing upstream ever authors a feature
+    name for the renderer to read.
+
+    Consequence worth stating plainly for whoever picks this up: every design decision
+    about the feature row is being taken against placeholder content. The row's appearance
+    can be settled now; what it says cannot.
+
 ## Operator requests
 
 Ledger of everything the operator asked for during this feature, as received.
