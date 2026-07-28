@@ -2251,17 +2251,28 @@ def _draw_feature_row(
     if selected:
         fill_rgb = _selection_highlight(fill_rgb)
     styles = _feature_row_cell_styles(layout, status, hue["accent"], fill_rgb)
+    # Same tail treatment `_feature_row_cell_styles` already gives its OWN
+    # `tail_colour` (`_muted_toward(MUTED, fill_rgb)`, then `ensure_contrast`
+    # against the mark floor) -- this is the row's SEPARATE, redundant fill
+    # for columns `_feature_row_cell_styles` never laid out at all (past its
+    # returned `styles`, and past the composed text out to the pane edge).
+    # Left uncontrasted, both fallbacks measured 2.62 resting / 1.36 selected
+    # against `FILL_GREEN` (sidebar-teamwork contrast bug, 2026-07-28,
+    # captured off real emitted bytes) -- `d249908`'s sweep never saw this
+    # because it never covered a column `_feature_row_cell_styles` doesn't
+    # itself return a colour for.
+    beyond_styles_colour = ensure_contrast(_muted_toward(MUTED, fill_rgb), fill_rgb, _CONTRAST_MIN_MARK)
 
     attr_extra = curses.A_BOLD if selected else 0
     for col, ch in enumerate(text[:width]):
-        fg = styles[col] if col < len(styles) else _muted_toward(MUTED, fill_rgb)
+        fg = styles[col] if col < len(styles) else beyond_styles_colour
         attr = colours.pair(fg, fill_rgb) | attr_extra
         _safe_addch(stdscr, y, col, ch, attr)
     # The band covers the FULL row width, including any trailing columns
     # past the composed text (name shorter than the pane) — a feature row
     # reads as a solid band, not a highlighted word.
     for col in range(len(text), width):
-        _safe_addch(stdscr, y, col, " ", colours.pair(_muted_toward(MUTED, fill_rgb), fill_rgb) | attr_extra)
+        _safe_addch(stdscr, y, col, " ", colours.pair(beyond_styles_colour, fill_rgb) | attr_extra)
 
 
 # --------------------------------------------------------------------------
