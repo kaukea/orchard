@@ -144,8 +144,11 @@ def mock_sidebar(title, base, line, fg, accents, width=34):
         rows.append((line, fg, f" ▌ working".ljust(width)))
         for step, mark in (("ɪᴅᴇᴀᴛɪᴏɴ", "✓"), ("ʙᴜɪʟᴅɪɴɢ", "⠧")):
             rows.append((base, fg, f" ▌{mark} {step}".ljust(width)))
-        rows.append((base, accents["comment"],
-                     ' ▌“sweeping” — landscaper'.ljust(width)))
+        # NOT the palette's comment colour: that tone is designed to recede
+        # in an editor, and the activity line is the most live thing on the
+        # pane. Measured at APCA 32.5 on the dark base and 14.6 dimmed, i.e.
+        # half of readable and then invisible.
+        rows.append((base, fg, ' ▌“sweeping” — landscaper'.ljust(width)))
     out = [f"\x1b[1m{title}\x1b[0m"]
     for bg, f, text in rows:
         out.append("  " + swatch(f, bg, text))
@@ -154,9 +157,14 @@ def mock_sidebar(title, base, line, fg, accents, width=34):
 
 def themes():
     base = {k: rgb(v) for k, v in DRACULA.items()}
+    # Dim the surfaces and the accents, NOT the text. A uniform dim drags the
+    # foreground down with everything else, which is how a night theme quietly
+    # becomes unreadable: the foreground fell to APCA 63 while the accents it
+    # sat on were still comfortable.
     night = {k: _dim(v, 0.62) for k, v in base.items()}
     night["base"] = rgb("#14151c")
     night["line"] = _dim(base["line"], 0.66)
+    night["fg"] = _dim(base["fg"], 0.94)
     a = mock_sidebar("DARK — Dracula as published", base["base"], base["line"],
                      base["fg"], base)
     b = mock_sidebar("NIGHT — dimmed for working in the dark", night["base"],
