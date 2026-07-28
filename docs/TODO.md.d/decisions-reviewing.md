@@ -40,14 +40,15 @@ dependency, no capability gap, no other task holds it.
    the register must survive, not the checklist to run against it. See `## Proposal`,
    second axis. Prose quality is not part of this task.
 
-4. **Is the output a document, or tooling, or both?** A one-off review produces a
-   findings document that is stale the moment the next decision is appended. Parts
-   of the work are mechanical and could become a lint that keeps the register honest
-   forever: the conformance checks certainly, and — now that provenance is an axis —
-   the authorship and circumstance of every entry too, since both are recoverable
-   from git without judgement. *Recommendation: the mechanically derivable parts
-   become a lint, the judgement parts stay a document, because only one of the two
-   can be automated honestly.*
+4. ~~Is the output a document, or tooling, or both?~~ **ANSWERED — a findings
+   document only, and no lint.** The operator's reason matters more than the answer:
+   he intends to *"change the structure of decisions completely to avoid any
+   recurrence"*. Building a lint against the current structure would be building
+   tooling for a format that is about to be replaced. This audit is therefore an
+   INPUT to that restructure — it establishes what is actually in the register and
+   where each entry came from, so the new structure is designed against the real
+   contents rather than against an assumption about them. The restructure itself is
+   a separate task, `decisions-restructuring`.
 
 ## Findings
 
@@ -162,15 +163,23 @@ mechanical, per Question 2.
 
 ## Testing
 
-To be agreed with the operator before the build, and shaped by the answer to Question 4.
+The deliverable is a judgement document, so the test is the operator reading it against
+the register. That has to be stated plainly rather than dressed up: no automated check
+can confirm that a verdict on an entry's legitimacy is correct, and claiming otherwise
+would be exactly the kind of false assurance this task exists to find.
 
-If the conformance half becomes a lint, its test is mechanical and unambiguous: the lint
-runs over the current register and its findings are checked by hand against a sample of
-entries chosen by the operator, including at least one known-good entry and several of
-the eleven that are missing a timestamp. A lint that reports a defect where there is
-none, or misses one that is there, fails.
+What CAN be checked mechanically, and must be, before it reaches him:
 
-If the output is a findings document, the test is the operator reading it against the
-register — the honest method for a judgement deliverable, and the one that has to be
-agreed rather than asserted, since no automated check can confirm that a review of
-content is correct.
+- **Coverage is total.** All 117 entries appear in the findings, none skipped. A count
+  against the register proves it.
+- **Every provenance claim resolves.** Each entry's stated author, commit, branch and
+  feature is checkable against git; a spot-check of entries chosen by the operator must
+  match. A provenance table that is itself unreliable would be the same failure one
+  level up.
+- **Every verdict cites its evidence.** No entry is called inference, over-generalised,
+  or misplaced without a pointer to what makes it so — the commit, the absence of any
+  recorded question, the contradicting entry. A verdict with no evidence is an opinion
+  wearing an audit's clothes.
+
+The operator then reads the findings. The sample he checks is his to choose, and the
+review must not pre-select it.
