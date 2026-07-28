@@ -2783,6 +2783,23 @@ if __name__ == "__main__":
     if "--dump" in sys.argv[1:]:
         sys.exit(_run_dump())
     os.environ["TERM"] = _select_display_term(os.environ.get("TERM", ""))
+    # `LINES`/`COLUMNS`, when present in the environment, are what ncurses
+    # consults FIRST for the screen size -- ahead of the real pty geometry
+    # -- so a shell that exported them once (bash's own `checkwinsize`,
+    # `/etc/bash.bashrc`, does this for every interactive shell) freezes
+    # this process at whatever size the pane happened to be at launch.
+    # Confirmed the hard way: after a real resize, `curses.update_lines_
+    # cols()`/`resizeterm()` kept recomputing the SAME stale launch-time
+    # size forever, because they were reading these two variables rather
+    # than the pty's live `TIOCGWINSZ` -- the renderer kept drawing at the
+    # old width while tmux's own pane grid silently cropped the output to
+    # the new, narrower one, which is indistinguishable on screen from a
+    # truncation bug (no ellipsis, cut exactly at the new edge) but has
+    # nothing to do with the truncation rule itself. Dropping both here,
+    # once, before curses ever starts, is what every KEY_RESIZE afterward
+    # needs to actually see the terminal's real size.
+    os.environ.pop("LINES", None)
+    os.environ.pop("COLUMNS", None)
     if "--once" in sys.argv[1:]:
         sys.exit(_run_once())
     curses.wrapper(main)
