@@ -2387,65 +2387,39 @@ class StepRowMarkAlignmentTests(unittest.TestCase):
         self.assertEqual(len(text), width)
 
 
-class TaskColourExclusivityTests(unittest.TestCase):
-    """sidebar-empty-rows step 7 / operator colour-lineage spec, 2026-07-26:
-    a terminal subagent's own done/failed colour always wins over the
-    generic block tint -- the exclusivity rule now lives in
-    `_SUBAGENT_TERMINAL_FG` rather than a curses colour-pair id, since a
-    subagent row's real background is now the RGB open-block colour
-    (`_open_block_bg`), painted through `_ColourCache` -- which needs a
-    real initscr()'d terminal, so exact curses attrs are asserted by the
-    tmux frame tests (test_sidebar_frame.py) instead; this class covers
-    the exclusivity DECISION as a pure function."""
-
-    def test_done_and_failed_subagent_colours_are_distinct(self):
-        self.assertNotEqual(sidebar._SUBAGENT_TERMINAL_FG["done"],
-                             sidebar._SUBAGENT_TERMINAL_FG["failed"])
-
-    def test_done_subagent_uses_the_done_task_colour(self):
-        self.assertEqual(sidebar._SUBAGENT_TERMINAL_FG["done"], sidebar.GREEN)
-
-    def test_working_subagent_has_no_terminal_override(self):
-        # a live (scheduled/doing) subagent falls through to the generic
-        # TEXT colour, not done's green nor failed's muted -- it hasn't
-        # reached either terminal state.
-        self.assertNotIn("working", sidebar._SUBAGENT_TERMINAL_FG)
-        self.assertNotIn("scheduled", sidebar._SUBAGENT_TERMINAL_FG)
-        self.assertNotIn("doing", sidebar._SUBAGENT_TERMINAL_FG)
-
-
 class OpenBlockColourTests(unittest.TestCase):
-    """`_open_block_bg` -- the subdued background an agent/subagent row
-    nested under an OPEN step shares with that step's own line (operator
-    ruling, 2026-07-26, colour direction corrected 2026-07-27: "the whole
-    open region... shares that [subdued] background... as one contiguous
-    block" -- LIGHTER than the section title it sits under, never darker;
-    "dimmer" throughout this feature's spec meant subdued (lighter, less
-    saturated, or a harmonising hue), never darker toward black -- the
-    darker reading was an earlier agent inference, not the operator's)."""
+    """`_open_block_bg` -- the open step's own block background an agent/
+    subagent row shares with that step's own title line: the SAME FOURTH
+    tone (`task_chain_roles(hue, row.feature_colour).fourth`), not a
+    separately-derived tone of its own (operator ruling, 2026-07-28: "the
+    background colour of the currently active items inside a stage is the
+    same colour as the titles of the stages themselves... to avoid having
+    colours just bleeding everywhere" -- supersedes the 2026-07-26/27
+    FIFTH-toned `open_stage_colour(content_colour_base(...))` reading,
+    which stays defined and tested below via `open_stage_colour` directly
+    since it has no live caller left but is not deleted)."""
 
     def test_none_task_colour_yields_no_block_background(self):
         row = sidebar.Row(depth=4, kind="agent", target="t", label="x", status="working",
                            task_colour=None)
-        self.assertIsNone(sidebar._open_block_bg(row))
+        hue = sidebar._repo_hue("orchids")
+        self.assertIsNone(sidebar._open_block_bg(row, hue))
 
-    def test_task_colour_yields_a_block_background_lighter_than_its_section_title(self):
+    def test_task_colour_yields_the_same_fourth_tone_as_the_step_title(self):
         task_colour = (0xAC, 0x88, 0xD6)
         row = sidebar.Row(depth=4, kind="agent", target="t", label="x", status="working",
-                           task_colour=task_colour)
-        bg = sidebar._open_block_bg(row)
+                           task_colour=task_colour, feature_colour=None)
+        hue = sidebar._repo_hue("orchids")
+        bg = sidebar._open_block_bg(row, hue)
         self.assertIsNotNone(bg)
-        # LIGHTER than the flat (non-open) content colour a collapsed step
-        # uses for its own title -- a child reads as visibly DERIVED from
-        # (lighter than) its parent, never reverting to a darker or plain
-        # background (operator ruling, 2026-07-27, supersedes the earlier
-        # "dimmer means darker" reading).
-        content = sidebar.content_colour_base(task_colour)
-        self.assertGreater(sidebar.relative_luminance(bg), sidebar.relative_luminance(content))
-        # still distinct from raw white/the plain background -- a findable
-        # bounding box, not a wash-out (operator ruling, 2026-07-26: "a dim
-        # so subtle it cannot be located defeats the entire purpose").
-        self.assertLess(sidebar.relative_luminance(bg), sidebar.relative_luminance(sidebar.WHITE))
+        # ONE tone, not a separately-derived one -- the exact FOURTH a step
+        # row's own title paints itself on (`_draw_step_row`), so an agent/
+        # subagent row nested under an open step reads as part of the SAME
+        # block as the step's own line, never a lighter or darker relative
+        # of it (operator ruling, 2026-07-28, supersedes the earlier
+        # "lighter than its section title" reading).
+        roles = sidebar.task_chain_roles(hue, row.feature_colour)
+        self.assertEqual(bg, roles.fourth)
 
     def test_content_colour_is_a_subdued_not_darkened_task_colour(self):
         # "dimmer" meant desaturated at the SAME lightness, never pushed

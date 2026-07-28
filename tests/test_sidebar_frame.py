@@ -407,22 +407,18 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         step_indices = [i for i, l in enumerate(stripped_first) if active_step_text in l]
         self.assertEqual(len(step_indices), 2, stripped_first)
         working_idx, idle_step_idx = step_indices
-        # The FEATURE row: "sidebar titling" with no task BAR cell
-        # (`sidebar._TASK_BAR_GLYPH`, "▎") -- distinguishes it from the task
-        # row directly below it, which shares the feature's exact name and
-        # so NAME-DROPS its own label (sidebar-teamwork defect 4: a sole
-        # task sharing its feature's name no longer repeats the string --
-        # Decision-106 still requires the row itself to render, with its
-        # own bar cell and now-cycling glyph, just not the redundant text),
-        # found here by its bar cell and position rather than by name.
-        feature_idx = next(
-            i for i, l in enumerate(stripped_first)
-            if "sidebar titling" in l and sidebar._TASK_BAR_GLYPH not in l
-        )
-        task_idx = next(
-            i for i, l in enumerate(stripped_first)
-            if i > feature_idx and sidebar._TASK_BAR_GLYPH in l
-        )
+        # The FEATURE row: "sidebar titling" -- its sole task shares the
+        # feature's exact name and so NAME-DROPS its own label (sidebar-
+        # teamwork defect 4: a sole task sharing its feature's name no
+        # longer repeats the string -- Decision-106 still requires the row
+        # itself to render, with its own status glyph, just not the
+        # redundant text). Neither row carries a task-bar cell any more
+        # (operator ruling, 2026-07-28: the quarter block is gone), so the
+        # task row is found by POSITION instead -- it always renders
+        # directly below its feature row (`_feature_rows`), never by text
+        # it may no longer carry.
+        feature_idx = next(i for i, l in enumerate(stripped_first) if "sidebar titling" in l)
+        task_idx = feature_idx + 1
 
         # Poll for a change rather than compare a single fixed-delay
         # snapshot: the tick-driven band sweep advances roughly every

@@ -417,10 +417,18 @@ class SidebarGeometrySweepTests(unittest.TestCase):
                      f"ellipsis: {actual_feature!r}")
 
             bravo_task_idx = bravo_idx + 1
-            if bravo_task_idx < len(stripped) and sidebar._TASK_BAR_GLYPH in stripped[bravo_task_idx]:
-                actual_task_body = stripped[bravo_task_idx][2:].rstrip(" ")
+            if bravo_task_idx < len(stripped):
+                # No task-bar column any more (operator ruling, 2026-07-28:
+                # the quarter block is gone, the task row is now a flat
+                # full-width band) -- the row starts directly with its own
+                # status glyph, peeled off the same way `_row_core` already
+                # peels every other row's leading glyph.
+                actual_task_body = _row_core(
+                    stripped[bravo_task_idx],
+                    status_alphabet="".join(set(sidebar.STATUS_EMOJI.values())) + sidebar.SPINNER_FRAMES,
+                )
                 task_cells = sidebar._cell_width(actual_task_body)
-                task_avail = max(width - 2, 0)
+                task_avail = max(width - 1, 0)
                 if task_cells > task_avail:
                     fail("no-cell-overflow",
                          f"BRAVO task row's rendered body is {task_cells} "
@@ -439,11 +447,14 @@ class SidebarGeometrySweepTests(unittest.TestCase):
         # naming which task it is. ----------------------------------------
         if alpha_idx is not None:
             alpha_task_idx = alpha_idx + 1
-            if alpha_task_idx < len(stripped) and sidebar._TASK_BAR_GLYPH in stripped[alpha_task_idx]:
+            if alpha_task_idx < len(stripped):
+                # No task-bar column and no progress-circle tail any more
+                # (both operator-ruled off, 2026-07-28: the quarter block
+                # and the white bubble) -- just the leading status glyph
+                # to peel off here.
                 core = _row_core(
-                    stripped[alpha_task_idx], bar=sidebar._TASK_BAR_GLYPH,
+                    stripped[alpha_task_idx],
                     status_alphabet="".join(set(sidebar.STATUS_EMOJI.values())) + sidebar.SPINNER_FRAMES,
-                    tail_alphabet=sidebar._PROGRESS_CIRCLES,
                 )
                 if not core:
                     fail("no-informationless-row",

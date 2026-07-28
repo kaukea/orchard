@@ -363,7 +363,6 @@ from sidebar_paint_step import (  # noqa: E402
     _step_row_name_and_mark,
 )
 from sidebar_paint_identity import (  # noqa: E402
-    _SUBAGENT_TERMINAL_FG,
     _draw_identity_block,
     _draw_subagent_row,
 )
