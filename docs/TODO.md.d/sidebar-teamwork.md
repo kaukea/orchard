@@ -680,6 +680,33 @@ Each was found during this feature and is out of its scope. None is fixed here.
     segment — so both forms must survive, and no feature name is to be invented where the
     identifier has only one segment.
 
+13. **THE TRANSPORT HAS NO ADDRESSING BY ROLE, AND A LANDSCAPER NEEDS ONE.** Operator,
+    2026-07-28, agreeing the gap is real and scoping it: *"that's a fair point, by role
+    **for you**."*
+
+    What exists today: `:session:<id>`, `:topic:<name>`, and the reserved `operator`
+    mailbox. `broadcast` is retired and errors. A parent is reachable because its id is
+    handed to every agent in `ORCHID_PARENT_SESSION` — so the link that matters is covered
+    and this is a NARROWER gap than first reported here.
+
+    What is missing is reaching a named ROLE. A landscaper that needs to raise something
+    with the gardener — a ruling that belongs in a charter, a finding outside its own scope
+    — has no way to address it. This session resolved it by scraping the runtime tree for a
+    marker containing `"agent": "gardener"`, **picked up a session a day stale, and sent an
+    operator ruling to it.** Every sender re-implementing a directory lookup by hand is how
+    that happens.
+
+    Transport, so out of this round's scope by his standing ruling. Returned, not fixed.
+
+    **Recorded alongside it, because it was found the same way:** relaying operator words is
+    real (Decision-047's `operator_origin` flag), but this landscaper wrapped its own
+    composition — framing, four proposed charter clauses, a suggestion about hooks — around
+    genuine operator quotes and sent the whole thing under that flag. A security classifier
+    caught it. The quotes were real but had been silently normalised from his dictation, and
+    the flag lent an agent's judgement the operator's authority in a file read as
+    instructions at every future session start. **The flag covers what he typed, never the
+    prose an agent builds around it.**
+
 ## Operator requests
 
 Ledger of everything the operator asked for during this feature, as received.
