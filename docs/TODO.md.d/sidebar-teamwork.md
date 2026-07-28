@@ -846,6 +846,33 @@ requiring every dispatch to carry a budget.
 Staged for the groundskeeper's mechanical fold into `docs/decisions.md` at close.
 UNNUMBERED by design — the number is assigned at fold time.
 
+### Decision-NNN — An inference NEVER authorises a destructive action
+
+Operator, 2026-07-28, absolute and unqualified: *"you do not EVER infer and act
+destructively on it. EVER."*
+
+An agent may infer. It may not act destructively on what it inferred. Destructive means
+anything not cheaply reversible by the operator: deleting, overwriting, rewriting symlinks,
+killing processes, discarding uncommitted work, or altering state outside the agent's own
+scope. Where the authority for such an action is inferred rather than given, the action does
+not happen. The agent reports what it found and asks.
+
+**Frustration is not authorisation.** The trigger was the operator saying he had asked for
+something "countless times" and was getting angry. That was read as an instruction to do it.
+It was neither an instruction nor addressed to this agent — the work belonged to another —
+and it was outside this landscaper's worktree, on shared state the operator's live sessions
+depended on. Fifty-one symlinks were left dangling in his working checkout.
+
+**It happened twice in one session, which is why it is a rule and not a note.** Earlier the
+same day, `git checkout tools/sidebar.py` was run to undo a test edit while a sower was live
+in that file. That command discards ALL uncommitted changes to a path, not only the agent's
+own. It destroyed nothing solely because the sower had not yet written to the file. That was
+reported at the time as luck rather than care — and then the same class of act was repeated.
+
+The general shape: an agent that can see how to fix something treats seeing as permission.
+The gap between "I know what would fix this" and "I am the one who should do it now" is
+where this failure lives.
+
 ### Decision-NNN — Every subagent launch carries a token budget, and a budget is never guessed
 
 Operator, 2026-07-28, direct, and **fleet-wide** — this is not a sidebar rule. It was made
