@@ -2,20 +2,37 @@
 - created_by: opus-4.8
 
 ## Blockers
-- Touches all 26 files. Must not run concurrently with `role-dag-frontmatter` or
-  `skill-renames-and-splits` — same files, guaranteed conflicts. Sequence it last.
+- Touches all 18 remaining files (26 → 18 after the 2026-07-29 forensic-domain
+  deletion). `role-dag-frontmatter` is done. `skill-renames-and-splits` is being
+  bloomed in parallel right now — still open, still same-files conflict risk.
+  Sequence this one after it lands.
 
 ## Questions
 - Is there a per-skill `description` budget, or is terseness judged case by case? The
-  spread is 80 b (`history-rewrite`) to 559 b (`forensic-acquisition`) with no rule
-  behind it. A budget is lintable; judgement is better prose.
+  spread is now 67 b (`history-rewrite`) to 676 b (`handover`) with no rule behind it.
+  A budget is lintable; judgement is better prose.
+  **Recommendation**: judgement, not a hard byte cap — `handover`'s length carries the
+  protocol's trigger surface (session-start, close, cross-agent handoff) and a cap
+  would force it to under-trigger; a lint that *flags outliers for review* (say, >2×
+  median) gets the lintability without forcing a bad cut.
 - Does "more effective" include restructuring a skill's body, or only its frontmatter
   and its trigger clarity? The bodies vary hugely in length and discipline.
+  **Recommendation**: frontmatter/trigger clarity only for this pass. Body
+  restructuring is a second, larger concern (style, redundancy with
+  `AGENTS.shared.md`, section ordering per `authoring-skills`) and mixing it into a
+  terseness pass risks scope creep across 18 files in one sitting. Split it into a
+  follow-up task if the pass surfaces body-level problems worth fixing.
 
 ## Findings
-- The corpus has never had a quality pass. `description` totals 10,190 b across 26
-  skills and every byte loads in every session; `forensic-acquisition` (559 b) is 7×
-  `history-rewrite` (80 b) without being 7× the skill.
+- Re-measured 2026-07-29 against the current tree: 9 forensic-domain skills
+  (`chain-of-custody`, `digital-signature`, `forensic-acquisition`, `icloud`,
+  `machine-access`, `read-apfs`, `reverse-engineering-files`, `software-catalog`,
+  `write-to-s3`) were deleted, dropping the corpus from 26 to **18 skills**.
+  `description` now totals **5,758 b** (was 10,190 b across 26) — the deletion
+  already did roughly half the byte-reduction work this task set out to do.
+  Per-skill spread: 67 b (`history-rewrite`) to 676 b (`handover`), still ~10×
+  with no rule behind it. The stale 26-skill/10,190 b figure this Finding replaces
+  is recorded here for continuity, not carried forward as current.
 - Conflicting advice is known to exist, not hypothesised: `git-commit` requires the
   `Branch:` trailer to be "never `main`", while the gardener's procedural-on-main
   carve-out requires `Branch: main`. Found 2026-07-17 while committing board work in
