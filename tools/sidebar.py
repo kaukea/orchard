@@ -1319,7 +1319,17 @@ def _feature_rows(feature: Feature, repo_name: str, depth: int) -> list[Row]:
             # except by the two collapses) — the task row still carries
             # its own glyph, progress circle and accordion; only the
             # string identical to the feature's own name above it drops.
-            task_rows[0].label = ""
+            #
+            # sidebar-teamwork defect (c): dropping straight to "" left a
+            # row with a marker, a status glyph and nothing else -- the
+            # feature band above already carries the shared name (it has
+            # nothing else to show, and stays real per operator ruling even
+            # unpopulated), so it keeps the name; this row falls back to
+            # its own status word instead of going blank, which is real,
+            # own information (Decision-098: the task is what persists and
+            # carries the terminal state) and never a repeat of the string
+            # already on the band above.
+            task_rows[0].label = task.status.replace("_", " ")
         rows.extend(task_rows)
     return rows
 
@@ -2057,12 +2067,23 @@ def _draw_feature_row(
     colour (sidebar-teamwork defect 4) rather than `curses.A_REVERSE` —
     `_feature_row_cell_styles` already runs every foreground it returns
     through `ensure_contrast` against `fill_rgb`, so substituting the
-    lifted band before that call keeps every pair legible automatically."""
+    lifted band before that call keeps every pair legible automatically.
+
+    Layout is computed against `width - 1`, one short of the row's real
+    width (sidebar-teamwork defect (d): a name long enough to need
+    `_truncate`'s ellipsis was budgeted the FULL row width, landing that
+    ellipsis on the window's own last column — exactly the column
+    `_safe_addch`'s `insch` trap silently blanks to a plain space (see its
+    docstring), so the cut read as bare with a column to spare. The same
+    reservation already governs `_step_row_display_text`; the padding loop
+    below still fills the true last column with background, so the band
+    still reads edge-to-edge."""
     hue = _repo_hue(row.repo_name)
     status = row.status
     glyph = STATUS_EMOJI.get(status, "○")
-    layout = _feature_row_layout(glyph, row.label, None, width, None)
-    text = compose_feature_row_text(glyph, row.label, None, width)
+    text_width = max(width - 1, 0)
+    layout = _feature_row_layout(glyph, row.label, None, text_width, None)
+    text = compose_feature_row_text(glyph, row.label, None, text_width)
     fill_rgb = _feature_fill_colour(status, hue)
     if selected:
         fill_rgb = _selection_highlight(fill_rgb)
