@@ -576,6 +576,39 @@ Each was found during this feature and is out of its scope. None is fixed here.
    `tests/test_sidebar_geometry_sweep.py` already resolves frames and is the natural home.
    **Not built in this round; recorded for him to discuss, not decided.**
 
+9. **THE `A_DIM` BAN IS AN AGENT'S INFERENCE, NOT A RULING, AND IT NEEDS THE OPERATOR'S
+   DECISION.** Surfaced 2026-07-28 when he said, of the formatting options put to him, *"I
+   never said anything about di[m]"*.
+
+   **The measured fact is narrow and stands**: in one bisected reproduction on this
+   ncurses build, `A_DIM` combined with a **custom background** corrupted the row drawn
+   after it.
+
+   **What was built on top of it is not narrow.** It became a blanket prohibition — no row
+   painter may use `A_DIM` at all — defended by a test that **greps each painter's source
+   text** for the literal string. That guard has already fired on a code COMMENT naming the
+   bug the code was avoiding, i.e. the rule punishing a function for documenting itself
+   (fixed at `9622d9d`, which treated the symptom and left the derived ban standing).
+
+   **And it propagated.** This landscaper carried the ban into EVERY step specification it
+   wrote on 2026-07-28, stated as a constraint beside genuine operator rulings, where a
+   sower has no way to distinguish "the operator requires this" from "an agent concluded
+   this". That is the transmission mechanism: an inference does not merely sit in a
+   decision file, it gets copied into instructions and inherits the authority of whatever
+   it was filed next to.
+
+   **The real fault is the FILE, not the widening.** Operator, sharpening it: *"it may have
+   a basis but its in an OPERAATOR HAAS DECIDED file, unacceptable"*. `docs/decisions.md`
+   records what the OPERATOR decided; an agent's conclusion in there is a forgery of his
+   authority, and the soundness of the observation behind it is irrelevant, because every
+   later reader treats that file as settled by him. Agent findings belong in the sidecar, in
+   `ARCHITECTURE.md` where they describe structure, beside the code they concern, or in the
+   workstream log — marked as inference in each. Reported to the gardener, whose file it is;
+   not edited from this branch.
+
+   Open for him, not assumed: is dim unusable, usable except over a custom background, or
+   usable freely? Until he says, it is information rather than a rule.
+
 ## Operator requests
 
 Ledger of everything the operator asked for during this feature, as received.
