@@ -478,6 +478,321 @@ def build_static_scenario(root: Path, base_dt: datetime) -> Emitter:
 
 
 # ---------------------------------------------------------------------------
+# "major-scenarios" — a SECOND, independent scenario (selected via
+# `--scenario major-scenarios`, orthogonal to the default `build_static_
+# scenario()` above, which `--once`/`--loop` still write when `--scenario`
+# is omitted — that CLI default is unchanged, byte-for-byte, so every
+# existing caller/test keeps working untouched).
+#
+# The operator's own framing: "a good pane to display is a pane that
+# excercises the major scenarios of the workflow: working, task failed,
+# task succeeded, all tasks succeed, blocked on another task, blockd on
+# user answering question." This puts every one of those on screen AT
+# ONCE, in a single repo, each row named so it can be pointed at
+# unambiguously ("that one is wrong").
+#
+# Two of the six named scenarios have NO signal in the current event
+# grammar and are approximated rather than reproduced:
+#   - "blocked on another task" and "blocked on the user answering a
+#     question" have no lifecycle/outcome verb to carry them (sidebar.py:
+#     279's "waiting"/"awaiting_agent" are defined in STATUS_EMOJI but
+#     never produced by `_status_for` — see tools/sidebar_model.py:615).
+#     `Repo.waiting_on_operator` is likewise always False
+#     (`_apply_common`, tools/sidebar_model.py:676, "no source in this
+#     grammar") and is never read by anything that draws a row, so it
+#     cannot carry the second one either. Both are approximated here as an
+#     explicit "stopped" lifecycle (-> status "idle", the same hollow
+#     circle STATUS_EMOJI gives "waiting"/"awaiting_agent" themselves)
+#     with the blocked reason spelled out in the activity text, since the
+#     glyph alone cannot distinguish them. This is a label-level stand-in,
+#     not a rendered state — do not read a passing look at these two rows
+#     as proof the real states work.
+#   - a feature with NO tasks at all has no code path either: `_assemble_
+#     repo` (tools/sidebar_model.py:983-1009) only ever creates a
+#     `_FeatureBuilder` entry alongside at least one task, whether from a
+#     live agent or from a marker's `tasks[]`; an empty `tasks[]` marker
+#     leaves the `for` loop's `builder` at `None` and the feature is never
+#     added to `features` at all. `write_empty_feature_marker()` below
+#     still writes the marker (so the fixture is ready the day a code path
+#     exists to read it), but it renders as ZERO rows today — nothing to
+#     point at, which is itself the fact worth knowing.
+# ---------------------------------------------------------------------------
+
+REPO_SURVEY = "major-scenarios"
+DIR_SURVEY = "kaukea.major-scenarios@f-scenario-survey"
+MODEL_SURVEY = "claude-opus-5"
+
+# `_gardener_key` (tools/sidebar_model.py) always picks the sorted-FIRST
+# "gardener"-named agent-triple, whichever project-wide record that is, as
+# the exclusive repo header — every OTHER record sharing that record's own
+# session id is excluded from ever becoming a task row (checked BEFORE the
+# `_root_session_id` fallback, so it wins regardless). With only ONE
+# "gardener" identity in a project, it is always consumed as the header
+# and no gardener-role task row is reachable at all — the exact defect
+# that made "ideation" unreachable before `agents/gardener.md` gained its
+# `step:` key (see the returned finding this scenario deliberately proves
+# fixed). Posting a SECOND "gardener"-named session (ideation) only works
+# if it is NOT the one `_gardener_key` sorts first: the header session's
+# label below is picked (by trial, not luck) so its `_sid()` hash sorts
+# BEFORE the ideation session's, and the assertion just below fails loudly
+# if that ever stops being true (e.g. after an unrelated edit to `_sid()`
+# or the labels).
+SURVEY_HEADER_SID = _sid("survey-repo-gardener")
+SURVEY_IDEATION_SID = _sid("survey-task-gardener-ideation")
+SURVEY_SCOPING_SID = _sid("survey-task-bloomer-scoping")
+SURVEY_DESIGNING_SID = _sid("survey-task-groomer-designing")
+SURVEY_BUILDING_SID = _sid("survey-task-landscaper-building")
+SURVEY_RELEASING_SID = _sid("survey-task-groundskeeper-releasing")
+SURVEY_ROLLUP_ALPHA_SID = _sid("survey-task-rollup-alpha")
+SURVEY_ROLLUP_BRAVO_SID = _sid("survey-task-rollup-bravo")
+SURVEY_SAME_NAME_SID = _sid("survey-task-solo-same-name")
+SURVEY_DIFF_NAME_SID = _sid("survey-task-solo-diff-name")
+SURVEY_TRUNC_LONG_SID = _sid("survey-task-truncation-long")
+SURVEY_TRUNC_SHORT_SID = _sid("survey-task-truncation-short")
+SURVEY_BLOCKED_TASK_SID = _sid("survey-task-blocked-on-task")
+SURVEY_BLOCKED_QUESTION_SID = _sid("survey-task-blocked-on-question")
+SURVEY_STALE_SID = _sid("survey-task-stale-groundskeeper")
+
+assert SURVEY_HEADER_SID < SURVEY_IDEATION_SID, (
+    "SURVEY_IDEATION_SID must sort after SURVEY_HEADER_SID or "
+    "_gardener_key() picks the ideation session as the header instead — "
+    "see the comment above"
+)
+
+FEATURE_STAGES = "five-stages-walkthrough"
+FEATURE_STAGES_NAME = "Five stages walkthrough"
+FEATURE_ROLLUP = "rollup-all-succeeded"
+FEATURE_ROLLUP_NAME = "Rollup: every task done"
+FEATURE_SAME_NAME = "solo-task-same-name"
+FEATURE_SAME_NAME_NAME = "Solo task, same name as feature"
+FEATURE_DIFF_NAME = "solo-task-different-name"
+FEATURE_DIFF_NAME_NAME = "Solo task, different name from feature"
+FEATURE_EMPTY = "empty-feature-placeholder"
+FEATURE_EMPTY_NAME = "Not yet populated (no tasks)"
+FEATURE_TRUNCATION = "truncation-edge-cases"
+FEATURE_TRUNCATION_NAME = "Truncation edge cases"
+FEATURE_BLOCKED = "blocked-scenarios-simulated"
+FEATURE_BLOCKED_NAME = "Blocked scenarios (simulated approximations)"
+FEATURE_STALE = "staleness-check"
+FEATURE_STALE_NAME = "Stale after long silence"
+
+TRUNCATION_LONG_NAME = (
+    "Investigating the checkout latency regression across three separate "
+    "regions and their load balancers"
+)
+
+
+def write_empty_feature_marker(root: Path, dirname: str, feature_id: str, name: str,
+                                base_dt: datetime) -> Path:
+    """Writes a schema-2 feature marker with an EMPTY `tasks[]` — the
+    on-disk shape for "the feature level is real but the workflow hasn't
+    populated it yet" (operator ruling, 2026-07-27). See the module note
+    above: today's `_assemble_repo`/`_iter_feature_markers` never turns
+    this into a row (the `tasks[]` loop that would create the
+    `_FeatureBuilder` never runs), so this is written for the day a reader
+    exists, not because it renders now."""
+    dir_path = root / dirname
+    dir_path.mkdir(parents=True, exist_ok=True)
+    marker = {
+        "schema": 2,
+        "project": dirname,
+        "feature": feature_id,
+        "name": name,
+        "area": None,
+        "tasks": [],
+        "updated": base_dt.isoformat(),
+    }
+    path = dir_path / f"{feature_id}.marker"
+    path.write_text(json.dumps(marker, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def build_major_scenarios_scenario(root: Path, base_dt: datetime) -> Emitter:
+    """Every case from the operator's own list, on screen at once, each
+    under its own unambiguous name. See the module comment above this
+    function for what is real and what is a labelled approximation."""
+    em = Emitter(root, base_dt)
+
+    # --- Repo header: a bare "gardener" identity, no feature/task fields
+    # (see SURVEY_HEADER_SID's comment) — just enough activity/status to
+    # give the repo row something to show, and it is what makes
+    # `_gardener_key` pick IT rather than the ideation session below.
+    header_identity = identity("gardener")
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_HEADER_SID, "orchard:agent:status",
+            body="surveying scenarios",
+            identity_block=header_identity, status_block=status(MODEL_SURVEY, seed=100))
+
+    # --- Five stages, one task each, all "working" -----------------------
+    def _stage_task(sid: str, role: str, task_id: str, task_name: str,
+                     activity: str, seed: int, *, parent: str = SURVEY_HEADER_SID) -> dict:
+        return identity(role, feature=FEATURE_STAGES, feature_name=FEATURE_STAGES_NAME,
+                         task=task_id, task_name=task_name, parent=parent)
+
+    ideation_identity = _stage_task(SURVEY_IDEATION_SID, "gardener", "five-stages-ideation",
+                                     "Ideation stage task", "scoping a new feature", 101)
+    ideation_status = status(MODEL_SURVEY, seed=101)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_IDEATION_SID, "orchard:agent:lifecycle:started",
+            identity_block=ideation_identity, status_block=ideation_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_IDEATION_SID, "orchard:agent:status",
+            body="triaging the board", identity_block=ideation_identity, status_block=ideation_status)
+
+    scoping_identity = _stage_task(SURVEY_SCOPING_SID, "bloomer", "five-stages-scoping",
+                                    "Scoping stage task", "", 102)
+    scoping_status = status(MODEL_SURVEY, seed=102)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_SCOPING_SID, "orchard:agent:lifecycle:started",
+            identity_block=scoping_identity, status_block=scoping_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_SCOPING_SID, "orchard:agent:status",
+            body="measuring intake", identity_block=scoping_identity, status_block=scoping_status)
+
+    designing_identity = _stage_task(SURVEY_DESIGNING_SID, "groomer", "five-stages-designing",
+                                      "Designing stage task", "", 103)
+    designing_status = status(MODEL_SURVEY, seed=103)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_DESIGNING_SID, "orchard:agent:lifecycle:started",
+            identity_block=designing_identity, status_block=designing_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_DESIGNING_SID, "orchard:agent:status",
+            body="drafting spec", identity_block=designing_identity, status_block=designing_status)
+
+    # "building" also carries subagents (present) — one in progress, one
+    # still only scheduled — so the survey has at least one row with
+    # subagents and several without.
+    building_identity = _stage_task(SURVEY_BUILDING_SID, "landscaper", "five-stages-building",
+                                     "Building stage task", "", 104)
+    building_status = status(MODEL_SURVEY, seed=104)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_BUILDING_SID, "orchard:agent:lifecycle:started",
+            identity_block=building_identity, status_block=building_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_BUILDING_SID, "orchard:agent:status",
+            body="dispatching sowers", identity_block=building_identity, status_block=building_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_BUILDING_SID, "orchard:agent:delegation:schedule",
+            body={"subagent": "scaffold-screens"}, identity_block=building_identity, status_block=building_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_BUILDING_SID, "orchard:agent:delegation:begin",
+            body={"subagent": "scaffold-screens"}, identity_block=building_identity, status_block=building_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_BUILDING_SID, "orchard:agent:delegation:schedule",
+            body={"subagent": "docs-audit"}, identity_block=building_identity, status_block=building_status)
+
+    releasing_identity = _stage_task(SURVEY_RELEASING_SID, "groundskeeper", "five-stages-releasing",
+                                      "Releasing stage task", "", 105)
+    releasing_status = status(MODEL_SURVEY, seed=105)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_RELEASING_SID, "orchard:agent:lifecycle:started",
+            identity_block=releasing_identity, status_block=releasing_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_RELEASING_SID, "orchard:agent:status",
+            body="tagging release", identity_block=releasing_identity, status_block=releasing_status)
+
+    # --- Rollup: a feature whose tasks have ALL succeeded -----------------
+    rollup_alpha_identity = identity(
+        "sower", feature=FEATURE_ROLLUP, feature_name=FEATURE_ROLLUP_NAME,
+        task="rollup-alpha", task_name="Rollup task alpha", parent=SURVEY_HEADER_SID,
+    )
+    rollup_alpha_status = status(MODEL_SURVEY, seed=106)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_ROLLUP_ALPHA_SID, "orchard:agent:status",
+            body="wrapping up", identity_block=rollup_alpha_identity, status_block=rollup_alpha_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_ROLLUP_ALPHA_SID, "orchard:agent:outcome:success",
+            identity_block=rollup_alpha_identity, status_block=rollup_alpha_status)
+
+    rollup_bravo_identity = identity(
+        "sower", feature=FEATURE_ROLLUP, feature_name=FEATURE_ROLLUP_NAME,
+        task="rollup-bravo", task_name="Rollup task bravo", parent=SURVEY_HEADER_SID,
+    )
+    rollup_bravo_status = status(MODEL_SURVEY, seed=107)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_ROLLUP_BRAVO_SID, "orchard:agent:status",
+            body="wrapping up", identity_block=rollup_bravo_identity, status_block=rollup_bravo_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_ROLLUP_BRAVO_SID, "orchard:agent:outcome:success",
+            identity_block=rollup_bravo_identity, status_block=rollup_bravo_status)
+
+    # --- Naming question: one task, identical name vs different name -----
+    same_name_identity = identity(
+        "sower", feature=FEATURE_SAME_NAME, feature_name=FEATURE_SAME_NAME_NAME,
+        task="solo-task-same-name", task_name=FEATURE_SAME_NAME_NAME,  # identical, deliberately
+        parent=SURVEY_HEADER_SID,
+    )
+    same_name_status = status(MODEL_SURVEY, seed=108)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_SAME_NAME_SID, "orchard:agent:lifecycle:started",
+            identity_block=same_name_identity, status_block=same_name_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_SAME_NAME_SID, "orchard:agent:status",
+            body="working the only task", identity_block=same_name_identity, status_block=same_name_status)
+
+    diff_name_identity = identity(
+        "sower", feature=FEATURE_DIFF_NAME, feature_name=FEATURE_DIFF_NAME_NAME,
+        task="solo-task-different-name",
+        task_name="A task label that reads nothing like its feature",
+        parent=SURVEY_HEADER_SID,
+    )
+    diff_name_status = status(MODEL_SURVEY, seed=109)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_DIFF_NAME_SID, "orchard:agent:status",
+            body="closing out", identity_block=diff_name_identity, status_block=diff_name_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_DIFF_NAME_SID, "orchard:agent:outcome:success",
+            identity_block=diff_name_identity, status_block=diff_name_status)
+
+    # --- Feature with no tasks at all (writes, does not render — see the
+    # module comment above) ------------------------------------------------
+    write_empty_feature_marker(root, DIR_SURVEY, FEATURE_EMPTY, FEATURE_EMPTY_NAME, base_dt)
+
+    # --- Truncation: a long name that must cut, a short one that must not,
+    # paired with the `failed` glyph (East-Asian-Wide `❌`, two cells)
+    # so truncation arithmetic is exercised at the one row kind where it
+    # has broken before ----------------------------------------------------
+    trunc_long_identity = identity(
+        "sower", feature=FEATURE_TRUNCATION, feature_name=FEATURE_TRUNCATION_NAME,
+        task="truncation-long-name", task_name=TRUNCATION_LONG_NAME, parent=SURVEY_HEADER_SID,
+    )
+    trunc_long_status = status(MODEL_SURVEY, seed=110)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_TRUNC_LONG_SID, "orchard:agent:status",
+            body="debugging", identity_block=trunc_long_identity, status_block=trunc_long_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_TRUNC_LONG_SID, "orchard:agent:outcome:fail",
+            identity_block=trunc_long_identity, status_block=trunc_long_status)
+
+    trunc_short_identity = identity(
+        "sower", feature=FEATURE_TRUNCATION, feature_name=FEATURE_TRUNCATION_NAME,
+        task="truncation-short-name", task_name="Fix typo", parent=SURVEY_HEADER_SID,
+    )
+    trunc_short_status = status(MODEL_SURVEY, seed=111)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_TRUNC_SHORT_SID, "orchard:agent:status",
+            body="done", identity_block=trunc_short_identity, status_block=trunc_short_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_TRUNC_SHORT_SID, "orchard:agent:outcome:success",
+            identity_block=trunc_short_identity, status_block=trunc_short_status)
+
+    # --- "Blocked" pair: SIMULATED APPROXIMATIONS ONLY. Neither state
+    # exists in the current event grammar (see the module comment above);
+    # both are an explicit "stopped" lifecycle (-> status "idle") with the
+    # blocked reason spelled out in the activity text, since the glyph
+    # cannot carry the distinction itself. --------------------------------
+    blocked_task_identity = identity(
+        "sower", feature=FEATURE_BLOCKED, feature_name=FEATURE_BLOCKED_NAME,
+        task="blocked-on-other-task", task_name="Blocked on another task (simulated)",
+        parent=SURVEY_HEADER_SID,
+    )
+    blocked_task_status = status(MODEL_SURVEY, seed=112)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_BLOCKED_TASK_SID, "orchard:agent:status",
+            body="blocked — waiting on 'Renderer refactor' to land first",
+            identity_block=blocked_task_identity, status_block=blocked_task_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_BLOCKED_TASK_SID, "orchard:agent:lifecycle:stopped",
+            identity_block=blocked_task_identity, status_block=blocked_task_status)
+
+    blocked_question_identity = identity(
+        "landscaper", feature=FEATURE_BLOCKED, feature_name=FEATURE_BLOCKED_NAME,
+        task="blocked-on-user-question", task_name="Blocked on the operator's answer (simulated)",
+        parent=SURVEY_HEADER_SID,
+    )
+    blocked_question_status = status(MODEL_SURVEY, seed=113)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_BLOCKED_QUESTION_SID, "orchard:agent:status",
+            body="blocked — awaiting the operator's answer to an open question",
+            identity_block=blocked_question_identity, status_block=blocked_question_status)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_BLOCKED_QUESTION_SID, "orchard:agent:lifecycle:stopped",
+            identity_block=blocked_question_identity, status_block=blocked_question_status)
+
+    # --- Stale: last event well outside the liveness window --------------
+    stale_identity = identity(
+        "groundskeeper", feature=FEATURE_STALE, feature_name=FEATURE_STALE_NAME,
+        task="stale-groundskeeper-sweep", task_name="Stale after long silence",
+        parent=SURVEY_HEADER_SID,
+    )
+    stale_status = status(MODEL_SURVEY, seed=114)
+    em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_STALE_SID, "orchard:agent:status",
+            body="sweeping", identity_block=stale_identity, status_block=stale_status, stale=True)
+
+    return em
+
+
+# ---------------------------------------------------------------------------
 # --loop: keeps a handful of live agents visibly moving. Reuses the exact
 # identity/status blocks the static scenario built (recomputed here rather
 # than threaded through Emitter, since each mutation needs a fresh `status`
@@ -553,6 +868,16 @@ def run_loop(root: Path, base_dt: datetime, interval: float) -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
+# `--scenario` selects which builder `--once`/`--loop` writes. "default" is
+# the ORIGINAL scenario (`build_static_scenario`, the courier/session-id
+# fixture existing tests and `--loop` depend on) and stays the argparse
+# default too, so any existing invocation that never passes `--scenario` at
+# all gets byte-identical behaviour to before this option existed.
+SCENARIOS = {
+    "default": build_static_scenario,
+    "major-scenarios": build_major_scenarios_scenario,
+}
+
 
 def _parse_base_ts(text: str) -> datetime:
     try:
@@ -566,14 +891,27 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("target", type=Path, help="isolated target root directory to write into")
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--once", action="store_true", help="write the static scenario and exit")
+    mode.add_argument("--once", action="store_true", help="write the chosen scenario and exit")
     mode.add_argument("--loop", action="store_true",
-                       help="write the static scenario, then keep mutating it until Ctrl-C")
+                       help="write the chosen scenario, then keep mutating it until Ctrl-C "
+                            "(default scenario only — see --scenario)")
+    parser.add_argument("--scenario", choices=sorted(SCENARIOS), default="default",
+                         help="which scenario set to write (default: %(default)s). "
+                              "'major-scenarios' puts every case from the operator's own "
+                              "list — working/idle/stale/done/failed, an all-succeeded "
+                              "rollup, the feature/task naming cases, subagents present and "
+                              "absent, truncation, and the two blocked cases as labelled "
+                              "approximations — on screen at once, each under its own name.")
     parser.add_argument("--base-ts", default=None,
                          help="ISO-8601 instant anchoring the scenario (default: current time)")
     parser.add_argument("--interval", type=float, default=DEFAULT_INTERVAL_SECONDS,
                          help=f"--loop only: seconds between mutation ticks (default {DEFAULT_INTERVAL_SECONDS})")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.loop and args.scenario != "default":
+        parser.error("--loop only supports --scenario default; the 'major-scenarios' motion "
+                      "hooks (_loop_step) are wired to the default scenario's own sessions and "
+                      "would inject an unrelated repo alongside it")
+    return args
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -584,8 +922,9 @@ def main(argv: list[str] | None = None) -> None:
     target.mkdir(parents=True, exist_ok=True)
 
     if args.once:
-        build_static_scenario(target, base_dt)
-        print(f"sidebar_sim: wrote static scenario to {target} (base {base_dt.isoformat()})")
+        SCENARIOS[args.scenario](target, base_dt)
+        print(f"sidebar_sim: wrote '{args.scenario}' scenario to {target} "
+              f"(base {base_dt.isoformat()})")
     else:
         run_loop(target, base_dt, args.interval)
 
