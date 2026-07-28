@@ -154,7 +154,7 @@ Badge: `type · status · urgency · readiness · area · gh#`.
   - `feature · done · · complete/interactive · sync ·` [Declare the role DAG in skill and agent frontmatter](TODO.md.d/role-dag-frontmatter.md)
   - `feature · todo · · plan-ready · sync · gh#54` [Make agents first-class, with skill dependencies](TODO.md.d/agents-first-class.md) ⊘role-dag-frontmatter
   - `refactor · todo · · plan-ready · process · gh#55` [Rename and split skills to fit the role DAG](TODO.md.d/skill-renames-and-splits.md)
-  - `refactor · todo · · blocked-on-answers · process · gh#56` [Terseness and conflicting-advice pass over all skills](TODO.md.d/skill-terseness-pass.md) ⊘role-dag-frontmatter ⊘skill-renames-and-splits
+  - `refactor · todo · · plan-ready · process · gh#56` [Terseness and conflicting-advice pass over all skills](TODO.md.d/skill-terseness-pass.md) ⊘role-dag-frontmatter ⊘skill-renames-and-splits
   - `feature · todo · · queued · process ·` [Authoring components: recurring terseness/non-redundancy discipline for skills and agent-defs alike](TODO.md.d/authoring-components.md) ~skill-terseness-pass
 
 ## Skills
