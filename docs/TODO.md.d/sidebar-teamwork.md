@@ -816,6 +816,18 @@ that goes to the **operator for remediation immediately**. It is never absorbed 
 launching agent, never quietly run past, and work is never truncated to squeeze under the
 number.
 
+**Sowers are low-cost launchers, and the budget is what the job OUGHT to cost.** Operator,
+2026-07-28: *"they're supposed to be low cost token launchers."* A sower is a short-lived
+worker given one small job. A figure in the hundreds of thousands is not a budget for a
+sower; it is evidence the job is several jobs, or is mis-scoped, and the correct response is
+to split it rather than to grant the ceiling.
+
+This corrects how the first budgets under this rule were set. They were derived from what
+earlier sowers had actually spent — 195k, 236k, 418k — and that was presented as grounding
+the estimate in data. It grounded it in the dysfunction: averaging a broken process
+enshrines the breakage as the standard. Observed cost is evidence about what went wrong, not
+evidence about what the work is worth.
+
 **The must-clause, which is the point of the rule:** *do not, under any circumstance,
 estimate without any information when launching a fleet of agents.* A budget invented to
 satisfy the requirement is worse than no budget, because it launders a guess into a number
