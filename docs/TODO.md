@@ -7,6 +7,10 @@ items against that.
 
 Badge: `type · status · urgency · readiness · area · gh#`.
 
+**kauk is FORBIDDEN here until it ignores local skills (Decision-122).** Every
+`(upstream kauk)` item below is work in the kauk repository, tracked here only. Nothing
+on this board runs kauk against orchids, and no task's Testing may require it.
+
 ## Publication
 
 - `housekeeping · todo · · blocked-on-answers · publication · gh#1` [Pre-publication cleanup & public/private split](TODO.md.d/pre-publication-cleanup.md)

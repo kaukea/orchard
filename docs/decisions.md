@@ -2170,22 +2170,37 @@ from the original intent (the autonomy ladder / metronome, Decision-075), and th
 operator wants these rules kept very, very light. The close stays sequential, run
 by the supervisor as today.
 
-## [2026-07-29 CEST] Decision-122: orchids PUBLISHES to kauk and never vendors — vendoring is retired for good
-#kauk #vendoring #distribution #testing #manifest #publication
+## [2026-07-29 CEST] Decision-122: kauk is FORBIDDEN in orchids until it ignores local skills; orchids publishes to kauk and never vendors
+#kauk #vendoring #distribution #testing #manifest #publication #forbidden
 
 Operator ruling (2026-07-29, verbatim intent): *"we no longer use kauk, we publish
-to it, we don't vendor ever, it has caused endless pain."* The relationship is
-one-directional. orchids is a source package that PUBLISHES to kauk; it never
-consumes kauk, never installs a copy of itself, and never resolves its own agents,
-skills, hooks or tools through a vendored clone.
+to it, we don't vendor ever, it has caused endless pain"*, and then, stated as a
+prohibition with a condition attached: *"Kauk forbidden until it ignores local
+skills."*
 
-The pain was real and is on the record: a self-vendoring orchids installed a clone
+**The prohibition is the operative part.** Running kauk against this repository is
+not permitted — not to test something, not to verify a package shape, not as a
+convenience — and the ban lifts only when kauk itself ignores local skills. No
+agent decides the condition has been met; the operator does.
+
+The relationship is one-directional and stays that way: orchids is a source package
+that PUBLISHES to kauk. It never consumes kauk, never installs a copy of itself, and
+never resolves its own agents, skills, hooks or tools through a vendored clone.
+
+**Why — the failure was circular, not incidental.** Operator: *"we have been going
+around in circles due to vendoring, with new code rewriting old one then vendoring
+overwriting, preventing a sane code base."* That is the whole mechanism: work lands
+in the repository, a sync then overwrites it from a vendored copy carrying the
+older shape, and the next round of work is written against whichever version
+happened to win. No amount of care inside a feature branch survives that, because
+the overwrite happens outside every branch.
+
+The observed instance is on the record: a self-vendoring orchids installed a clone
 of itself, `.claude/**` resolved into that clone rather than the repository, the
 clone sat commits behind across a whole transport rewrite, and editing the code
 here changed nothing about what actually ran until somebody happened to sync
 (`sidebar-teamwork`, 2026-07-28). Because those links were absolute, no worktree
-could run its own code either. A source repository consuming a vendored copy of
-its own output is circular.
+could run its own code either.
 
 Consequences:
 - **`manifest.conf`'s absence is the CORRECT state, not a defect.** Its removal by
