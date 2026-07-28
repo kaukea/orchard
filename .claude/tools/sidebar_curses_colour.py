@@ -1,0 +1,1 @@
+../../tools/sidebar_curses_colour.py

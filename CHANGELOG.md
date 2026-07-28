@@ -6,6 +6,23 @@ _base: `f65ad36`_
 
 ### ✨ New features
 
+- ✂️ **`git-commit` split into `git` and `git-workflow`, and each role loads only
+  the half it needs.** One skill had been carrying two audiences: generic commit
+  hygiene that applies to every commit in every repository, and process rules that
+  are meaningless outside this workflow. Keeping them together produced a live
+  contradiction — the skill required the `Branch:` trailer to be "never `main`",
+  while the board-maintenance carve-out requires exactly `Branch: main` — which had
+  been worked around by convention rather than resolved. `git` now carries the
+  hygiene (gitmoji, subject length, body wrap, scope discipline, no force without
+  consent) and `git-workflow` carries the mechanics (the `Branch:` trailer, main's
+  immutability, and where the approval and squash-merge gates live), with the
+  contradiction resolved in the half that owns it. The split is also a token
+  saving, because the roles were repointed by what they actually do: only the
+  agents that OPEN or CLOSE a workflow — landscaper, supervisor, groundskeeper and
+  the cloud equivalents — load `git-workflow`. Every agent that merely commits
+  along the way loads `git` alone, and most of the fleet never reads the workflow
+  mechanics again. A dated migration converges consuming repositories.
+
 - 🪟 **Tmux topology — the committed spec.** Added a committed specification
   for the fleet's tmux layout (`docs/tmux-topology.md`): one tmux session per
   repository, one window per active feature (the landscaper), and headless

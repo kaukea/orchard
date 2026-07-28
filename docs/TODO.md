@@ -24,7 +24,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
   - `feature · todo · critical · blocked-on-answers · process ·` [GitHub projection: feature = parent issue, real sub-issues, unfiled triage — Decision-119 built](TODO.md.d/github-projection.md) ~features-first-class ~github-board-sync ~sync-automating
 - `feature · todo · · plan-ready · process ·` [Sidebar redone fresh: pruned and rewritten, with the standing rulings as its specification](TODO.md.d/sidebar-teamwork.md) ~sidebar-polish ~sidebar-empty-rows ~fleet-sidebar
 - `bug · todo · critical · blocked-on-answers · process ·` [Messaging restoration: recover the 24 functions the fakes squash reverted, keep its five real fixes](TODO.md.d/transport-test-reconciling.md) ~close-family-fakes ~sidebar-empty-rows ~bus-message-specifying
-- `feature · todo · critical · blocked-on-answers · process ·` [Bus addressing: "parent" stops being an address once supervisors and parallel workers exist](TODO.md.d/bus-addressing.md) ~transport-test-reconciling ~message-bus ~courier-delegating
+- `feature · todo · critical · blocked-on-answers · process ·` [Bus addressing: agents address each other BY NAME; "parent" stops being an address once supervisors and parallel workers exist](TODO.md.d/bus-addressing.md) ~transport-test-reconciling ~message-bus ~courier-delegating
 - `bug · todo · · blocked-on-answers · process ·` [Groundskeeper verify hardening: post-merge suite run against a pre-merge baseline](TODO.md.d/groundskeeper-verify-hardening.md) ~close-family-fakes ~transport-test-reconciling
 - `bug · todo · critical · blocked-on-answers · process ·` [Courier opaque payload: transport must not care how the string is made](TODO.md.d/courier-opaque-payload.md) ~message-bus ~bus-message-specifying ~courier-delegating
 - `bug · todo · critical · blocked-on-answers · process ·` [Close permission blocking: the harness classifier can strangle a close mid-merge](TODO.md.d/close-permission-blocking.md) ~groundskeeper-verify-hardening ~close-dispatching
@@ -158,7 +158,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 - `feature · todo · · blocked-on-answers · · gh#16` [Role-based delivery of skills and agents](TODO.md.d/role-delivery.md) ~dynamic-skill-delivery
   - `feature · done · · complete/interactive · sync ·` [Declare the role DAG in skill and agent frontmatter](TODO.md.d/role-dag-frontmatter.md)
   - `feature · todo · · plan-ready · sync · gh#54` [Make agents first-class, with skill dependencies](TODO.md.d/agents-first-class.md) ⊘role-dag-frontmatter
-  - `refactor · todo · · plan-ready · process · gh#55` [Rename and split skills to fit the role DAG](TODO.md.d/skill-renames-and-splits.md)
+  - `refactor · done · · complete · process · gh#55` [Rename and split skills to fit the role DAG](TODO.md.d/skill-renames-and-splits.md)
   - `refactor · todo · · plan-ready · process · gh#56` [Terseness and conflicting-advice pass over all skills](TODO.md.d/skill-terseness-pass.md) ⊘role-dag-frontmatter ⊘skill-renames-and-splits
   - `feature · todo · · queued · process ·` [Authoring components: recurring terseness/non-redundancy discipline for skills and agent-defs alike](TODO.md.d/authoring-components.md) ~skill-terseness-pass
 

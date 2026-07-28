@@ -1,0 +1,1 @@
+../../tools/sidebar_render_text.py

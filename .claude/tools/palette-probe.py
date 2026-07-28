@@ -1,0 +1,1 @@
+../../tools/palette-probe.py

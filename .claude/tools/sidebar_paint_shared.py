@@ -1,0 +1,1 @@
+../../tools/sidebar_paint_shared.py
