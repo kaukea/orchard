@@ -2091,3 +2091,81 @@ prevents.
 
 Format canon lives in `AGENTS.files.md` §Decisions and must be updated there.
 
+
+## [2026-07-28 17:35 CEST] Decision-116: A feature is first-class and long-living — and never a git construct
+#feature #task #branch #git #naming #workflow
+
+Operator ruling (2026-07-28 bloom round, features-first-class). A feature is a
+first-class concept on every surface of the work — board, sidecars, GitHub,
+changelog, agents — but it has NO git representation. Main-branch development
+stands: every task gets a short-lived branch off main named `f/<feature>/<task>`
+(operator's example: `f/oauth-auth/pbkcd`) and lands on main individually by
+squash merge, exactly as today. There is no integration or feature branch, ever —
+the operator does not believe in long-running feature branches. A feature is a set
+of short-lived task branches: it is useful to record which base a feature started
+at, and the feature then gains new tasks in several disconnected rounds — the
+feature is long-living, its branches never are. Review trigger set by the
+operator: revisit this ruling when agent teams are fully implemented in Claude.
+
+## [2026-07-28 17:35 CEST] Decision-117: The board is two levels with two badge grammars, and One-offs is the empty feature
+#board #todo #format #feature #badge #lint
+
+Operator ruling (2026-07-28 bloom round). The board has strictly two levels.
+Feature lines carry a distinct badge: feature id, gh# parent issue, the list of
+components the feature TOUCHES (a feature delivers value across components, it
+does not own them; bugs belong to components), and derived task progress. Task
+lines keep today's six-field badge, and the five readiness steps stay inside tasks
+(Decision-105). One fixed, badge-free `One-offs` bucket line — the one-off bucket
+IS the empty feature — holds every task belonging to no feature, keeping the
+format topologically correct without inventing features. The lint knows exactly
+three shapes: feature line, task line, the single One-offs bucket. The render in
+the features-first-class sidecar §2 was explicitly accepted by the operator.
+
+## [2026-07-28 17:35 CEST] Decision-118: A feature's sidecar is a container file with segregated per-task sections
+#sidecar #feature #format #todo
+
+Operator ruling (2026-07-28 bloom round). A feature gets ONE sidecar
+`docs/TODO.md.d/<feature>.md` holding feature-level scope plus its tasks as
+`## Task` sections. Writing is segregated: each task's agent writes only its own
+section; when task writing needs coordination, the agent messages the gardener
+(there is no orchestrator role). Standalone tasks are called ONE-OFFS and keep
+their own sidecar file as today.
+
+## [2026-07-28 17:35 CEST] Decision-119: On GitHub a feature is a parent issue with real sub-issues; unfiled issues are triaged before minting
+#github #projection #feature #issues #board
+
+Operator ruling (2026-07-28 bloom round). The feature maps to GitHub's sub-issues
+natively. The feature issue carries the full design — matching the practice of
+designing a large feature while building only the minimum viable product first.
+Task issues attach as real sub-issues at mint, across disconnected rounds, to the
+same still-open parent; the parent closes only when the operator rules the feature
+delivered (nothing auto-closes it). One-offs are flat issues with no parent.
+Issues born on GitHub are UNFILED: triage assigns each to a feature or to
+one-offs before a board line exists.
+
+## [2026-07-28 17:35 CEST] Decision-120: The changelog is flat between releases; feature structure is applied at the release cut
+#changelog #release #tags #feature #close
+
+Operator ruling (2026-07-28 bloom round). One squash merge = one task = one flat
+changelog entry per visible change; nothing feature-shaped exists between releases
+(there is nothing to squash at feature level). At release time the flat entries
+are structured into a release block grouped by feature, one-offs listed plain,
+then flatness begins again. Archive tags mirror branch names:
+`archive/<feature>/<task>`, keeping entry-tag-branch one chain.
+
+## [2026-07-28 17:35 CEST] Decision-121: A feature is built by a team of landscapers with fluid task binding
+#agents #supervisor #landscaper #team #feature #metronome
+
+Operator ruling (2026-07-28 bloom round). The gardener knows the high-level plan —
+which tasks wait on each feature, which depend on one another — and tries to
+parallelise non-conflicting ones. The supervisor makes it real: decides how many
+landscapers, who does what, launches the team, and introduces the landscapers to
+one another before they start. The team shares context or uses messaging,
+whichever is token-efficient; one feature-level runtime (shared team context) is
+preferred. Task-to-landscaper binding is FLUID — statically assigning a task to
+one landscaper is dangerous when part of it can be built inside another task, so
+distribution is negotiated over messages, and potential conflicts are dealt with
+upstream before anything lands. The supervisor intervenes only when work diverges
+from the original intent (the autonomy ladder / metronome, Decision-075), and the
+operator wants these rules kept very, very light. The close stays sequential, run
+by the supervisor as today.
