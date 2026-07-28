@@ -203,16 +203,11 @@ STDLIB ONLY.
 """
 from __future__ import annotations
 
-import colorsys
+import colorsys  # noqa: F401 -- re-exported: a test reaches `sidebar.colorsys` directly
 import curses
 import os
-import re
 import sys
 import threading
-import unicodedata
-import zlib
-from dataclasses import dataclass, field
-from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sidebar_nav  # noqa: E402
