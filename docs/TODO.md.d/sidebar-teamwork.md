@@ -652,6 +652,33 @@ Ledger of everything the operator asked for during this feature, as received.
 | 14 | 2026-07-28, superseding the previous instruction minutes later: *"tell it to stop what it's doing and just do the splits by modules and make the modules as small and cohesive as is possible. In doubt, ask."* | **relayed and in force.** Feature work on the colour chain and the citation is **STOPPED**, not paused for later polish — whatever was coherent is committed, anything broken reverted, and nothing further is added to it. The sower's sole remaining job is the module split. **Small and cohesive is the goal, not "fewer files"**: the earlier sketch of colour / text composition / row painting / curses I/O is a starting point rather than a target, and where a boundary is open the smaller module wins. The working test is that a module can be described in one sentence without the word "and". **"In doubt, ask" is carried as an instruction rather than an offer** — an ambiguous boundary, a function two modules both have a claim on, or a cycle that would need breaking, stops the sower and comes to the operator, instead of being guessed and then documented as though decided. That guess-and-document habit is the one this round has paid most for. Method unchanged: extract in place, prune dead paths as each piece comes out, tests green between steps, each extraction its own commit. Budget and its checkpoint rule unchanged at 500,000. |
 | 15 | 2026-07-28: *"I think the rule should go, uh, fleet wide. However, you must have a must close. Do not, under any circumstance, estimate without any information when launching a fleet of agents. If you do not have enough data to do a statistically accurate estimate, Ask the operator if a round of discovery should be done."* | **staged as a DECISION ENTRY** — see `## Decision entries`, first block, unnumbered for the groundskeeper's mechanical fold. Promoted from a feature-local working rule to a fleet-wide one at his instruction, with the must-clause he asked for: a budget is never invented to satisfy the requirement, because a fabricated number launders a guess into something that later reads as evidence. Where the data for a defensible estimate does not exist, the operator is asked whether a discovery round should size the work first — discovery is fundable, fabrication is not. **Self-applied immediately and honestly:** the 500,000 given to the live sower rests on real data for *a sower working in this file* (195k, 236k, 258k for single assignments; 364k and 418k across resumed ones), but there is **no** data for *splitting this file*, which is a different job. That gap was put to him rather than papered over. |
 
+### Palette: Dracula as published, and why a "night" variant is not simply dimmer
+
+Operator, 2026-07-28: Dracula is the palette. A theme mechanism to swap palettes
+comes later. A night variant was drafted and DEFERRED, and the reason is worth
+keeping because it is counter-intuitive and an agent will otherwise rebuild it
+wrongly.
+
+**On an OLED screen a black pixel is off and emits nothing.** Light output is
+therefore almost entirely the text and the accents, not the background. Darkening an
+already near-black background buys close to nothing, while keeping saturated accents
+on it drives those pixels harder — and harder again on HDR, where intensity headroom
+is larger. So a "night" theme built by darkening the base and keeping the colours
+plausibly emits MORE light than the published palette, not less. In his words: the
+more intense the colour and the darker the background, the more light is produced.
+
+The draft made exactly that mistake. It also made two smaller ones worth recording:
+dimming every colour by one factor pulls the TEXT down with the surfaces, so the
+foreground fell to a lightness contrast of 63 while the accents under it were still
+comfortable; and the activity line had been given the palette's comment tone, which
+is designed to recede in an editor and measured 32 on the ordinary base and 14
+dimmed — visible as unreadable from across the room, which is how it was caught.
+
+Choosing a foreground by maximising a contrast number is what produced the last of
+those: white scores 106 where a warm tone scores 85, and white is the brightest thing
+a screen can emit. The measurement exists to catch unreadable text, not to be
+maximised.
+
 ### Why so much data is "on the bus and never drawn" — it is withheld on purpose
 
 Operator, 2026-07-28, explaining something this sidecar has recorded more than once as though
