@@ -256,6 +256,20 @@ def colour_ramp_steps(
 _CONTRAST_MIN_TEXT = 4.5  # WCAG "normal text"
 _CONTRAST_MIN_MARK = 3.0  # WCAG "large/bold text" and meaningful non-text marks
 
+# A step's own TITLE text stays at `_CONTRAST_MIN_TEXT` (operator ruling,
+# 2026-07-28: "the text itself for the title of stages is absolutely fine
+# for contrast... it is not exactly fine for the content of step" — he
+# read it on a large-screen TV from across a room and judged the title
+# legible at 4.5; do not raise it, that reading was explicit and is not
+# this constant's job). A step's own CONTENT — the agent/subagent identity
+# lines nested under it, painted by `sidebar_paint_identity.py` — is the
+# marginal case he flagged, and the room-distance viewing condition (his
+# own words, not assumed) argues for materially more headroom there than
+# the 4.5 floor gives, not a token bump: 7.0 is WCAG's own AAA "enhanced"
+# threshold, the established name for "clears comfortably at a distance",
+# not a number invented for this step.
+_CONTRAST_MIN_CONTENT = 7.0
+
 def _srgb_channel_linear(c: int) -> float:
     c = c / 255
     return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4

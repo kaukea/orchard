@@ -1,10 +1,15 @@
 """Paints an agent's quote-plus-citation and a subagent's presence-glyph
-line, both on the owning open step's FIFTH-toned block background
-(`_open_block_bg`) with the shared one-column indent glyph
-(`_draw_indent_cell`) marking them as belonging to their task. Content
-decisions (tight_line_parts/attribution_text/_quoted_activity) are shared
-with the plain-text path via sidebar_citation.py, so the two can never
-disagree -- only the per-segment colouring is curses-only here.
+line, both on the owning open step's own block background (`_open_block_bg`
+-- FOURTH, the SAME tone as the step's own title, operator ruling
+2026-07-28: "the background colour of the currently active items inside a
+stage is the same colour as the titles of the stages themselves", so
+nothing here is a separately-derived FIFTH tone any more) with the shared
+one-column indent glyph (`_draw_indent_cell`, the task's own carrying
+colour -- the gutter, operator ruling 2026-07-28) marking them as belonging
+to their task. Content decisions (tight_line_parts/attribution_text/
+_quoted_activity) are shared with the plain-text path via
+sidebar_citation.py, so the two can never disagree -- only the per-segment
+colouring is curses-only here.
 """
 from __future__ import annotations
 
@@ -17,10 +22,9 @@ from sidebar_citation import (  # noqa: E402
     tight_line_parts,
 )
 from sidebar_colour import (  # noqa: E402
-    GREEN,
     MUTED,
     TEXT,
-    _CONTRAST_MIN_TEXT,
+    _CONTRAST_MIN_CONTENT,
     ensure_contrast,
     model_tier_colour,
     task_chain_roles,
@@ -64,24 +68,30 @@ def _draw_identity_block(
     background (sidebar-teamwork defect 4) rather than `curses.A_REVERSE`
     — always painted, even when this row had no open-block background of
     its own, so the pick is unmistakable whatever row kind it lands on.
-    The one-column indent glyph (THIRD on FOURTH, `_draw_indent_cell`)
-    marks this row as belonging to its task; content starts one column in."""
-    bg = _open_block_bg(row)
+    The one-column indent glyph (the task's own gutter colour on FOURTH,
+    `_draw_indent_cell`) marks this row as belonging to its task; content
+    starts one column in."""
+    bg = _open_block_bg(row, hue)
     if selected:
         bg = _selection_highlight(bg)
     roles = task_chain_roles(hue, row.feature_colour)
     fourth = _selection_highlight(roles.fourth) if selected else roles.fourth
+    gutter = row.task_colour or roles.third
     content_width = max(width - _INDENT_WIDTH, 0)
     attr_extra = curses.A_BOLD if selected else 0
     block_bg = bg if bg is not None else (0, 0, 0)
-    quote_fg = ensure_contrast(TEXT, block_bg, _CONTRAST_MIN_TEXT)
-    role_fg = ensure_contrast(MUTED, block_bg, _CONTRAST_MIN_TEXT)
+    # `_CONTRAST_MIN_CONTENT` (7.0), not the step title's `_CONTRAST_MIN_
+    # TEXT` (4.5, left untouched — operator ruling, 2026-07-28, "the title
+    # is absolutely fine for contrast... the content of step" is what is
+    # not): this is a step's own CONTENT.
+    quote_fg = ensure_contrast(TEXT, block_bg, _CONTRAST_MIN_CONTENT)
+    role_fg = ensure_contrast(MUTED, block_bg, _CONTRAST_MIN_CONTENT)
 
     if bg is not None:
         _fill_row_bg(stdscr, y, width, bg, colours)
         if expand:
             _fill_row_bg(stdscr, y + 1, width, bg, colours)
-    _draw_indent_cell(stdscr, y, colours, roles.third, fourth)
+    _draw_indent_cell(stdscr, y, colours, gutter, fourth)
 
     if not expand:
         shown_quote, tail = tight_line_parts(row.activity, row.role, content_width, row.model)
@@ -99,7 +109,7 @@ def _draw_identity_block(
     if not row.role:
         return y + 1
     y += 1
-    _draw_indent_cell(stdscr, y, colours, roles.third, fourth)
+    _draw_indent_cell(stdscr, y, colours, gutter, fourth)
     # No dash on this rung (operator, 2026-07-28: "the citation is just
     # below the text itself either right alined or indented by a few
     # blans, no ash obviuouys") — indented, chosen over right-aligned
@@ -113,12 +123,9 @@ def _draw_identity_block(
         sep = " · "
         _safe_addstr(stdscr, y, x, sep, colours.pair(role_fg, bg) | attr_extra)
         x += len(sep)
-        model_fg = ensure_contrast(model_tier_colour(row.model), block_bg, _CONTRAST_MIN_TEXT)
+        model_fg = ensure_contrast(model_tier_colour(row.model), block_bg, _CONTRAST_MIN_CONTENT)
         _safe_addstr(stdscr, y, x, model_text, colours.pair(model_fg, bg, italic=True) | attr_extra)
     return y + 1
-
-_SUBAGENT_TERMINAL_FG = {"done": GREEN, "failed": MUTED}
-
 
 def _draw_subagent_row(
     stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache,
@@ -127,23 +134,37 @@ def _draw_subagent_row(
     """A subagent's own line — presence glyph (`_row_text`'s existing
     scheduled/doing/done/failed vocabulary) + label, on the owning step's
     open-block background (see `_draw_identity_block`'s docstring for why),
-    full width, contrast-checked. `selected` swaps in `_selection_highlight`
-    for the block's own background (sidebar-teamwork defect 4), same as
-    `_draw_identity_block`. Carries the same one-column indent glyph
-    (THIRD on FOURTH) as every other row related to this task."""
-    bg = _open_block_bg(row)
+    full width, contrast-checked at `_CONTRAST_MIN_CONTENT` (this is a
+    step's own content, same as the identity block above it). `selected`
+    swaps in `_selection_highlight` for the block's own background
+    (sidebar-teamwork defect 4), same as `_draw_identity_block`. Carries the
+    same one-column indent glyph (the task's own gutter colour on FOURTH)
+    as every other row related to this task.
+
+    ONE foreground colour regardless of `row.status` (operator ruling,
+    2026-07-28: "because there's already a checkbox or checkmark, there is
+    no reason to have a blue and a green... to avoid colours just bleeding
+    everywhere" — restated 2026-07-28 as "the difference between a green
+    and a white, even on an OLED screen at very high brightness, I can
+    barely tell"). This row used to swap to GREEN for `done` and MUTED for
+    `failed`, a distinction its own glyph already carries in full (✓ / ❌ /
+    the scheduled ○, via `STATUS_EMOJI`/`_SUBAGENT_LIVE_GLYPH` below) — the
+    colour swap was pure redundant encoding of a state the glyph already
+    names, and green-vs-white was precisely the pair he could not
+    distinguish. No information is lost: status still reads off the glyph,
+    unambiguously, for every state."""
+    bg = _open_block_bg(row, hue)
     if selected:
         bg = _selection_highlight(bg)
     roles = task_chain_roles(hue, row.feature_colour)
     fourth = _selection_highlight(roles.fourth) if selected else roles.fourth
+    gutter = row.task_colour or roles.third
     block_bg = bg if bg is not None else (0, 0, 0)
-    fg = ensure_contrast(
-        _SUBAGENT_TERMINAL_FG.get(row.status, TEXT), block_bg, _CONTRAST_MIN_TEXT,
-    )
+    fg = ensure_contrast(TEXT, block_bg, _CONTRAST_MIN_CONTENT)
     attr_extra = curses.A_BOLD if selected else 0
     if bg is not None:
         _fill_row_bg(stdscr, y, width, bg, colours)
-    _draw_indent_cell(stdscr, y, colours, roles.third, fourth)
+    _draw_indent_cell(stdscr, y, colours, gutter, fourth)
     glyph = (STATUS_EMOJI[row.status] if row.status in TERMINAL_TASK_STATUSES
              else _SUBAGENT_LIVE_GLYPH.get(row.status, SUBAGENT_GLYPH))
     text = _truncate(f"{glyph} {row.label}", max(width - _INDENT_WIDTH, 0))

@@ -1,8 +1,11 @@
-"""Paints one line of the task's five-step accordion: centred small caps
-over a one-column indent (THIRD on FOURTH) plus the row's own FOURTH
-background -- the same tone for every step regardless of done/active/todo
-(operator ruling 2026-07-28). The ACTIVE+live step additionally carries the
-moving KITT sweep, reusing sidebar_band.py's triangular-wave geometry.
+"""Paints one line of the task's five-step accordion: a fixed-LEFT mark
+(checkmark/spinner), centred small caps, and a reserved-but-currently-blank
+right column for a per-step timer (operator ruling 2026-07-28 -- see
+`_step_row_display_text`), over a one-column gutter indent (the task's own
+carrying colour on FOURTH) plus the row's own FOURTH background -- the same
+tone for every step regardless of done/active/todo (operator ruling
+2026-07-28). The ACTIVE+live step additionally carries the moving KITT
+sweep, reusing sidebar_band.py's triangular-wave geometry.
 """
 from __future__ import annotations
 
@@ -43,22 +46,29 @@ def _step_row_name_and_mark(row: Row) -> tuple[str, str]:
 
 def _step_row_display_text(row: Row, width: int) -> str:
     """The step row's full-width display text with its own mark pinned to
-    a FIXED right-hand column, rather than riding the centred name
-    (operator ruling, 2026-07-27: "the checkmarx or red markx next to the
-    step shoujld be right aligned... the mark must not float in the middle
-    next to a centred label of varying length" — a mark that drifts with
-    the label reads ragged; a fixed column doesn't). The window's own
-    literal last column is never safely writable (`_safe_addch`'s insch
-    trap drops any character landed there), so "right-aligned" lands one
-    column short of the true edge, at `width - 2`, with the true last
-    column left blank."""
+    a FIXED LEFT-hand column (operator ruling, 2026-07-28: "the checkmark
+    goes to the left, not to the right. I changed my mind... the spinner
+    goes to the left" — reverses the 2026-07-27 right-alignment below, but
+    for the SAME reason: a mark that drifts with a centred label of varying
+    length reads ragged, a fixed column doesn't, whichever side it sits on).
+    A trailing column is reserved for a RIGHT-hand timer (2026-07-28: "on
+    the right, you have your timer of how long things are going... when it
+    closes, then it becomes the total time") — NOT implemented here: no
+    per-step/per-task start timestamp exists anywhere in this model (`Step`/
+    `Task`/`Agent` carry none; the closest thing on the bus, `_seen_ts`, is
+    a per-SESSION last-activity marker used only for staleness, never a
+    per-step "began at", and `context_tokens`/`spend` are magnitudes, not
+    time) — flagged to the operator rather than invented, so the column is
+    left blank pending that data. The window's own literal last column is
+    never safely writable (`_safe_addch`'s insch trap drops any character
+    landed there), so this still reserves it as blank, same as before."""
     name, mark = _step_row_name_and_mark(row)
     if width < 2:
         return render_header_line(row.label, width)
-    name_width = width - 2
+    name_width = max(width - 3, 0)
     centred = render_header_line(name, name_width)
     mark_ch = mark if mark else " "
-    return (centred + mark_ch + " ")[:width]
+    return f"{mark_ch} {centred} "[:width]
 
 
 def _draw_step_row(
@@ -67,8 +77,10 @@ def _draw_step_row(
 ) -> int:
     """One line of the task's five-step accordion (operator correction,
     2026-07-26: "collapse keeps the line" — every step gets its own row,
-    always), CENTRED, small caps, over a one-column indent (THIRD on
-    FOURTH, `_draw_indent_cell`) plus the row's own FOURTH background.
+    always), mark fixed LEFT / name CENTRED / timer column reserved RIGHT
+    (`_step_row_display_text`), over a one-column gutter indent (the task's
+    own carrying colour on FOURTH, `_draw_indent_cell`) plus the row's own
+    FOURTH background.
 
     EVERY step title — done, active, or todo alike — carries the SAME flat
     FOURTH colour (operator ruling 2026-07-28, item 11: "for whichi
@@ -95,8 +107,9 @@ def _draw_step_row(
     guarantee automatically."""
     roles = task_chain_roles(hue, row.feature_colour)
     content = _selection_highlight(roles.fourth) if selected else roles.fourth
+    gutter = row.task_colour or roles.third
     attr_extra = curses.A_BOLD if selected else 0
-    _draw_indent_cell(stdscr, y, colours, roles.third, content)
+    _draw_indent_cell(stdscr, y, colours, gutter, content)
     text_width = max(width - _INDENT_WIDTH, 0)
     text = _step_row_display_text(row, text_width)
 

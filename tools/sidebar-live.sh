@@ -130,17 +130,23 @@ start_renderer() {
   if [ -n "$scenario" ]; then
     write_scenario_data
     XDG_RUNTIME_DIR="$scenario_runtime" HOME="$scenario_home" \
-      python3 "$surface/tools/sidebar.py" 2>>"$log" &
+      setsid python3 "$surface/tools/sidebar.py" 2>>"$log" &
   else
-    python3 "$surface/tools/sidebar.py" 2>>"$log" &
+    setsid python3 "$surface/tools/sidebar.py" 2>>"$log" &
   fi
   renderer_pid=$!
   shown_sha="$sha"
 }
 
+# The renderer spawns `inotifywait` to watch the projects tree. Killing only the
+# renderer leaves that grandchild alive: it is reparented to the user's init and
+# holds its inotify instance for ever. At one leak per reload, and a default cap
+# of 128 instances per user, a day of commits is enough to starve the desktop of
+# them. So the renderer is started in its own process group and the GROUP is
+# signalled, which reaches the watcher too.
 stop_renderer() {
   [ -n "$renderer_pid" ] || return 0
-  kill "$renderer_pid" 2>/dev/null
+  kill -TERM "-$renderer_pid" 2>/dev/null || kill -TERM "$renderer_pid" 2>/dev/null
   wait "$renderer_pid" 2>/dev/null
   renderer_pid=""
 }
