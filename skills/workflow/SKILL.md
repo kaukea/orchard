@@ -124,7 +124,7 @@ override; the agent never self-selects this path.
 On acceptance:
 
 - No worktree, no branch, no anchor, no tag, no squash, no handover. One
-  properly-formatted commit straight on `main` (`git-commit` skill; the commit
+  properly-formatted commit straight on `main` (`git-workflow` skill; the commit
   carries `Branch: main` — sanctioned for micro-task commits only).
 - The close gate collapses to what actually happened: almost always nothing beyond
   the diff; a decision, if one was somehow made, is still appended.

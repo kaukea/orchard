@@ -23,7 +23,7 @@ by the user.
   - **Scope expansion** — anything outside the agreed workflow scope.
   - **Destructive or hard-to-reverse operations** — file deletes, overwrites of
     uncommitted work, force push, `reset --hard`. Git-specific destructive operations
-    are governed by the `git-commit` skill; branch deletion is handled by the
+    are governed by the `git` skill; branch deletion is handled by the
     workflow close (the branch ref is deleted as the final close step; the
     `archive/` tag preserves its history).
   - **Technology, library, tool, or approach choice** when more than one option is

@@ -44,7 +44,7 @@ last moment to save its cargo.
 3. **Generate the squash subject/body.** Gitmoji subject, imperative, ≤52
    characters; body explains WHY, wrapped at 72 characters; trailers
    `Branch: f/<id>` and `Co-authored-by:` per the exact format in
-   `.claude/skills/git-commit/SKILL.md` — read it before generating.
+   `.claude/skills/git-workflow/SKILL.md` — read it before generating.
 4. **Tag `archive/<id>`** on the branch HEAD and push the tag.
 5. **Publish the close gate:** the `close-spine` ruleset greys the merge
    button for everyone until YOU pass judgment — publish it only after
