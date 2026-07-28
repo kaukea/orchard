@@ -766,6 +766,37 @@ licensed a later agent to delete the operator's own downgrade path. And this lan
 invented a 16-colour support requirement and propagated it into three step specifications.
 Four fabrications from ambient context inside one feature.
 
+### A sower gets ONE job, and is then left alone until it returns
+
+Operator, 2026-07-28, after a sower reached three hundred thousand tokens with nothing
+committed: *"you are supposed to send sowers for one job and one job only, and let them
+come back."*
+
+Two failures, either of which alone would have been enough.
+
+**The job was not one job.** It carried nine items — adopt a palette, fix the spinner,
+change the header gradient, restyle the feature row, recolour active items, recolour the
+activity line, drop a status colour, derive a name from a new field, and make every row
+paint its own background. That is nine jobs under one label, and it cannot be scoped,
+estimated or verified as a unit.
+
+**And it was not left alone.** Seven separate instruction changes were sent to it while it
+worked, several reversing each other: fix the feature row, then do not touch the feature
+row, then here is a new design for it, then prefix the name with a green mark, then use an
+emoji instead, then derive the name by splitting an identifier, then take it from a field
+that already existed. Each arrived mid-task, invalidated work in progress, and forced a
+re-read.
+
+The structural mistake underneath both: **a design conversation with the operator and a
+dispatched step-spec are different things, and the second must not be a live feed of the
+first.** While a design is being settled, no sower should be running against it. Settle,
+then dispatch once, then wait.
+
+The cost is measurable. That sower spent roughly three hundred thousand tokens and had
+committed nothing when the operator noticed — against a courier's twenty-odd thousand for
+an entire day, and against the same landscaper having just recorded a fleet-wide rule
+requiring every dispatch to carry a budget.
+
 ## Decision entries
 
 Staged for the groundskeeper's mechanical fold into `docs/decisions.md` at close.
