@@ -95,6 +95,43 @@ silently discarding a ruling is the failure that is invisible today. The same di
 goes into the exit interview, so it reaches telemetry and becomes evidence over time
 rather than a line in one session that scrolls away.
 
+### The questions an agent asks itself — not findings read blindly
+
+*"Those are the questions an agent should ask itself rather than read blindly
+findings."*
+
+This is the stance the whole design serves. A recorded finding is not a fact to be
+consumed; it is a claim to be interrogated against the code in front of you. The probes
+below are not a validation step bolted onto discovery — they ARE how a decision is
+applied.
+
+**What a decision can be about**, in his words: *"Bugs. Feature behaviour. Dependent on
+software version."*
+
+**The environment probe is behavioural, not a version-string match:**
+
+*"Is the current software suffering from the same issue as that previous version
+software? And you count that at the major dot minor couple."*
+
+The question is not whether the version string matches. It is whether the current
+software still exhibits the issue the decision was made about. The version is tracked at
+**major.minor** — that couple is the granularity, not the full patch version and not the
+major alone.
+
+A decision made because a library misbehaved is answered by asking whether it still
+misbehaves. If it does not, the decision does not apply, whatever its version field says.
+
+**The area probe asks whether the area still exists:**
+
+*"All decisions are made in an area of the code. Does that area of the code still exist?
+If it does not exist anymore and you are working on a completely new version or a
+refactored version, does this rule still apply?"*
+
+Every decision was made in an area of the code. The first question is whether that area
+still exists at all. When it does not — a rewrite, a refactor, a new version — the agent
+must ask whether the rule survives the change rather than assume it carries over or
+assume it lapses. The question is put, and it is answered deliberately.
+
 ### Operator decisions are write-locked to the operator
 
 *"If it's an operator rule, there is no change by an agent without approval by the
@@ -164,9 +201,11 @@ an entry actually *is* removes the failure at its source.
 
 - The obligation keyword set, and how every entry carries one.
 - How an entry declares its AREA, and how the where-it-is-and-below rule is expressed so
-  an agent can answer "am I in the right area" without interpretation.
-- How the software and its version travel with an entry at discovery, so an agent can
-  answer "am I still using SoftwareX".
+  an agent can answer "am I in the right area" and "does that area still exist" without
+  interpretation — including what it must do when the area has been refactored away.
+- How the software and its version travel with an entry at discovery, recorded at
+  major.minor, so an agent can answer "is the current software still suffering the same
+  issue" rather than compare version strings.
 - The provenance model: what is recorded about an entry's origin, and how operator-origin
   entries are distinguished from agent-origin ones — the distinction the write-lock rests
   on.
@@ -207,9 +246,13 @@ Observed on his screen, not reviewed as a document. The pass conditions follow h
 - **Area is directional.** An entry sitting at an area governs that area and everything
   below it, and is NOT applied above or beside it. The agent is seen answering "am I in
   the right area where this decision was made".
-- **Environment is checked.** The entry made for software no longer in place is not
-  applied, and the agent is seen answering "am I still using SoftwareX" off the software
-  and version that travelled with the entry, rather than assuming it still holds.
+- **Environment is checked behaviourally.** The entry made for software no longer in
+  place is not applied, and the agent is seen asking whether the current software still
+  suffers the same issue — not comparing version strings — off the major.minor that
+  travelled with the entry.
+- **A vanished area is interrogated, not assumed.** Given an entry whose area has been
+  refactored away, the agent is seen asking whether the rule survives the change, and
+  answering it deliberately in either direction rather than defaulting.
 - **The write-lock holds.** The agent does not change an operator decision, and does not
   add one, without approval — including the tempting case where it has just learned
   something that "obviously" should be a rule.
