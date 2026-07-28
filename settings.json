@@ -2,9 +2,6 @@
   "permissions": {
     "defaultMode": "auto",
     "allow": [
-      "Edit(.ai/repositories/*/*/agents/**)",
-      "Edit(.ai/repositories/*/*/skills/**)",
-      "Edit(.ai/repositories/*/*/files/**)"
     ]
   },
   "hooks": {
@@ -30,7 +27,7 @@
           },
           {
             "type": "command",
-            "command": "root=\"$(git rev-parse --show-toplevel 2>/dev/null)\"; gcd=\"$(git rev-parse --git-common-dir 2>/dev/null)\"; [ -n \"$root\" ] || exit 0; wm=\"\"; [ -f \"$gcd/the-works/migrated\" ] && wm=\"$(cat \"$gcd/the-works/migrated\")\"; latest=\"\"; for d in \"$root/migrations\" \"$root\"/.ai/repositories/*/*/migrations; do [ -d \"$d\" ] || continue; for f in \"$d\"/*.md; do [ -e \"$f\" ] || continue; b=\"${f##*/}\"; b=\"${b%.md}\"; [ \"$b\" \\> \"$latest\" ] && latest=\"$b\"; done; done; [ -n \"$latest\" ] && [ \"$latest\" \\> \"$wm\" ] && printf '{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"Package migrations are pending (watermark: %s, latest: %s). Read every migrations/*.md newer than the watermark (repo root or .ai/repositories/*/*/migrations/), merge them and apply the net effect - every step guarded by observable state - then write the latest name to .git/the-works/migrated. See AGENTS.files.md Migrations section.\"}}' \"${wm:-none}\" \"$latest\"; exit 0",
+            "command": "root=\"$(git rev-parse --show-toplevel 2>/dev/null)\"; gcd=\"$(git rev-parse --git-common-dir 2>/dev/null)\"; [ -n \"$root\" ] || exit 0; wm=\"\"; [ -f \"$gcd/the-works/migrated\" ] && wm=\"$(cat \"$gcd/the-works/migrated\")\"; latest=\"\"; for d in \"$root/migrations\"; do [ -d \"$d\" ] || continue; for f in \"$d\"/*.md; do [ -e \"$f\" ] || continue; b=\"${f##*/}\"; b=\"${b%.md}\"; [ \"$b\" \\> \"$latest\" ] && latest=\"$b\"; done; done; [ -n \"$latest\" ] && [ \"$latest\" \\> \"$wm\" ] && printf '{\"hookSpecificOutput\":{\"hookEventName\":\"UserPromptSubmit\",\"additionalContext\":\"Package migrations are pending (watermark: %s, latest: %s). Read every migrations/*.md newer than the watermark (repo root migrations/), merge them and apply the net effect - every step guarded by observable state - then write the latest name to .git/the-works/migrated. See AGENTS.files.md Migrations section.\"}}' \"${wm:-none}\" \"$latest\"; exit 0",
             "timeout": 5
           }
         ]

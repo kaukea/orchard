@@ -273,7 +273,7 @@ wall-clock than builds; only the squash-merge and the ingest commit truly serial
   needs you: the operator-gated CHANGELOG placement (Decision-034), cross-feature
   promotions or corrections (as a `.git/the-works/close-<id>.draft/` hand-off if
   ready in time, a follow-up commit if not), archiving the stream to
-  `.git/the-works/_ingested/`, converging (`kauk sync`, pending migrations), one
+  `.git/the-works/_ingested/`, applying any pending migrations, one
   push, re-triage.
 - **Start the NEXT task during the close.** A standing sequence or named next pick
   does not wait for the merge: run its bloom round in parallel with the groundskeeper
@@ -353,10 +353,10 @@ unchanged lifecycle `blocked` signal with `--notify-user` — never an activity 
   when a close depends on them. Flag what needs running and leave it; never execute it.
 - **Do NOT ask permission twice.** Approval for a change carries through to the mechanical
   steps that DELIVER that change. Once the operator has approved a workflow-component
-  amendment, you commit it and `kauk sync` it without asking again — the sync is part of
-  making the approved change real, not a separate decision. Re-asking is friction dressed
-  as diligence. (Still surface genuinely NEW decisions: a rebase CONFLICT is resolved with
-  the operator, never silently.) `kauk sync` runs at workflow START and END regardless —
-  it is routine hygiene, never a thing to seek permission for.
+  amendment, you commit it and you are done — the commit IS the change being made real,
+  not a separate decision. Re-asking is friction dressed as diligence. (Still surface
+  genuinely NEW decisions: a rebase CONFLICT is resolved with the operator, never
+  silently.) This repository is NOT package-managed: its agents, skills, hooks and tools
+  are real files read in place, so a committed edit is live with no sync step.
 - `MOOD.md` is uncommittable (in `.git/the-works/`) and personal — never commit it, never ship it.
 - The operator may overrule any of this per session.

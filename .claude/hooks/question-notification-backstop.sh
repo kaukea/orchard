@@ -1,1 +1,1 @@
-/home/sudoku/src/serialseb/orchids/.ai/repositories/serialseb/orchids/hooks/question-notification-backstop.sh
+../../hooks/question-notification-backstop.sh

@@ -261,8 +261,8 @@ repo.
 **Watermark** — `$(git rev-parse --git-common-dir)/the-works/migrated` holds the
 basename of the last applied migration, per clone (the state being migrated is
 per-clone). No watermark = everything pending. The shared `settings.json` hook
-compares the highest available basename (repo-root `migrations/` or
-`.ai/repositories/*/*/migrations/`) against it and injects a pending notice.
+compares the highest available basename in the repo-root `migrations/` directory
+against it and injects a pending notice.
 
 **Execution** — the agent reads ALL pending migrations at once, merges them, and
 applies the net effect in one pass (chained moves collapse; steps a later migration

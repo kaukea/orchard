@@ -104,8 +104,8 @@ As soon as a user indicates wanting to start a workflow:
   subsequent work in this workflow happens inside `.claude/worktrees/<feature-id>`. The worktree pins HEAD to
   your branch: other agents working in the source repo cannot accidentally move it.
 
-- Synchronize the skills using `kauk sync --status` (report any drift to the operator; `kauk sync`
-  on their go — see the `kauk` skill). Any error from the sync is ignored; the workflow proceeds regardless.
+- No package sync step. This repository's skills, agents, hooks and tools are real files
+  read in place; a committed edit is live immediately.
 
 - Create an anchor commit describing the intent of the workflow, with a `🎉` gitmoji and a `Base:`
   trailer containing the SHA of the commit the branch was created from. This commit is the anchor for

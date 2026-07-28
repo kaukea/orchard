@@ -30,7 +30,7 @@ and ask the operator. Improvising a workaround is the failure mode, not a recove
 - [ ] Applicability gate: project `AGENTS.md` has no `repository:` value other than
       `orchids` (missing/empty = `orchids`; anything else, e.g. `gitflow` → STOP,
       this skill does not apply)
-- [ ] Preconditions met (clean tree, kauk install done, backup ref created)
+- [ ] Preconditions met (clean tree, backup ref created)
 - [ ] Sensitive-content sweep of full history done; findings surfaced BEFORE rewriting
 - [ ] Feature partition proposed and OPERATOR-APPROVED before any ref is written
 - [ ] Every feature: branch → ANCHOR COMMIT → cherry-picks → archive tag → templated
@@ -47,7 +47,7 @@ and ask the operator. Improvising a workaround is the failure mode, not a recove
 keeps its own branching model — STOP, this skill does not apply. A missing or empty
 value counts as `orchids`.
 
-Clean tree; `kauk install` already run (the repo is package-managed); work happens in a dedicated worktree on
+Clean tree; work happens in a dedicated worktree on
 branch `tmp/main-rewrite`; tag `backup/pre-rewrite` on current `main` FIRST.
 Original `main` is never checked out, committed to, amended, or deleted.
 

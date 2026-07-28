@@ -1,1 +1,1 @@
-/home/sudoku/src/serialseb/orchids/.ai/repositories/serialseb/orchids/hooks/courier-init.sh
+../../hooks/courier-init.sh

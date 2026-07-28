@@ -1,1 +1,1 @@
-/home/sudoku/src/serialseb/orchids/.ai/repositories/serialseb/orchids/tools/sidebar-mount.sh
+../../tools/sidebar-mount.sh

@@ -1,1 +1,1 @@
-/home/sudoku/src/serialseb/orchids/.ai/repositories/serialseb/orchids/tools/sidebar_nav.py
+../../tools/sidebar_nav.py

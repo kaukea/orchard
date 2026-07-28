@@ -36,13 +36,9 @@ Boundaries on how an agent conducts itself — independent of language, stack, o
   the operator, actually run, with real results reported. "Looks correct" and a
   clean build are not tests.
 - **A fix to another repository rides that repository's own workflow.** When work
-  in one repo surfaces a problem in vendored package content
-  (`.ai/repositories/…`) or any other repo, do not edit it in place — and do not
-  suggest doing so. Capture it (a TODO naming the source repo, or a report to the
-  operator) and let the fix go through the source repo's gates and decision log.
-  Write-through happens only on explicit operator direction, and only inside a
-  package's content surfaces — `agents/`, `skills/`, `files/` (Decision-009,
-  orchids).
+  in one repo surfaces a problem in another repo, do not edit it in place — and do
+  not suggest doing so. Capture it (a TODO naming the source repo, or a report to
+  the operator) and let the fix go through that repo's own gates and decision log.
 - **State as fact only what you verified this session**; label the rest inferred or
   suspected. A negative ("doesn't exist / can't be done") requires an exhaustive
   check first — otherwise say "haven't found it".

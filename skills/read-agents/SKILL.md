@@ -12,7 +12,7 @@ metadata:
 
 At session start, two files at the repository root carry the rules the agent must obey:
 
-- `AGENTS.shared.md` — generic instructions applying to this repository and others using the same skills. Shipped by `kauk sync` from the orchids package (`src/serialseb/orchids`); assumed present.
+- `AGENTS.shared.md` — generic instructions applying to this repository and others using the same skills. Assumed present at the repository root.
 - `AGENTS.md` — instructions specific to this repository. Created if missing.
 
 ## Checklist
