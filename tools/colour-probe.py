@@ -81,16 +81,21 @@ def swatch(fg, bg, text, bold=False):
 
 
 def ladder(bg, hue, chroma_pct, count=12):
-    """Candidate foregrounds at one hue, walking lightness upward.
+    """Candidate foregrounds at one hue, walking lightness AWAY from the
+    background.
 
-    The range deliberately runs past what the sidebar uses today and up to
-    near-white: on a background this dark, the comfortable end (APCA around
-    -75) sits higher than anything currently on screen, so a ladder that
-    stopped at today's values would be twelve shades of unreadable.
+    Direction is chosen from the background rather than assumed: a task row
+    carries its own identity colour, and those run from pale cyan to bright
+    magenta to near-black, so a fixed ladder is upside down for half of
+    them. The range deliberately overshoots what the sidebar uses today,
+    because on several of these backgrounds the comfortable end sits well
+    past anything currently on screen.
     """
+    dark_bg = lab_lightness(bg) < 50
+    lo, hi = (0.34, 0.93) if dark_bg else (0.04, 0.52)
     out = []
     for i in range(count):
-        l = 0.34 + i * (0.93 - 0.34) / (count - 1)
+        l = lo + i * (hi - lo) / (count - 1)
         r, g, b = colorsys.hls_to_rgb(hue, l, chroma_pct)
         out.append((round(r * 255), round(g * 255), round(b * 255)))
     return out
@@ -104,13 +109,20 @@ ROWS = {
 
 
 def main():
-    which = sys.argv[1] if len(sys.argv) > 1 else "stale"
-    hue = sc._repo_hue("orchids")
-    roles = sc.repo_colour_roles(hue)
-    bg = {"stale": roles.third, "task": roles.third, "step": roles.fourth}[which]
+    arg = sys.argv[1] if len(sys.argv) > 1 else "stale"
+    if "," in arg:                      # an explicit background: "203,111,205"
+        bg = tuple(int(p) for p in arg.split(","))
+        label = "the background you gave me"
+    else:
+        hue = sc._repo_hue("orchids")
+        roles = sc.repo_colour_roles(hue)
+        bg = {"stale": roles.third, "task": roles.third,
+              "step": roles.fourth}[arg]
+        label = ROWS[arg]
 
-    print(f"\nBackground for {ROWS[which]}: rgb{bg}  "
-          f"L*={lab_lightness(bg):.1f}\n")
+    print(f"\nBackground for {label}: rgb{bg}  "
+          f"L*={lab_lightness(bg):.1f}  "
+          f"({'dark — light text' if lab_lightness(bg) < 50 else 'light — dark text'})\n")
     print("Each line is the SAME text in a different foreground. Read them, "
           "ignore the numbers,\nand tell me the first one that is comfortable "
           "and the first one that is legible at all.\n")
