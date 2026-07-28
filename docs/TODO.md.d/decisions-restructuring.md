@@ -16,8 +16,90 @@
 
 ## Questions
 
-1. ~~What are the application semantics?~~ **ANSWERED, 2026-07-28 — see
-   `## The application semantics (operator, 2026-07-28 — verbatim where quoted)
+1. ~~What are the application semantics?~~ **ANSWERED, 2026-07-28** — see
+   `## The application semantics` below. They are the fixed part of this task;
+   everything else is designed to serve them.
+
+2. **`metronome` has no board row — nor does any of the blueprint it belongs to.**
+   The operator states these semantics *"will be an acceptance criteria for
+   metronome"*. Metronome is the runtime supervisor agent specified in the
+   2026-07-24 blueprint (`.git/the-works/orchestrator/20260724-blueprint.md`,
+   §3–§4, stages 1–2 of eight); that blueprint is uncommitted and unboarded in
+   its entirety, so these acceptance criteria point at something with no board
+   presence. *Recommendation: board it — a named acceptance criterion pointing at
+   a task that does not exist gets quietly dropped by whoever builds either side.*
+
+3. **Is `valve` the same agent as metronome?** `valve` (gh#273, plan-ready)
+   describes real-time decision enforcement, yes/no phase gates and forced rework.
+   Metronome's tier-2 action space runs silence → bus comment → operator flag →
+   cancel-to-gate. Those overlap closely enough that the operator should rule
+   whether they are one agent or two before either is built. Note also that
+   `agents/supervisor.md` already exists and explicitly disclaims judgement —
+   *"it never judges it (that is Valve)"* — so the boundary is drawn between three
+   things today, not two.
+
+4. **What is the vocabulary, and what is the split?** He is explicitly *"not set on
+   the exact split"*. The kinds named so far are a partial list: `rule`, `contextual
+   decision`, `opinion`, and — for entries originating from agents rather than from
+   him — `learning` and `dragon`. Naming and boundaries are open, and more kinds are
+   expected. Note this sits UNDER the settled model: obligation is RFC 2119 and
+   everything else is provenance, so these kinds are provenance flavours rather than
+   a parallel system of obligation.
+
+5. **Does the register stay one file, or become several?** He described
+   `docs/decisions.md` becoming *"a simple pointer"*, which reads as an index that
+   points at the kinds rather than containing them. Whether each kind gets its own
+   file, and how discovery survives a split, is undecided.
+
+6. **What happens to the 117 existing entries?** Migrated wholesale into their new
+   kinds, migrated only where the audit finds them sound, or frozen as a closed
+   historical register with the new structure starting empty. This is a question
+   about trust: if the file lies, migrating its contents forward carries the lies
+   with it.
+
+
+## Findings
+
+**These kinds sit UNDER the settled model, not beside it.** Obligation is RFC 2119 and
+everything else is provenance (see the semantics section), so the kinds below are
+provenance flavours rather than a parallel system of obligation. They are recorded as he
+named them; an earlier draft mistakenly built them into a taxonomy where some kinds bind
+and others do not, and he struck that.
+
+- The kinds the operator named, in his words, with the shape he gave each:
+  - **rule** — the binding sort.
+  - **contextual decision** — a decision that holds within its circumstance.
+  - **opinion** — carried but not binding.
+  - **learning** — agent-originated, explicitly time- and version-scoped: *"at time t,
+    software y means we never do z"*. The scoping is the point; a learning that has
+    lost its `t` and its `y` is no longer a learning.
+  - **dragon** — agent-originated, a warning with alternatives: *"doing x results in
+    negative impact due to y, suggest doing a or b instead"*. Note the shape — it
+    carries a consequence, a cause, and suggested alternatives, and it *suggests*
+    rather than forbids.
+  - and *"etc."* — the list is open.
+
+- **The origin of an entry determines which kinds are available to it.** Entries
+  *"coming from agents"* are to be merged into learnings and dragons. The operator's
+  own rulings are what may become rules. That is the structural fix for the failure the
+  audit was raised over: today an agent-authored inference and an operator ruling are
+  the same shape of object in the same file, indistinguishable to the next reader, and
+  so the inference inherits the ruling's authority. Separating them by origin removes
+  the mechanism rather than policing it.
+
+- **Note what a dragon is not.** It suggests alternatives instead of forbidding. An
+  agent that discovers a hazard can record it at full strength without inventing a
+  prohibition the operator never issued — which is the specific over-reach the current
+  single-shape register invites.
+
+- **This is a fleet-wide format change.** `docs/decisions.md` is defined in
+  `AGENTS.files.md` §Decisions, read by every agent in every consuming repository,
+  referenced by the close gate in `AGENTS.shared.md`, mirrored to GitHub by
+  `board_gh` (decisions project as their own type, closing on supersession), and cited
+  by skills. Changing its structure touches all of those, and a dated migration entry
+  is required because a managed artifact is being reformatted.
+
+## The application semantics (operator, 2026-07-28 — verbatim where quoted)
 
 The fixed part of this task. The vocabulary, the split and the file layout are designed
 to serve these; where a proposed structure cannot express one of them, the structure is
