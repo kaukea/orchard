@@ -352,6 +352,7 @@ from sidebar_paint_identity import (  # noqa: E402
     _draw_identity_block,
     _draw_subagent_row,
 )
+from sidebar_paint import _draw  # noqa: E402
 from sidebar_model import (  # noqa: E402
     ACTIVE_WINDOW_SECONDS,
     BRANCH_SEPARATOR,
@@ -411,75 +412,6 @@ def _watch_thread(shared: _SharedFleet) -> None:
         watch(shared.set, watched_names=load_watched_repo_names())
     except Exception:
         pass  # keep the UI alive on the last snapshot even if the watch dies
-
-
-def _draw(
-    stdscr, rows: list[Row], selected: int, offset: int,
-    colour_pairs: dict[str, int], agent_colours: list[int] | None,
-    colours: _ColourCache, tick: int, has_moved: bool = False,
-) -> None:
-    stdscr.erase()
-    max_y, max_x = stdscr.getmaxyx()
-
-    if not rows:
-        _safe_addstr(stdscr, 0, 0, _truncate(NO_ACTIVITY_TEXT, max_x), curses.A_DIM)
-        stdscr.refresh()
-        return
-
-    expand = _agent_expansion_fits(rows, max_y)
-    y = 0
-    # The current repo's hue triple — updated on every "repo" row, reused
-    # by every "task"/"accordion"/"agent"/"subagent" row until the next one
-    # (each resolves its own THIRD/FOURTH from this via `task_chain_roles`;
-    # feature rows carry everything colour-related they need directly on
-    # the Row already, see `task_colour`/`feature_colour`/`_open_block_bg`).
-    hue = _repo_hue("")
-    for i, row in enumerate(rows[offset:offset + max_y], start=offset):
-        if y >= max_y:
-            break
-        if row.kind == "repo":
-            hue = _repo_hue(row.label)
-            _draw_header(stdscr, y, max_x, row.label, row.paused, i == selected and has_moved, colours)
-            y += 1
-            continue
-        if row.kind == "feature":
-            _draw_feature_row(stdscr, y, max_x, row, i == selected, colours)
-            y += 1
-            continue
-        if row.kind == "task":
-            y = _draw_task_row(stdscr, y, max_x, row, i == selected, colours, hue, tick)
-            continue
-        if row.kind == "accordion":
-            y = _draw_step_row(stdscr, y, max_x, row, i == selected, colours, tick, hue)
-            continue
-        if row.kind == "agent":
-            y = _draw_identity_block(stdscr, y, max_x, row, i == selected, expand, colours, hue)
-            continue
-        if row.kind == "subagent":
-            y = _draw_subagent_row(stdscr, y, max_x, row, i == selected, colours, hue)
-            continue
-
-        text = _truncate(_row_text(row), max_x)
-        attr = colour_pairs.get(row.status, 0)
-        if i == selected:
-            attr |= curses.A_REVERSE
-        _safe_addstr(stdscr, y, 0, text, attr)
-        y += 1
-
-    # DEAD-SPACE FILL (sidebar-teamwork defect 1): the loop above only ever
-    # stops short of `max_y` once `rows` itself has run out — the slice
-    # `rows[offset:offset + max_y]` already claims every row the viewport
-    # can hold, so reaching here with `y < max_y` means there is genuinely
-    # nothing further to show, never a row scrolled past. `stdscr.erase()`
-    # already blanked those remaining rows to nothing; paint them in the
-    # current repo's own dim FILL hue instead (the same tone a feature row's
-    # band and a task row's own bar background already use) so the pane's
-    # surface claims the full height it was granted rather than stopping in
-    # a bare, unstyled void the moment its content does.
-    for fill_y in range(y, max_y):
-        _fill_row_bg(stdscr, fill_y, max_x, hue["fill"], colours)
-
-    stdscr.refresh()
 
 
 # --------------------------------------------------------------------------
