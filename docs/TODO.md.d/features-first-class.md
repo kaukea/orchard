@@ -11,6 +11,9 @@ the work we do."* Converged by the bloom round of 2026-07-28 (all rulings below 
 the operator's, dictated during that round). A feature is a long-living, first-class
 concept on every surface — and never a git construct.
 
+Operator, 2026-07-28 (post-round): this task belongs to the feature named
+**"Feature creation"** — the first feature to exist under the model it defines.
+
 **1. Git — main-branch development stands.** Every task gets a short-lived branch off
 main, named `f/<feature>/<task>` (operator's example: `f/oauth-auth/pbkcd`), and lands
 on main individually by squash merge, exactly as today. There is NO integration or
