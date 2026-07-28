@@ -2264,14 +2264,35 @@ def _draw_feature_row(
     beyond_styles_colour = ensure_contrast(_muted_toward(MUTED, fill_rgb), fill_rgb, _CONTRAST_MIN_MARK)
 
     attr_extra = curses.A_BOLD if selected else 0
+    # `col` (the CHARACTER index into `text`/`styles`) and the true terminal
+    # COLUMN are the same number only when every character drawn so far was
+    # one cell wide. The status glyph (e.g. `❌`, East-Asian-Wide) is two --
+    # writing it at column 0 and then, on the next loop iteration, EXPLICITLY
+    # positioning the following space at column 1 (its character index)
+    # lands that write on the glyph's own second, already-occupied cell.
+    # ncurses does not silently ignore that: it re-flows the row from there,
+    # which is what pushed this row's real content one column past the
+    # pane's true edge and tripped the terminal's own line-wrap, merging this
+    # row with the one below it (sidebar-teamwork defect, live pane capture
+    # 2026-07-28, `major-scenarios` fixture, BRAVO-equivalent "Truncation
+    # edge cases" — a wrap, not a truncation-rule miss, since the composed
+    # string's own cell width was already correctly budgeted at `width - 1`).
+    # `cell_col` is the real column, advanced by each character's OWN
+    # `_cell_width` rather than by one; `styles`/`text` are still indexed by
+    # character position, since `_feature_row_cell_styles` builds one entry
+    # per character, not per cell.
+    cell_col = 0
     for col, ch in enumerate(text[:width]):
+        if cell_col >= width:
+            break
         fg = styles[col] if col < len(styles) else beyond_styles_colour
         attr = colours.pair(fg, fill_rgb) | attr_extra
-        _safe_addch(stdscr, y, col, ch, attr)
+        _safe_addch(stdscr, y, cell_col, ch, attr)
+        cell_col += _cell_width(ch)
     # The band covers the FULL row width, including any trailing columns
     # past the composed text (name shorter than the pane) — a feature row
     # reads as a solid band, not a highlighted word.
-    for col in range(len(text), width):
+    for col in range(cell_col, width):
         _safe_addch(stdscr, y, col, " ", colours.pair(beyond_styles_colour, fill_rgb) | attr_extra)
 
 
