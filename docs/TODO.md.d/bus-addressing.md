@@ -487,4 +487,98 @@ the cross-worktree defect in Blockers). A broken cheap channel forces an expensi
 To agree at scope. Expected shape: a message sent from an agent in a feature worktree
 arrives at its intended recipient in `main` and at a named sibling in a third worktree,
 proven by the recipient acting on it rather than by inspecting the filesystem — the seam
-no current test crosses.
+no current test crosses. Per the parent (`observability.md`): token cost per message is
+**measured before and after**, not asserted — see the new Question below on how.
+
+## GROOMER'S READING — bloom round, 2026-07-29
+
+Folded in from `docs/TODO.md.d/observability.md` (parent, operator rulings 2026-07-29) and
+`docs/orchard-bus.md` (spec, DRAFT for operator correction, authoritative over charter
+prose per operator direction). This task remains **NOT launch-ready** per the parent's own
+readiness note — every axis below needs its own ripening round before development, and
+this sidecar does not attempt to close that gate on its own strength.
+
+### What is now firmly settled (repeating nothing already in Questions above)
+
+- **Naming is closed, not open.** Decision-131 rules "courier" for the third time. The
+  "Naming still open" line and the `bus`/`courier` file-count table above are STALE against
+  that decision and against the parent sidecar's restatement of it — kept as historical
+  record of why the rename kept failing, not as an open question.
+- **The invented `courier.py signal` vocabulary is named exactly** (table above,
+  `started · building · testing · done · finished · blocked · abandoned`) and the parent
+  sidecar states the replacement mapping. `SIGNAL_NOTIFY_STATES = ("done", "blocked",
+  "abandoned")` (`tools/courier.py:226`) and `cmd_signal` (`tools/courier.py:560`) are the
+  concrete site.
+- **Relaying's two subject families are specified** (`docs/orchard-bus.md` §2, "Session
+  messages"): `orchard:operator:message:todo|instructions|request|response|content` and
+  `orchard:agent:message:request|response|content`, content in the body. Never built
+  (`[GAP]` implicitly — no `[CODE]` tag appears against these two families anywhere in
+  `docs/orchard-bus.md`).
+- **The operator-ask path is specified as ordinary request/response**
+  (`docs/orchard-bus.md` §4 does not mention it; the parent sidecar states it directly):
+  the tmux ask component (`tools/orchard-question-broker.py`, 60 tests, per the parent)
+  picks up the request, displays it, returns the response — no special-casing. Whether
+  wiring it up live is THIS task's work or `question-broker-dead`'s is a Question below.
+- **What the agent-def is reduced to is stated qualitatively but not enumerated**: "plain
+  language, plus when to speak" (occasions carried by a skill), with the courier owning
+  "the mechanism entirely." `agents/courier.md` is 4,023 words today (`wc -w`, confirmed
+  this round). No target word count or section list is ruled.
+
+### Questions — the operator's own five, made concrete
+
+1. **What exactly does the agent-def shrink to, and what moves to a skill?** The rulings
+   say WHAT knowledge stays (plain language + occasions) and WHAT moves (mechanism — verbs,
+   subjects, addresses, paths, JSON — all script-side). They do not say which of
+   `agents/courier.md`'s current sections survive as agent-def prose versus become a new
+   skill's "occasions on which an agent speaks" list, nor whether the skill is new or folds
+   into an existing one. GROOMER'S READING, not ruled: this reads like a plan-time
+   drafting exercise (write the reduced agent-def + skill, show the operator, get
+   correction) rather than something answerable in the abstract — flagging it as the
+   single largest undetermined piece of this task's build, not asking it as a
+   yes/no question.
+
+2. **Are `courier.py signal`'s seven invented states deleted outright, and what replaces
+   each caller?** The mapping table above (this sidecar, "The invented vocabulary" section)
+   states what each invented state actually IS (status vs. lifecycle vs. outcome) but does
+   not enumerate every call site that passes `--state building`, `--state done`, etc., nor
+   whether `cmd_signal`'s `--state` flag is deleted in favour of separate `status`/
+   `lifecycle`/`outcome` subcommands, kept as a compatibility shim, or something else.
+   Decision-124 rules against preserving a surface "because something already calls it" —
+   so the default reading is deletion, not a shim — but that is a GROOMER'S READING, not a
+   ruling, and needs the operator's confirmation given the caller-migration cost.
+
+3. **How is token efficiency MEASURED, before and after — with what tool, on what
+   sample?** The parent's Testing section and this task's own scope item 3 both say
+   "measured, not asserted," and the existing baseline (~3,000 tokens / message, this
+   session's subagent accounting, three courier invocations) is itself measured
+   informally from session transcripts, not from a repeatable script. No method is ruled
+   for producing the "after" number on a comparable basis. This is a genuine open Question,
+   not a reading — the operator has stated the requirement but not the method.
+
+4. **What must "relaying" actually DO, beyond accepting the two subject families?**
+   `docs/orchard-bus.md` states the subjects and that operator content is kept structurally
+   distinct; it does not state what a recipient does on receipt — is a relayed
+   `orchard:agent:message:request` expected to trigger the same wake/inject behaviour as a
+   `:session:` directed message (Decision-129's "receive from the script and SendMessage"),
+   or does relaying add a NEW consumption path? Unruled; needs the operator's word on
+   expected recipient behaviour, not just the wire format.
+
+5. **Does this task own building the operator-ask wiring, or does `question-broker-dead`?**
+   The parent lists `question-broker-dead` as a sibling task for exactly "the operator-ask
+   path, running rather than merely built." This task's own scope point 4 above documents
+   the SAME path as part of "what the agent-def knows." GROOMER'S READING: the spec/wiring
+   split reads as this task owning the addressing/subject-family design and
+   `question-broker-dead` owning making the existing 60-test component actually run — but
+   the parent sidecar is explicit that this whole feature is not split across parallel
+   footprints, so an actual split of WHICH task builds WHAT here needs the operator's
+   ruling, not an inference.
+
+### Sequencing note
+
+Per the parent sidecar's binding consequence ("not split across parallel workers with
+separate footprints — the footprints are the same footprint") and the explicit instruction
+under which this bloom round ran: this task does **not** propose its own sequencing ahead
+of the parent, and does not narrow or reorder the four sibling tasks listed in
+`observability.md` §Tasks. The Questions above are scoped to what THIS task's Proposal must
+say, not to when it runs relative to `sidebar-teamwork`, `no-agent-teardown`, or
+`question-broker-dead`.
