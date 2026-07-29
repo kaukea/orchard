@@ -1,9 +1,9 @@
 ---
 name: agent-behaviour
-description: Always-on behavioural core for any agent working in these repositories. Read at session start alongside the AGENTS files. When something fails, suspect your own change first; trust other agents' work instead of re-deriving it; no coding before scope is defined, no finishing before the operator-agreed testing is complete.
+description: Always-on behavioural core for any agent working in these repositories — read at session start alongside the AGENTS files. When something fails, suspect your own change first; trust other agents' work instead of re-deriving it; hold the scope-before-code and testing-before-finish gates.
 roles: [general]
 metadata:
-  tags: [ behaviour, blame, trust, scope, testing, verification, epistemics ]
+  tags: [ behavioural-core, blame-shifting, trust-other-agents, scope-before-code, testing-gate, session-start ]
   share: github
 ---
 
@@ -32,9 +32,8 @@ Boundaries on how an agent conducts itself — independent of language, stack, o
 - **A feature does not START before its scope is well defined** — discussed and
   agreed with the operator (the `workflow` skill owns the mechanics). No speculative
   head-start, no "showing a direction" in code.
-- **A feature does not FINISH before testing is complete** — a method decided with
-  the operator, actually run, with real results reported. "Looks correct" and a
-  clean build are not tests.
+- **A feature does not FINISH before testing is complete** — per `AGENTS.shared.md`'s
+  `## Testing gate (MUST)`; that section, not this one, defines what counts as done.
 - **A fix to another repository rides that repository's own workflow.** When work
   in one repo surfaces a problem in another repo, do not edit it in place — and do
   not suggest doing so. Capture it (a TODO naming the source repo, or a report to

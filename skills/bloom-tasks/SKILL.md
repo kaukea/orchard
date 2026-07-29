@@ -1,11 +1,11 @@
 ---
 name: bloom-tasks
-description: Run a board-blooming pass — dispatch the prep-only groomer over the stalest opted-in tasks so their sidecars advance through the readiness pipeline without the operator driving each one. NOT a cron; a manual/on-demand trigger fired by the operator ("bloom the board") or by the gardener when it notices the change signal (docs/decisions.md or a sidecar moved since the last swept SHA). Prep-only, commit-only, N=2 per pass.
+description: Run a board-blooming pass — dispatch the prep-only groomer over the stalest opted-in tasks so their sidecars advance through the readiness pipeline without the operator driving each one. NOT a cron; a manual/on-demand trigger fired by the operator ("bloom the board") or by the gardener when it notices the change signal (docs/decisions.md or a sidecar moved since the last swept SHA). Commit-only, N=2 per pass.
 roles: [process/workflow]
 share: github
 compatibility: Requires git
 metadata:
-  tags: [bloom, board, blooming, readiness, staleness, gardener, groomer, trigger, on-demand]
+  tags: [blooming-pass, staleness-walk, groomer-dispatch, readiness-pipeline, change-signal, board-stale-script]
 ---
 
 # Intent (bloom)
