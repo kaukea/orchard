@@ -1372,6 +1372,36 @@ class FlattenTests(unittest.TestCase):
             if r.kind in ("accordion", "agent", "subagent"):
                 self.assertEqual(r.task_colour, task_colour)
 
+    def test_task_row_metrics_shows_the_formatted_running_time(self):
+        # M1: `Task.running_seconds` (sidebar_model.py, event-timestamp-
+        # derived, spec sidebar-spec.md §3) now reaches the task row's own
+        # METRICS slot via `_task_metrics_text`/`_format_running_time` in
+        # sidebar_rows.py — this seam used to be a permanent None.
+        task = sidebar.Task(task_id="t", name="a task", status="working",
+                             running_seconds=125)
+        feature = sidebar.Feature(feature_id="f", name="a feature", status="working",
+                                   tasks=[task])
+        fleet = sidebar.Fleet(repos=[
+            sidebar.Repo(name="r", activity="", status="working",
+                         waiting_on_operator=False, features=[feature]),
+        ])
+        task_row = next(r for r in sidebar.flatten(fleet) if r.kind == "task")
+        self.assertEqual(task_row.metrics, "2m")
+
+    def test_task_row_metrics_stays_none_without_a_running_time(self):
+        # A marker-only task (no live agent, no timestamp survives its
+        # marker) leaves `running_seconds` unset — nothing invented to fill
+        # the slot.
+        task = sidebar.Task(task_id="t", name="a task", status="idle")
+        feature = sidebar.Feature(feature_id="f", name="a feature", status="idle",
+                                   tasks=[task])
+        fleet = sidebar.Fleet(repos=[
+            sidebar.Repo(name="r", activity="", status="idle",
+                         waiting_on_operator=False, features=[feature]),
+        ])
+        task_row = next(r for r in sidebar.flatten(fleet) if r.kind == "task")
+        self.assertIsNone(task_row.metrics)
+
     def test_feature_row_carries_no_owning_repo_progress_pct(self):
         # progress_pct has no source in this grammar and stays None — the
         # field is still carried on Row (kind == "feature" only) so the

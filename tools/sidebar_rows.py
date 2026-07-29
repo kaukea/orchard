@@ -141,23 +141,45 @@ def _step_row(
                live=live, task_colour=task_colour, feature_colour=feature_colour)
 
 
+def _format_running_time(seconds: float) -> str:
+    """Seconds -> compact human text — `Xs` under a minute, `Xm` under an
+    hour, `XhMM` (zero-padded minutes, no unit on the minutes half) from an
+    hour up, echoing the footer mock's own "6h02" shape
+    (`sidebar_render_text.done_footer_line`'s docstring) so a later step's
+    footer and this task-row figure read as one family rather than two
+    invented conventions. Not itself a ruling — the exact text shape is
+    unruled by the spec and is this function's own implementer choice,
+    flagged as such rather than asserted as settled design."""
+    total = int(seconds)
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}"
+    if minutes:
+        return f"{minutes}m"
+    return f"{secs}s"
+
+
 def _task_metrics_text(task: Task) -> str | None:
-    """The task row's own right-aligned METRICS text — running time first,
-    tokens/context/model+effort a later step's own seam to fill (operator
-    ruling, 2026-07-29: a single-task feature's task row shows its
-    METRICS, especially its running time — see `_task_display_label` for
-    the labelling half of the same ruling). Always None today: `Task`
-    (sidebar_model.py) carries no timestamp of any kind — no `_seen_ts`,
-    no `started`/`updated` — for this function to read a running time
-    from. The ruling's own graceful-degradation instruction ("render from
-    what exists today — event timestamps / `_seen_ts` age") names a
-    source that exists only inside `sidebar_model.py`'s per-session `rec`
-    dict, never threaded onto `Task` itself; that threading is a model-
-    layer change outside this file's scope. Nothing is invented here to
-    paper over the gap — the caller renders this row's metrics slot
-    exactly as blank as it always has, until a later step gives `Task` a
-    real field to read."""
-    return None
+    """The task row's own right-aligned METRICS text — running time first
+    (operator ruling, 2026-07-29: a single-task feature's task row shows
+    its METRICS, especially its running time — see `_task_display_label`
+    for the labelling half of the same ruling); tokens/context/model+effort
+    stay a later step's own seam to fill (spec §3's remaining three ruled
+    metrics — none of them belong to a single TASK row the way running
+    time does, and the wider footer/tokens⚡/dollars grammar they'd feed is
+    explicitly out of this step's boundary).
+
+    `Task.running_seconds` (sidebar_model.py) is the deterministic,
+    script-computed figure this reads — computed once at `build_model()`
+    time from event timestamps, never recomputed here from a live wall
+    clock (spec §3: "never through an agent's context", and this function
+    stays byte-identical across repeated renders of the same Fleet).
+    Still None for a marker-only task (no start time survives in the
+    marker schema) — an honest gap, not a guess."""
+    if task.running_seconds is None:
+        return None
+    return _format_running_time(task.running_seconds)
 
 
 def _task_display_label(task: Task, feature_name: str, single_task: bool) -> str:

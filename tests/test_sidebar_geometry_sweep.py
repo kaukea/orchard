@@ -71,6 +71,10 @@ import sidebar  # noqa: E402
 
 _SIDEBAR_PY = os.path.join(_TOOLS_DIR, "sidebar.py")
 _SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
+# A task row's own METRICS tail (`sidebar_rows._format_running_time`'s own
+# shapes: "0s"/"12m"/"1h05") -- matched so BRAVO's ellipsis-suffix check
+# below can peel it off before judging whether the NAME half was cut.
+_METRICS_TAIL_RE = re.compile(r" \d+(?:h\d{2}|m|s)$")
 
 _HAS_TMUX = shutil.which("tmux") is not None
 
@@ -443,7 +447,18 @@ class SidebarGeometrySweepTests(unittest.TestCase):
                          f"BRAVO task row's rendered body is {task_cells} "
                          f"cells wide with {task_avail} available: {actual_task_body!r}")
                 task_full_name = _BRAVO_TASK_NAME in actual_task_body
-                if not task_full_name and not actual_task_body.endswith(sidebar.ELLIPSIS):
+                # The task row's own right-aligned METRICS tail (M1,
+                # sidebar_rows.py's `_task_metrics_text`, wired in by
+                # sidebar_paint_task.py) rides the same always-survives-
+                # truncation slot the retired progress circle used to --
+                # peeled here by PATTERN rather than `_row_core`'s
+                # small-alphabet peel, since running-time text is free-form
+                # ("0s"/"12m"/"1h05"), not a fixed glyph set. BRAVO is
+                # terminal (outcome:fail), so its running time freezes at
+                # whatever the fixture's own start/fail events measured --
+                # real text, not a fixture artifact to special-case around.
+                name_body = _METRICS_TAIL_RE.sub("", actual_task_body)
+                if not task_full_name and not name_body.endswith(sidebar.ELLIPSIS):
                     fail("cut-marked-one-rule",
                          f"BRAVO task row was cut but does not end with the "
                          f"ellipsis: {actual_task_body!r}")

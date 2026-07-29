@@ -159,7 +159,18 @@ class Agent:
     `step` is derived client-side from `role` via the role->step map
     (`resolve_step`); None when the role is missing or unmapped — the
     agent still renders, just without a step (`Task.unstepped_agents`,
-    fails open, operator ruling 2026-07-26)."""
+    fails open, operator ruling 2026-07-26).
+
+    `context_tokens`/`spend` ride straight off the status snapshot
+    (`docs/courier-wire.md` §2b, `orchard_topic.py`'s `_status()`) — raw
+    pass-through, no derived dollar figure or in/out split computed here
+    (that reading of `spend`'s nested token classes, and any dollar
+    estimate, is the renderer's job in a later step; `effort` has no wire
+    source yet — [GAP] — so no field is added for it here rather than one
+    that would sit permanently None). `started_ts`/`updated_ts` are this
+    agent's own earliest/latest event timestamps (`rec["_first_ts"]`/
+    `rec["_seen_ts"]`) — the raw material `Task` aggregates into its own
+    running time (see `_agent_timestamp_bounds`)."""
     session_id: str
     role: str | None
     model: str | None
@@ -168,6 +179,10 @@ class Agent:
     parent: str | None = None
     step: str | None = None
     subagents: list[Subagent] = field(default_factory=list)
+    context_tokens: int | None = None
+    spend: dict | None = None
+    started_ts: float | None = None
+    updated_ts: float | None = None
 
 
 @dataclass
@@ -187,12 +202,26 @@ class Task:
     never reopened once terminal; new work is a new task (operator ruling,
     2026-07-26). `steps` is empty when no live agent's role maps to a step;
     `unstepped_agents` holds any live agent whose role is missing or
-    unmapped."""
+    unmapped.
+
+    `started_ts`/`updated_ts` are the earliest/latest event timestamp
+    across every live agent on this task (`_agent_timestamp_bounds`) — None
+    for a marker-only task, since the marker schema records no start time
+    (an honest gap, not a guess). `running_seconds` is the deterministic,
+    script-computed running time spec §3 rules for the task row
+    (`_task_running_seconds`, computed once at `build_model()` time against
+    its own `now`, never recomputed from a live wall clock inside the
+    renderer — see `sidebar_rows._task_metrics_text`): for a still-open
+    task, `now - started_ts`; for a terminal one, frozen at
+    `updated_ts - started_ts`. None whenever `started_ts` is None."""
     task_id: str
     name: str
     status: str
     steps: list[Step] = field(default_factory=list)
     unstepped_agents: list[Agent] = field(default_factory=list)
+    started_ts: float | None = None
+    updated_ts: float | None = None
+    running_seconds: float | None = None
 
 
 @dataclass
@@ -380,8 +409,15 @@ def _apply_event(rec: dict, env: dict, ts: float, *, trust_snapshot: bool = True
     off its parent's transcript so the parent is never woken), not a
     trustworthy stand-in for the agent it is reporting on behalf of. See
     `_fold_agent_records`/`_fold_sessions`, the two callers that decide
-    when an event's own identity is untrustworthy this way."""
+    when an event's own identity is untrustworthy this way.
+
+    `_first_ts` tracks the EARLIEST event ts seen for this record,
+    unconditionally (unlike every other field here, which is gated on
+    "latest of its kind wins") — the running-time seam (`Task.started_ts`,
+    `_agent_timestamp_bounds`) needs the record's own start, independent of
+    file iteration order or which kind of event happened to arrive first."""
     rec["_seen_ts"] = max(rec.get("_seen_ts", 0.0), ts)
+    rec["_first_ts"] = min(rec.get("_first_ts", ts), ts)
     if trust_snapshot and _latest(rec, "_snap", ts):
         rec["identity"] = env.get("identity", rec.get("identity", {}))
         rec["status"] = env.get("status", rec.get("status", {}))
@@ -784,6 +820,10 @@ def _agent_from_rec(sid: str, rec: dict, now: float, role_step_map: dict[str, st
         parent=identity.get("parent"),
         step=resolve_step(role, rec, role_step_map),
         subagents=_live_subagents(rec.get("subs", {})),
+        context_tokens=status.get("context_tokens"),
+        spend=status.get("spend"),
+        started_ts=rec.get("_first_ts"),
+        updated_ts=rec.get("_seen_ts"),
     )
 
 
@@ -827,15 +867,56 @@ def _combine_status(statuses: list[str]) -> str:
     return "done"
 
 
-def _finalize_task(task_id: str, name: str, agents: list[Agent], marker_status: str | None) -> Task:
+def _agent_timestamp_bounds(agents: list[Agent]) -> tuple[float | None, float | None]:
+    """(earliest `started_ts`, latest `updated_ts`) across a task's own live
+    agents — the raw material `_task_running_seconds` turns into a running
+    time. `None` for either half whenever no agent carries it (never
+    reachable in practice once `_apply_event` has run, but a live agent
+    could in principle carry an unset field, e.g. one built by a test)."""
+    starts = [a.started_ts for a in agents if a.started_ts is not None]
+    updates = [a.updated_ts for a in agents if a.updated_ts is not None]
+    return (min(starts) if starts else None, max(updates) if updates else None)
+
+
+def _task_running_seconds(
+    status: str, started_ts: float | None, updated_ts: float | None, now: float,
+) -> float | None:
+    """The task row's own RUNNING TIME (spec §3: "calculations are
+    performed by deterministic script code... elapsed aggregates derive
+    from event timestamps" — computed here, at `build_model()` time,
+    against its own `now`, so the same Fleet always renders the same text
+    regardless of when it happens to be drawn — never recomputed from a
+    live wall clock inside the renderer).
+
+    None when `started_ts` is unknown (a marker-only task has no start time
+    to read — an honest gap, not a guess). A still-open task's running time
+    is `now - started_ts`, ticking forward every time the model rebuilds. A
+    terminal task's (Decision-058's `done`/`failed`) freezes at
+    `updated_ts - started_ts` — its own last event marks when it stopped,
+    matching the retention ruling that a finished task's stats do not keep
+    advancing after it is done."""
+    if started_ts is None:
+        return None
+    if status in TERMINAL_TASK_STATUSES:
+        return (updated_ts - started_ts) if updated_ts is not None else None
+    return max(now - started_ts, 0.0)
+
+
+def _finalize_task(
+    task_id: str, name: str, agents: list[Agent], marker_status: str | None, now: float,
+) -> Task:
     if not agents:
         return Task(task_id=task_id, name=name, status=marker_status or "idle")
     mapped = [a for a in agents if a.step is not None]
     unmapped = [a for a in agents if a.step is None]
+    status = _combine_status([a.status for a in agents])
+    started_ts, updated_ts = _agent_timestamp_bounds(agents)
     return Task(
-        task_id=task_id, name=name, status=_combine_status([a.status for a in agents]),
+        task_id=task_id, name=name, status=status,
         steps=_build_task_steps(mapped, _task_active_step(mapped)),
         unstepped_agents=unmapped,
+        started_ts=started_ts, updated_ts=updated_ts,
+        running_seconds=_task_running_seconds(status, started_ts, updated_ts, now),
     )
 
 
@@ -858,10 +939,10 @@ class _FeatureBuilder:
         return builder
 
 
-def _finalize_feature(feature_id: str, builder: _FeatureBuilder) -> Feature:
+def _finalize_feature(feature_id: str, builder: _FeatureBuilder, now: float) -> Feature:
     tasks = [
         _finalize_task(task_id, task_builder.name or task_id, task_builder.agents,
-                        task_builder.marker_status)
+                        task_builder.marker_status, now)
         for task_id, task_builder in builder.tasks.items()
     ]
     return Feature(feature_id=feature_id, name=builder.name or feature_id,
@@ -1041,7 +1122,7 @@ def _assemble_repo(
             task_builder = builder.task(task_id, task_name)
             task_builder.marker_status = _status_for(_marker_task_rec(task), now)
 
-    repo.features = [_finalize_feature(fid, b) for fid, b in features.items()]
+    repo.features = [_finalize_feature(fid, b, now) for fid, b in features.items()]
     repo.has_session = header_sid is not None or bool(repo.features)
     return repo
 
