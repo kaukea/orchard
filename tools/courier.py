@@ -108,6 +108,14 @@ Usage:
   courier.py announce                              no-op (identity rides every
                                                 orchard_topic.py event instead)
   courier.py depart                                no-op (nothing reads it)
+  courier.py subscribe --topic NAME                orchard:bus:subscribe: creates this
+                                                session's own folder under the topic;
+                                                `monitor` then watches it as an extra
+                                                source and a publish to NAME fans a
+                                                copy in (docs/courier-wire.md §2)
+  courier.py unsubscribe --topic NAME              orchard:bus:unsubscribe: deletes
+                                                that folder, discarding whatever was
+                                                still queued in it
   courier.py ask --question Q --option A --option B [...] [--multi]
              [--title T] [--summary S]
                                                 a directed orchard request to the
@@ -1033,6 +1041,46 @@ def topic_dir(name: str) -> Path:
     return orchard_root() / "topics" / name
 
 
+def topic_subscriber_dir(name: str, sid: str) -> Path:
+    """One subscriber's own folder under a topic — `subscribe` creates it,
+    `unsubscribe` removes it, a publish fans a copy into every folder that
+    currently exists (docs/courier-wire.md §2 PubSub: "a subscriber gets
+    EVERYTHING published on that topic"). Anticipated in `_monitor_sources`'s
+    own comment before this was built: `orchard/topics/<name>/<sessionid>/`."""
+    return topic_dir(name) / sid
+
+
+def _topic_subscriber_dirs(name: str) -> list[Path]:
+    root = topic_dir(name)
+    if not root.is_dir():
+        return []
+    return [d for d in sorted(root.iterdir()) if d.is_dir()]
+
+
+def cmd_subscribe(args) -> None:
+    """`orchard:bus:subscribe:<topic-name>` (docs/courier-wire.md §2): the
+    SCRIPT creates the agent's own folder under the topic — from this point
+    on, `monitor` picks it up as an extra source (`_subscribed_topic_sources`)
+    and a publish to this topic fans a copy in. Idempotent: subscribing
+    twice is a no-op, not an error."""
+    sid = whoami()
+    _check_path_component(args.topic, "topic name")
+    d = topic_subscriber_dir(args.topic, sid)
+    d.mkdir(parents=True, exist_ok=True)
+    print(d)
+
+
+def cmd_unsubscribe(args) -> None:
+    """`orchard:bus:unsubscribe:<topic-name>`: the SCRIPT deletes the
+    folder, discarding whatever traffic was still queued in it — exactly as
+    docs/courier-wire.md §2 states. Idempotent: unsubscribing when not
+    subscribed is a no-op, not an error."""
+    sid = whoami()
+    _check_path_component(args.topic, "topic name")
+    shutil.rmtree(topic_subscriber_dir(args.topic, sid), ignore_errors=True)
+    print(f"unsubscribed from {args.topic!r}")
+
+
 _REMOTE_OWNER_REPO_RE = re.compile(r"[:/](?P<owner>[^/:]+)/(?P<repo>[^/]+?)(?:\.git)?/?$")
 
 
@@ -1087,8 +1135,48 @@ def project_slug() -> str:
     return f"{repo}{BRANCH_SEPARATOR}{current_branch()}"
 
 
-def _stamp_filename(sid: str) -> str:
+def orchard_message_name(sid: str) -> str:
+    """The one canonical `<sid>.<ts>.json` filename every orchard write uses
+    — `orchard_deliver()` for a project/session mailbox, `write_orchard_file()`
+    (below) for a topic/telemetry write that needs the same name with none
+    of orchard_deliver()'s marker/mtime/compaction housekeeping."""
     return f"{sid}.{stamp()}.json"
+
+
+# Decision-091's closed set of orchard filename shapes: `<id>.<ts>.json`
+# (a message) or `<id>.marker` (a session or feature-marker heartbeat) — the
+# only two shapes anything under the orchard tree may take. No routing
+# prefix (a literal `:`) may appear in the id component: this is the guard
+# against the doubled `:session::session:<id>` filename defect
+# (docs/TODO.md.d/sidebar-empty-rows.md finding 1).
+_ORCHARD_MESSAGE_NAME_RE = re.compile(
+    r"^[^:/]+\.\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{6}\.json$")
+_ORCHARD_MARKER_NAME_RE = re.compile(r"^[^:/]+\.marker$")
+
+
+def validate_orchard_filename(name: str) -> None:
+    """Raise ValueError unless `name` is one of Decision-091's closed
+    shapes. No coercion, no silent repair — `write_orchard_file()` is the
+    single gate every orchard write passes through before touching disk."""
+    if _ORCHARD_MESSAGE_NAME_RE.match(name) or _ORCHARD_MARKER_NAME_RE.match(name):
+        return
+    raise ValueError(f"not a valid orchard filename: {name!r}")
+
+
+def write_orchard_file(dir_path: Path, name: str, envelope: dict) -> Path:
+    """The bare atomic write every orchard write shares: validate the name
+    against the closed shape set, then a temp file and an atomic rename to
+    `name` under `dir_path`. `orchard_deliver()` (below) wraps this with the
+    project-mailbox-specific housekeeping (marker touch, parent-dir mtime
+    bump, compaction); a topic or telemetry write, which has no per-session
+    marker of its own, uses this directly."""
+    validate_orchard_filename(name)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    final = dir_path / name
+    tmp = dir_path / f".{final.name}.partial"
+    tmp.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
+    os.replace(tmp, final)
+    return final
 
 
 def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
@@ -1096,11 +1184,7 @@ def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
     the parent dir's mtime (nested writes don't bubble automatically), give
     the compaction pass a chance to run, then let the name registry react.
     """
-    dir_path.mkdir(parents=True, exist_ok=True)
-    final = dir_path / _stamp_filename(sid)
-    tmp = dir_path / f".{final.name}.partial"
-    tmp.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
-    os.replace(tmp, final)
+    final = write_orchard_file(dir_path, orchard_message_name(sid), envelope)
     (dir_path / f"{sid}.marker").touch(exist_ok=True)
     os.utime(dir_path, None)
     maybe_compact(dir_path)
@@ -1525,13 +1609,15 @@ def orchard_send(args) -> dict:
         _check_path_component(target_project, "target project slug")
         if target_project != repo:
             _authorize_cross_project(target_project)
-        dir_path = project_dir(target_project)
-        file_sid = value
+        targets = [(project_dir(target_project), value)]
         project_field = target_project
     else:
         _check_path_component(value, "topic name")
-        dir_path = topic_dir(value)
-        file_sid = sender
+        # Fan-out to every CURRENTLY subscribed folder (docs/courier-wire.md
+        # §2 PubSub) — not a single shared file. No delivery guarantee if
+        # nobody is subscribed yet: the envelope is still built and returned
+        # (send never errors on an empty topic), it simply reaches nobody.
+        targets = [(d, sender) for d in _topic_subscriber_dirs(value)]
         project_field = None
 
     env = make_orchard_envelope(
@@ -1543,7 +1629,8 @@ def orchard_send(args) -> dict:
     violation = _schema_violation(env, _load_envelope_schema())
     if violation:
         sys.exit(f"courier: {violation}")
-    deliver_with_priority(dir_path, file_sid, env, priority)
+    for dir_path, file_sid in targets:
+        deliver_with_priority(dir_path, file_sid, env, priority)
     _touch_agent_name(sender)
     return env
 
@@ -1642,12 +1729,58 @@ def _own_mailbox_source() -> MonitorSource:
     )
 
 
+def _drain_topic_subscriber_dir(dir_path: Path) -> list[dict]:
+    """Every envelope currently sitting in one subscriber folder,
+    delete-on-read — the topic twin of `orchard_receive_own`. Files are
+    named `<publisher-sid>.<ts>.json`, so unlike the own-mailbox source there
+    is no sid prefix to match against: the DIRECTORY is already exactly this
+    subscriber's own, so everything in it belongs here by construction."""
+    if not dir_path.is_dir():
+        return []
+    out = []
+    for f in sorted(dir_path.glob("*.json")):
+        if f.name.startswith("."):
+            continue
+        try:
+            env = json.loads(f.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            out.append({"type": "malformed", "file": f.name, "error": str(exc)})
+            continue
+        out.append(env)
+        f.unlink(missing_ok=True)
+    return out
+
+
+_TOPIC_SUBSCRIBER_PATH_FILTER = r"\.json$"
+
+
+def _subscribed_topic_sources() -> list[MonitorSource]:
+    """One MonitorSource per topic this session currently subscribes to —
+    `subscribe`/`unsubscribe` (below) are what create/remove the folder each
+    of these watches. The directory itself is already scoped to exactly this
+    subscriber (`topic_subscriber_dir`), so unlike the own-mailbox source
+    the path filter only needs to admit `.json` files, not match a sid."""
+    sid = whoami()
+    root = orchard_root() / "topics"
+    if not root.is_dir():
+        return []
+    sources = []
+    for topic_path in sorted(root.iterdir()):
+        sub_dir = topic_path / sid
+        if sub_dir.is_dir():
+            sources.append(MonitorSource(
+                sub_dir, _TOPIC_SUBSCRIBER_PATH_FILTER, frozenset(),
+                lambda d=sub_dir: _drain_topic_subscriber_dir(d),
+            ))
+    return sources
+
+
 def _monitor_sources() -> list[MonitorSource]:
-    """Today: just this session's own project-directory mailbox. A
-    subscribed topic folder (`orchard/topics/<name>/<sessionid>/`) is a
-    second entry in this list, not a reason to change this function's
-    shape, `MonitorSource`, or the watch loop below."""
-    return [_own_mailbox_source()]
+    """This session's own project-directory mailbox, plus one source per
+    topic it currently subscribes to (`orchard/topics/<name>/<sessionid>/`)
+    — each watched separately (§6: one watcher per (directory, pattern)
+    pair), never widened into a shared pattern."""
+    return [_own_mailbox_source(), *_subscribed_topic_sources()]
 
 
 def _passes_subject_filter(env: dict, subject_filter: frozenset[str]) -> bool:
@@ -1860,6 +1993,14 @@ def main() -> None:
     sub.add_parser("project-dir").set_defaults(func=cmd_project_dir)
     sub.add_parser("announce").set_defaults(func=cmd_announce)
     sub.add_parser("depart").set_defaults(func=cmd_depart)
+
+    s = sub.add_parser("subscribe")
+    s.add_argument("--topic", required=True)
+    s.set_defaults(func=cmd_subscribe)
+
+    s = sub.add_parser("unsubscribe")
+    s.add_argument("--topic", required=True)
+    s.set_defaults(func=cmd_unsubscribe)
     sub.add_parser("identity").set_defaults(
         func=lambda a: print(json.dumps(identity_of(), indent=2)))
     sub.add_parser("status").set_defaults(

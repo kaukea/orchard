@@ -251,11 +251,28 @@ Decision-131 retires everywhere — but these exact strings are the operator's o
 dictated grammar of 2026-07-27. Renaming a wire constant he dictated needs his word;
 flagged, not assumed.
 
-**[GAP]** The topic PUBLISH path is broken at this commit: `orchard_topic.py:106`
-calls `courier.write_orchard_file()` and `courier.orchard_message_name()`, neither of
-which exists — any `:topic:` post raises `AttributeError`. (The PROJECT-feed path via
-`orchard_deliver()` works and carries all current traffic.) `subscribe`/`unsubscribe`
-are not implemented as subjects.
+**[CODE, fixed 2026-07-29]** `courier.write_orchard_file()` and
+`courier.orchard_message_name()` now exist — the canonical `<sid>.<ts>.json` namer and
+the atomic write every orchard file goes through, validated against Decision-091's
+closed filename shape set (`validate_orchard_filename`, raises rather than repairing a
+malformed name) before anything touches disk. `orchard_deliver()` is refactored onto
+these two rather than duplicating the write; `orchard_topic.py`'s `write_message()`
+(its telemetry-rejection path, the concrete site that raised `AttributeError`) now
+resolves. (The PROJECT-feed path via `orchard_deliver()` is unaffected — same
+behaviour, now sharing the same underlying primitive.)
+
+**[CODE, built 2026-07-29]** `subscribe --topic <name>` / `unsubscribe --topic <name>`
+are real CLI verbs (script-owned, per Decision-130 — not routed through `send`'s
+envelope machinery, since creating/removing a folder is a structural action, not a
+delivery). `subscribe` creates `orchard/topics/<name>/<sessionid>/`, the shape
+`_monitor_sources()`'s own comment anticipated before this was built; `unsubscribe`
+`rmtree`s it, discarding whatever was still queued, exactly as specified. A `:topic:`
+publish now fans a COPY into every folder that currently exists under the topic
+(`_topic_subscriber_dirs`) rather than writing one shared bulletin-board file — no
+subscribers means the publish reaches nobody, consistent with "no delivery guarantee."
+`monitor` folds one `MonitorSource` per currently-subscribed topic in alongside the
+own-mailbox source, so a courier wakes on topic traffic the same way it wakes on
+direct mail.
 
 ### Session messages — content in the body
 

@@ -523,6 +523,81 @@ class RequestReplyTests(_OrchardTestCase):
         self.assertEqual(stdout.strip(), "pong")
 
 
+class TopicPubSubTests(_OrchardTestCase):
+    """`subscribe`/`unsubscribe` and the `:topic:` publish path
+    (docs/courier-wire.md §2 PubSub) — the script creates/deletes the
+    subscriber's own folder under the topic, and a publish fans a copy into
+    every folder that currently exists, never a single shared bulletin-board
+    file."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = make_repo(str(Path(self._tmp.name)))
+
+    def _topic_dir(self, name):
+        return self.runtime_dir / "orchard" / "topics" / name
+
+    def test_subscribe_creates_the_subscribers_own_folder(self):
+        proc = self._courier(self.repo, "subA", "subscribe", "--topic", "widgets")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue((self._topic_dir("widgets") / "subA").is_dir())
+
+    def test_publish_fans_a_copy_into_every_subscribed_folder_only(self):
+        self._courier(self.repo, "subA", "subscribe", "--topic", "widgets")
+        self._courier(self.repo, "subB", "subscribe", "--topic", "widgets")
+
+        proc = self._courier(
+            self.repo, "publisherX", "send", "--to", ":topic:widgets",
+            "--subject", "orchard:agent:message:content", "--body", "hello subs",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+        for sub in ("subA", "subB"):
+            files = list((self._topic_dir("widgets") / sub).glob("publisherX.*.json"))
+            self.assertEqual(len(files), 1, f"{sub} did not receive the publish")
+            envelope = json.loads(files[0].read_text(encoding="utf-8"))
+            self.assertEqual(envelope["to"], ":topic:widgets")
+            self.assertEqual(envelope["body"], "hello subs")
+
+        # Nothing lands directly under the topic root — only in subscriber folders.
+        root_files = [
+            f for f in self._topic_dir("widgets").iterdir() if f.is_file()
+        ]
+        self.assertEqual(root_files, [])
+
+    def test_unsubscribe_deletes_the_folder_and_stops_future_publishes(self):
+        self._courier(self.repo, "subA", "subscribe", "--topic", "widgets")
+        proc = self._courier(self.repo, "subA", "unsubscribe", "--topic", "widgets")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertFalse((self._topic_dir("widgets") / "subA").exists())
+
+        self._courier(
+            self.repo, "publisherX", "send", "--to", ":topic:widgets",
+            "--subject", "orchard:agent:message:content", "--body", "too late",
+        )
+        self.assertFalse((self._topic_dir("widgets") / "subA").exists())
+
+    def test_unsubscribe_discards_whatever_was_still_queued(self):
+        self._courier(self.repo, "subA", "subscribe", "--topic", "widgets")
+        self._courier(
+            self.repo, "publisherX", "send", "--to", ":topic:widgets",
+            "--subject", "orchard:agent:message:content", "--body", "queued",
+        )
+        self.assertEqual(
+            len(list((self._topic_dir("widgets") / "subA").glob("*.json"))), 1,
+        )
+
+        self._courier(self.repo, "subA", "unsubscribe", "--topic", "widgets")
+        self.assertFalse((self._topic_dir("widgets") / "subA").exists())
+
+    def test_publish_with_no_subscribers_does_not_error(self):
+        proc = self._courier(
+            self.repo, "publisherX", "send", "--to", ":topic:empty-room",
+            "--subject", "orchard:agent:message:content", "--body", "anyone?",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+
 class CompactionTests(_OrchardTestCase):
     """orchard_compact.compact_now() sweeps a project dir directly: a
     message older than COMPACT_AGE_SECONDS (default 7200s / 120min) is moved

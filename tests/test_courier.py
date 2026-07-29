@@ -997,6 +997,23 @@ class MonitorCliTests(unittest.TestCase):
             f"a watcher spawned by monitor (pid {pid}) is still running: {check.stdout!r}",
         )
 
+    def test_monitor_wakes_on_a_subscribed_topic_publish(self):
+        """`_monitor_sources` folds in one source per subscribed topic
+        (docs/courier-wire.md §2 PubSub) alongside the own-mailbox source —
+        `monitor` must wake on both, not just direct mail."""
+        self._courier("recipientA", "subscribe", "--topic", "widgets")
+        proc = self._start_monitor("recipientA")
+        self._courier(
+            "publisherX", "send", "--to", ":topic:widgets",
+            "--subject", "orchard:agent:message:content", "--body", "topic hello",
+        )
+
+        line = self._readline_within(proc, 10)
+        self.assertIsNotNone(line, "monitor produced no output for a subscribed topic publish")
+        env = json.loads(line)
+        self.assertEqual(env["to"], ":topic:widgets")
+        self.assertEqual(env["body"], "topic hello")
+
 
 if __name__ == "__main__":
     unittest.main()
