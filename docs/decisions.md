@@ -2213,3 +2213,38 @@ Consequences:
   own tree.
 - The publish direction remains a real, separate concern; nothing here says orchids
   stops shipping. It says orchids does not consume what it ships.
+
+## [2026-07-29 CEST] Decision-123: cross-worktree agents never communicate — that is a NAMESPACE, and nothing parses a worktree
+#courier #transport #namespace #worktree #addressing #bus
+
+Operator ruling (2026-07-29), given while verifying the courier recovery:
+*"cross worktree should not communicate ever, but that's called a namespace, and
+there should not be any parsing of worktree — which only has been the solution
+chosen because it used to do that, and models like repeating what they have done,
+be it they're the right tool for the job or not."*
+
+Two separate statements, both binding:
+
+**1. Isolation is correct, and its name is a namespace.** Agents in different
+worktrees are not meant to reach each other. That is not a defect to be bridged;
+it is the intended boundary. The mechanism is a NAMESPACE — an identifier a
+sender is given, not a fact it derives.
+
+**2. Nothing parses a worktree. Ever.** The current implementation computes its
+delivery directory from the git branch (`current_branch()` → `_sanitise_branch()`
+→ `<owner>.<repo>@<branch>` in `project_slug()`). That is prohibited. A branch
+name is not an address, deriving one is not routing, and the string-mangling that
+turns `f/board-grammar` into `@f-board-grammar` is exactly the accident that made
+`orchids@f-close-family-fakes` appear as a separate project in the sidebar.
+
+**The reason the wrong solution was chosen is itself the finding.** The operator's
+diagnosis, recorded verbatim because it generalises past this bug: it was chosen
+*because it used to do that, and models like repeating what they have done, be it
+they're the right tool for the job or not.* Precedent inside the file was mistaken
+for justification. An agent proposing a mechanism because the previous version had
+that shape has given no reason at all.
+
+Consequence: the per-worktree project directory (the "fix B" of
+`transport-test-reconciling`) is NOT a fix to preserve in the courier recovery. It
+is reverted with the rest and replaced by an explicit namespace whose form is the
+operator's to set.
