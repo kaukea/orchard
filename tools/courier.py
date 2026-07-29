@@ -392,9 +392,16 @@ def identity_of() -> dict:
     worktree = Path(top).name if top else None
     linked = "/worktrees/" in git("rev-parse", "--git-dir")
     feature_id = worktree if linked else None
+    session = whoami()
     return {
-        "session_id": whoami(),
-        "agent_type": os.environ.get("CLAUDE_CODE_AGENT") or None,
+        "session_id": session,
+        # CLAUDE_CODE_AGENT (harness-set) wins when present; a resumed
+        # session, or one started with the harness env absent, carries
+        # none, so this falls back to whatever role `init --agent` earlier
+        # persisted into this session's own marker (see
+        # "Session-role persistence" below persist_session_role/
+        # persisted_session_role).
+        "agent_type": os.environ.get("CLAUDE_CODE_AGENT") or persisted_session_role(session) or None,
         "worktree": worktree,
         "feature_id": feature_id,
         # Ledger-derived human name (tools/feature_name.py, sidebar-polish item 11):
@@ -625,9 +632,14 @@ def cmd_init(args) -> None:
     Also (re)writes this session's name-registry entry (register_agent_name)
     — the structural half of addressing-by-name, same reasoning: it exists
     whatever the model does, not only when something is announced.
+
+    `--agent` declares this session's role once, for a resume/environment
+    where CLAUDE_CODE_AGENT is not set by the harness — persisted
+    write-once (see persist_session_role); a no-op when absent.
     """
     dir_path = _ensure_project_dir()
     register_agent_name()
+    persist_session_role(whoami(), getattr(args, "agent", None))
     print(dir_path)
 
 
@@ -1168,16 +1180,195 @@ def write_orchard_file(dir_path: Path, name: str, envelope: dict) -> Path:
 
 
 def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
-    """Atomically write the message, touch/create the marker heartbeat, bump
-    the parent dir's mtime (nested writes don't bubble automatically), give
-    the compaction pass a chance to run, then let the name registry react.
+    """Atomically write the message, touch/create the marker heartbeat, merge
+    the durable feature-marker node (project mailboxes only — see
+    `write_feature_marker`), bump the parent dir's mtime (nested writes
+    don't bubble automatically), give the compaction pass a chance to run,
+    then let the name registry react.
     """
     final = write_orchard_file(dir_path, orchard_message_name(sid), envelope)
     (dir_path / f"{sid}.marker").touch(exist_ok=True)
+    if dir_path.parent.name == "projects":
+        # A topic subscriber folder (`orchard/topics/<name>/<sid>/`) is also
+        # delivered through this same function (docs/courier-wire.md §2
+        # PubSub, orchard_send's topic fan-out) but carries no durable task
+        # record — only a project mailbox (`orchard/projects/<slug>/`) does.
+        write_feature_marker(dir_path, dir_path.name, envelope)
     os.utime(dir_path, None)
     maybe_compact(dir_path)
     _deregister_on_stop(envelope)
     return final
+
+
+# ---------------------------------------------------------------------------
+# The durable feature marker (Decision-099): one `<feature-id>.marker` file
+# per (project, feature), separate from the per-session `<sid>.marker`
+# heartbeat above — it carries the TASKS under that feature and their
+# states, so a quiet task survives a restart instead of vanishing with its
+# last event. It holds nothing agent/session-shaped (role, name, parent):
+# those are live-only, read from the event stream alone.
+# ---------------------------------------------------------------------------
+
+# lifecycle:starting/started = the task is running; an outcome is terminal
+# and sticks (nothing after it may move a task back out of done/failed).
+_TASK_RUNNING_SUBJECTS = (
+    "orchard:agent:lifecycle:starting",
+    "orchard:agent:lifecycle:started",
+)
+_TASK_TERMINAL_STATE_BY_SUBJECT = {
+    "orchard:agent:outcome:success": "done",
+    "orchard:agent:outcome:fail": "failed",
+}
+
+
+def _task_state(subject: str, existing_state: str | None) -> str:
+    """The `tasks[].state` a merge produces for this subject. Anything that
+    is neither a running-lifecycle nor an outcome subject (status,
+    delegation:*, lifecycle:stopping/stopped) leaves an already-known state
+    alone and only defaults a brand-new task to `working` — something must
+    already be happening for marker traffic to exist at all."""
+    if subject in _TASK_RUNNING_SUBJECTS:
+        return "working"
+    if subject in _TASK_TERMINAL_STATE_BY_SUBJECT:
+        return _TASK_TERMINAL_STATE_BY_SUBJECT[subject]
+    return existing_state or "working"
+
+
+def _load_feature_marker(path: Path) -> dict:
+    """FAIL-OPEN read: a missing file, zero bytes, or malformed JSON all
+    load as `{}` rather than raising — a marker is evidence, never a thing
+    that can crash its own reader (Decision-099's reader contract)."""
+    if not path.exists():
+        return {}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    if not text.strip():
+        return {}
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def merge_feature_marker(path: Path, project: str, feature: str, envelope: dict,
+                          updated: str) -> dict:
+    """Merge-never-truncate: rebuild the marker's top-level fields from this
+    envelope's identity (falling back to whatever the existing marker
+    already carried), keep every CURRENT-shape (`task`-keyed) task entry
+    untouched, drop anything else — a schema-1 entry keyed by the retired
+    `feature` field, a bare delegation `label`, a `sessions` identity cache
+    — none of those are a shape any reader may rely on (Decision-103: the
+    disagreement is the signal, not a fixture to humour) — then merge in
+    the one task this envelope concerns.
+
+    `identity.name` is carried as a plain alias of `feature_name`
+    (tools/orchard_topic.py's own convention) so a pre-task-shape event that
+    only ever set `name` still resolves a display name.
+    """
+    existing = _load_feature_marker(path)
+    identity = envelope.get("identity") or {}
+    feature_name = identity.get("feature_name") or identity.get("name")
+    task_id = identity.get("task") or feature
+    task_name = identity.get("task_name") or feature_name
+
+    tasks = [t for t in existing.get("tasks", []) if isinstance(t, dict) and t.get("task")]
+    current = next((t for t in tasks if t["task"] == task_id), None)
+    state = _task_state(envelope.get("subject") or "",
+                         current.get("state") if current else None)
+    merged_task = {
+        "task": task_id,
+        "name": task_name or (current or {}).get("name"),
+        "state": state,
+        "updated": updated,
+    }
+    tasks = [t for t in tasks if t["task"] != task_id] + [merged_task]
+
+    return {
+        "schema": 2,
+        "project": project,
+        "feature": feature,
+        "name": feature_name or existing.get("name"),
+        "area": identity.get("area") or existing.get("area"),
+        "tasks": tasks,
+        "updated": updated,
+    }
+
+
+def write_feature_marker(project_dir: Path, project: str, envelope: dict) -> Path | None:
+    """Merge this envelope into the durable `<feature>.marker` node
+    (Decision-099) when its `identity` carries a feature — the only
+    condition under which the marker exists at all. FAIL-OPEN: no
+    identity, no feature, or a feature id that cannot form a valid orchard
+    filename all mean "write nothing", never a raise (a malformed or
+    missing identity block must not take the whole delivery down with it —
+    see FailOpenNoIdentityEventTests)."""
+    identity = envelope.get("identity")
+    if not isinstance(identity, dict):
+        return None
+    feature = identity.get("feature")
+    if not feature:
+        return None
+    name = f"{feature}.marker"
+    try:
+        validate_orchard_filename(name)
+    except ValueError:
+        return None
+    path = project_dir / name
+    updated = datetime.now(timezone.utc).isoformat()
+    marker = merge_feature_marker(path, project, feature, envelope, updated)
+    return write_orchard_file(project_dir, name, marker)
+
+
+# ---------------------------------------------------------------------------
+# Session-role persistence (d7a471d): `identity_of()`'s `agent_type` prefers
+# CLAUDE_CODE_AGENT (set by the harness) but a resumed session, or one
+# started with the harness env absent, carries none — `init --agent`
+# declares the role once and it is persisted into this session's OWN
+# `<sid>.marker` (the same file the liveness heartbeat above already
+# touches, upgraded in place rather than a second artifact) so a later
+# resume with no harness env recovers it. Write-once: an existing record is
+# never overwritten, including with nothing.
+# ---------------------------------------------------------------------------
+
+
+def _session_role_marker(sid: str) -> Path:
+    return project_dir(project_slug()) / f"{sid}.marker"
+
+
+def _read_session_role(path: Path) -> str | None:
+    """FAIL-OPEN read, same contract as `_load_feature_marker`: a missing
+    file, zero bytes, or malformed JSON all read as "no role recorded"."""
+    data = _load_feature_marker(path)
+    role = data.get("role")
+    return role if isinstance(role, str) and role else None
+
+
+def persisted_session_role(sid: str) -> str | None:
+    """`identity_of()`'s fallback source. Tolerant of not being inside a
+    repo or having no runtime dir (both of which `project_slug()` /
+    `orchard_root()` normally `sys.exit()` on) — identity_of() is called
+    from contexts that predate a repo being guaranteed, and a role lookup
+    failing there must degrade to "unknown", not kill the caller."""
+    try:
+        path = _session_role_marker(sid)
+    except SystemExit:
+        return None
+    return _read_session_role(path)
+
+
+def persist_session_role(sid: str, role: str | None) -> None:
+    """Write `role` into this session's marker — but only once. `None`
+    writes nothing (there is no role to declare); an existing record,
+    whatever it holds, is never overwritten (RolePersistenceNeverOverwritesTests)."""
+    if not role:
+        return
+    path = _session_role_marker(sid)
+    if _read_session_role(path) is not None:
+        return
+    write_orchard_file(path.parent, path.name, {"role": role})
 
 
 # ---------------------------------------------------------------------------
@@ -1978,7 +2169,12 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("whoami").set_defaults(func=lambda a: print(whoami()))
-    sub.add_parser("init").set_defaults(func=cmd_init)
+    s = sub.add_parser("init")
+    s.add_argument("--agent", dest="agent", required=False, default=None,
+                    help="declare this session's role once, for when "
+                         "CLAUDE_CODE_AGENT is absent (persisted, never "
+                         "overwrites an existing record)")
+    s.set_defaults(func=cmd_init)
     sub.add_parser("teardown").set_defaults(func=cmd_teardown)
     sub.add_parser("receive").set_defaults(func=cmd_receive)
     s = sub.add_parser("monitor")
