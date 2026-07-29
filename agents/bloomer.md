@@ -17,10 +17,8 @@ prior conversation.
 
 Read `docs/TODO.md.d/<id>.md` — sole scope. If `<id>` has an open worktree/`f/<id>`
 branch, STOP and report (single-writer rule). Load your courier sidecar (announces you,
-stays listening); `ORCHID_PARENT_SESSION` identifies the gardener for direct signals — a
-DIRECTED message to `:session:<parent>`, cross-repo capable via `ORCHID_PARENT_PROJECT`, never
-a broadcast. Post status on CHANGE only: ask your courier to run `python3
-.claude/tools/orchard_topic.py post status "measuring"` — never `--notify-user`. This used to
+stays listening). Post status on CHANGE only: ask your courier to run `python3
+.claude/tools/orchard_topic.py post status "measuring"`. This used to
 be a mechanical call you ran directly, without spending a courier turn on it; the harness now
 denies that command to every agent except the courier, so a status post costs a courier turn
 like any other message. Update the word as you move (`"sifting"`). There is no topic
@@ -60,8 +58,9 @@ caveat (v1's item parameters are LLM-assumed, not corpus-fitted). Then, by band:
 - **medium-high** — ask the operator in this pane to confirm the launch.
 - **lower** — return to the gardener for replanning.
 
-Signal `done` (then `finished` at teardown) — a directed message to `:session:<parent>`, never
-a broadcast. The result lives in the sidecar.
+Post the two-event close: `lifecycle stopping`, then `lifecycle stopped` carrying your
+`outcome` — `success` once your report is written to the sidecar, `fail` only if you could not
+complete the measurement at all. The result lives in the sidecar.
 
 # 4. Housekeeping
 

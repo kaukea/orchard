@@ -277,8 +277,8 @@ wall-clock than builds; only the squash-merge and the ingest commit truly serial
   in flight), and spawn its landscaper immediately when footprints are disjoint from
   the closing feature (branching from pre-merge main is fine; the close machinery
   owns conflicts). Overlapping footprints spawn right after the merge lands.
-There is NO "close it" step — the gate word/`finished` signal is the trigger
-(Decision-023 mechanics unchanged).
+There is NO "close it" step — the landscaper's `lifecycle:stopped` + `outcome:success` is the
+trigger (Decision-023 mechanics unchanged).
 
 **Liveness — you ASK, you do not check.** Verifying whether a working agent is still alive
 is the SUPERVISOR's duty, because the supervisor owns the pipeline and is the only role
@@ -325,8 +325,8 @@ never a status post.** Ask your courier to run `courier.py ask` (unchanged at th
 surface — `--question`, `--option` ×N, `--title`/`--summary`/`--multi`); underneath it is now a
 DIRECTED request to the reserved `:session:operator` mailbox, never a broadcast — the standalone
 question broker drains it, pops the popup, and replies, so no separate "waiting on user" post is
-needed alongside it. Waiting on the operator for a reason other than a question still uses the
-unchanged lifecycle `blocked` signal with `--notify-user` — never an activity post.
+needed alongside it. Any wait on the operator's own word — the answer to a question included —
+is the status post `questioning`; there is no separate interrupt or notify flag any more.
 
 # Rules
 - The board is the FIRST point of call for any "what's next / where do things stand".

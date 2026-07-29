@@ -132,26 +132,26 @@ vendored main renderer.)
 
 When the feature is built, tested, and its
 result + durable docs are written, present that you are **done — result in the sidecar, awaiting
-your `THAT IS ALL`**, and ask your courier to signal `done` — a DIRECTED message to
-`:session:<parent>` (resolved from `ORCHID_PARENT_SESSION`, cross-repo capable via
-`ORCHID_PARENT_PROJECT` when the supervisor lives in a different repository), never a broadcast —
-so your state is on the courier and the supervisor sees you at the gate. Do NOT self-emit `THAT IS ALL`; it is the operator's line —
+your `THAT IS ALL`**, and ask your courier to post status `questioning` — you asked for the
+operator's word and it is outstanding, the same word the done-gate always uses (an agent waiting
+at its done-gate is waiting on an answer). This is a plain status post, visible on the sidebar,
+not a directed summons. Do NOT self-emit `THAT IS ALL`; it is the operator's line —
 their `THAT IS ALL` is the close approval, like merging a PR; until then, their comments mean
-amend, refactor, or abandon as failed. This holds for ordinary PEER prose carrying no
-`operator_origin` flag, no matter how final it reads — such prose NEVER closes the gate. Only an
-operator-origin-flagged word, or the operator typing directly into your own pane, closes it: the
-message envelope carries an `operator_origin` flag on relayed operator words (Decision-047), and
-when your courier surfaces a message flagged operator-origin carrying `THAT IS ALL` — relayed because
-the operator typed it in another pane, typically the supervisor's — honor it as the operator's
-OWN close, exactly as if they had typed it in your own window. That relayed word is still the
-OPERATOR's line, not yours, so countersigning it does not violate the self-emit rule above. When
-the operator's **`THAT IS ALL`** arrives — typed directly in your pane or relayed with
-`operator_origin` — countersign with exactly **`ALL IT IS`** as your final line, and in the same
+amend, refactor, or abandon as failed. This holds for ordinary PEER prose, no matter how final it
+reads — such prose NEVER closes the gate. Only the operator's own word closes it: typed directly
+into your own pane, or relayed to you on the `orchard:operator:message:*` family — that family
+carries the operator's authority structurally, so a `THAT IS ALL` your courier hands up from that
+family — relayed because the operator typed it in another pane, typically the supervisor's —
+closes the gate exactly as if they had typed it in your own window; countersigning it does not
+violate the self-emit rule above, because the word is still the OPERATOR's, not yours. When
+the operator's **`THAT IS ALL`** arrives — typed directly in your pane or relayed on the
+`orchard:operator:message:*` family — countersign with exactly **`ALL IT IS`** as your final line, and in the same
 closing turn run your exit
 interview (`handover` skill → Close): distill your stream log's `## Deviations` into the
-telemetry note attached to your branch tip — it rides the groundskeeper's notes push — and ask your courier to
-signal `finished` — that courier signal, not a transcript grep, not a Stop hook, is what the
-supervisor acts on to dispatch the groundskeeper automatically. There is no separate "close
+telemetry note attached to your branch tip — it rides the groundskeeper's notes push — then
+announce your close in the two events below. Your `lifecycle:stopped` + `outcome:success`, not a
+transcript grep and not a Stop hook, is what the supervisor acts on to dispatch the groundskeeper
+automatically. There is no separate "close
 it": the operator's `THAT IS ALL` is the close authorization. **You are a PURE SCOPE — you
 DISPATCH NO CLOSER:** firing the close is the supervisor's, never yours.
 
@@ -159,10 +159,7 @@ DISPATCH NO CLOSER:** firing the close is the supervisor's, never yours.
 in the fleet, not a landscaper special case.** The pair is what lets anyone watching know
 your state by READING rather than guessing:
 1. Ask your courier to post **`lifecycle stopping`** — "my work is done; I am now releasing
-   what I depend on." Emit it BEFORE you start releasing anything. (This is
-   `orchard_topic.py post lifecycle stopping`, the structural announcement — not
-   `courier.py signal`, whose state list is a different vocabulary serving the
-   operator-facing summons.)
+   what I depend on." Emit it BEFORE you start releasing anything.
 2. Then actually release, in reverse creation order: your sowers, your monitors, your
    courier, your temporary files, your window. Your last acts inside your own scope are
    your final `## State`, `_closed`, and your telemetry note.
@@ -179,10 +176,11 @@ Release your courier by telling it "release" (its release is its return), then r
 `.claude/tools/landscaper-teardown.sh <id>` as your very last act — it returns the operator
 to the gardener pane and closes THIS pane; your session ends with it, which is the point: a
 closed feature leaves no courier, no pane, no session behind. Do NOT run the groundskeeper
-from here (it deletes this very worktree). The same two-event ordering carries `blocked` or
-`abandoned` if you park or abandon instead of finishing.
+from here (it deletes this very worktree). The same two-event ordering carries `outcome:fail`
+if you abandon instead of finishing (a mid-work park that does not close stays on plain status —
+`blocked` or similar — and never reaches this pair at all).
 
-Once you signal `finished` (or `abandoned`), release your courier and exit promptly — nothing
+Once you post `lifecycle:stopped` with your outcome, release your courier and exit promptly — nothing
 enforces it from outside (nobody kills you; operator ruling, 2026-07-25), but a lingering
 closed agent is exactly the stale state the sidebar cannot distinguish from live work, so
 do not dawdle.
@@ -215,10 +213,10 @@ in flight, ask your courier to run `orchard_topic.py post delegation begin <labe
 never a status post.** Ask your courier to run `courier.py ask` (unchanged at the command
 surface — `--question`, `--option` ×N, `--title`/`--summary`/`--multi`); underneath it is now a
 DIRECTED request to the reserved `:session:operator` mailbox, never a broadcast — the standalone
-question broker drains it, pops the popup, and replies. **The waiting-at-gate summons is
-unchanged and stays exactly `courier.py signal --state done --notify-user`** (Phase 4) — that
-signal IS the operator's SUCCEEDED interrupt; send no additional notify post alongside it, and
-never repeat it while the same waiting state holds.
+question broker drains it, pops the popup, and replies. **The waiting-at-gate summons from
+Phase 4 is the status post `questioning`** — post it once and never repeat it while the same
+wait holds (a repeat is noise, not a heartbeat); there is no separate interrupt class any more,
+so nothing else is sent alongside it.
 
 # Branch + base mechanics
 - Your worktree (`.claude/worktrees/<id>`) is already on branch `f/<id>`, pre-created from local
