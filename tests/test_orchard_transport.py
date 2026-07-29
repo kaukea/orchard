@@ -222,6 +222,48 @@ class SameProjectSessionRoundTripTests(_OrchardTestCase):
         self.assertEqual(json.loads(second.stdout), [])
 
 
+class RetiredEnvelopePropertyToleranceTests(_OrchardTestCase):
+    """Transition hazard (docs/courier-wire.md §2, "Session messages"): a
+    courier on `main` still SENDS the retired `operator_origin` property
+    until this branch lands fleet-wide, so a message carrying it can land in
+    a mailbox this branch's code reads. `receive` is strict on WRITE
+    (`_schema_violation` rejects an unknown field when THIS session builds
+    an envelope) but must stay tolerant on READ: `orchard_receive_own()`
+    only `json.loads()`s and hands the envelope back — it never runs schema
+    validation against what it consumes. This pins that a legacy envelope,
+    written directly to disk exactly as a pre-branch courier would have
+    (never round-tripped through this branch's own `send`), still delivers
+    rather than being rejected or dropped as malformed. Subject vocabulary
+    stays closed and strictly validated regardless — this tolerance is for
+    retired ENVELOPE properties only, never for an off-list subject."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.repo = make_repo(str(Path(self._tmp.name)))
+
+    def test_legacy_operator_origin_property_is_tolerated_not_rejected(self):
+        slug = self._slug(self.repo)
+        project_path = self.runtime_dir / "orchard" / "projects" / slug
+        project_path.mkdir(parents=True)
+        legacy = {
+            "id": "legacy1", "ts": "2026-07-28T00:00:00+00:00",
+            "from": ":session:sessLegacy", "to": ":session:sessNew",
+            "subject": "orchard:agent:message:content", "body": "hi",
+            "operator_origin": True,
+        }
+        (project_path / "sessNew.2026-07-28T00-00-00.000000.json").write_text(
+            json.dumps(legacy), encoding="utf-8",
+        )
+
+        recv = self._courier(self.repo, "sessNew", "receive")
+        self.assertEqual(recv.returncode, 0, recv.stderr)
+        messages = json.loads(recv.stdout)
+
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0]["body"], "hi")
+        self.assertEqual(messages[0].get("operator_origin"), True)
+
+
 class SubjectVocabularyTests(_OrchardTestCase):
     """A `--subject` outside the closed orchard wire-grammar set is rejected;
     a valid one is accepted."""

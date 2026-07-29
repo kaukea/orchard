@@ -304,6 +304,18 @@ writer and the one flag-shaped reader (`sidebar_model.py`, already retired) are 
 migrated to the subject check. `send --to ... --subject orchard:operator:message:*` now
 refuses any `--priority` other than `immediate` outright — the family cannot queue.
 
+**[VERIFIED, transition note, 2026-07-29]** A courier still on `main` keeps sending
+`operator_origin` until this branch lands fleet-wide, so a mailbox this branch reads
+can still receive a message carrying it. Strict-on-write, tolerant-on-read already
+holds without any change: `_schema_violation()` (the `additionalProperties: false`
+rejection) runs only when THIS session builds and sends its own envelope
+(`orchard_send()` / `_deliver_to_registry_entry()`); the receive path
+(`orchard_receive_own()`) only `json.loads()`s a stored envelope and hands it back —
+it never runs schema validation against what it consumes, so a legacy field rides
+through unrejected (`RetiredEnvelopePropertyToleranceTests`). This tolerance covers
+retired ENVELOPE properties only — subject vocabulary stays closed and strictly
+validated on every path, write or read.
+
 Priority: `send --priority immediate|wait-a-round|batch` (default `immediate`), legal
 only on `orchard:agent:message:*` — any other subject rejects a non-immediate value.
 `immediate` writes straight through the unchanged `orchard_deliver()` path.
