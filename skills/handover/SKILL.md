@@ -5,7 +5,7 @@ roles: [process/workflow]
 share: github
 compatibility: Requires git
 metadata:
-  tags: [handover, workstream-log, session, orchestration, chatter, close, reset, relay]
+  tags: [handover, workstream-log, session-log, exit-interview, ingest-promote, reset-relay]
 ---
 
 # Intent (workstream logs)
@@ -108,12 +108,11 @@ a feature closed — it MUST clear this guard:
   summary — for a close: the tag exists, the branch is gone, the squash is on `main`,
   the push landed, the worktree is removed, the tree is clean. Reports can be lost,
   stale, or wrong; the repository cannot.
-- **Durable facts still go to their homes** — the log is the staging area, not
-  the destination. Sanitized technical findings are flushed to the stream's
-  committed sidecar (`## Findings`) by the session that owns it; decisions and
-  remaining work reach `docs/decisions.md` / the TODO via promotion (below),
-  never directly from a child session (single-writer: the board and decisions
-  belong to the gardener / top-level session).
+- **Durable facts go to their homes via promotion, not scatter** —
+  `AGENTS.shared.md` → Handover & delegation. In this skill's terms: sanitized
+  technical findings are flushed to the stream's committed sidecar
+  (`## Findings`) by the session that owns it; decisions and remaining work
+  reach `docs/decisions.md` / the TODO via promotion (below).
 - **Not everything leaves the stream.** Most log content is useful only inside
   the workstream; at ingestion it retires to `_ingested/` rather than being
   promoted — that is by design.
@@ -189,9 +188,8 @@ whoever is above ingests; if no one is, you are the promoter.
 
 ## Rules
 
-- Sensitive content ONLY here (and MOOD.md) — never in committed files. Found
-  committed → scrubbed immediately, history rewrite included
-  (`AGENTS.shared.md`).
+- Sensitive content: see `AGENTS.shared.md` → Handover & delegation §
+  sensitive content rule.
 - One file per session; rolling updates; read oldest→newest.
 - Ingest-then-archive — a closed stream never lingers in the announcement
   path after promotion; it moves to `_ingested/` (provisional retention).

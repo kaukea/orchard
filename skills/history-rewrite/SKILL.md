@@ -1,15 +1,11 @@
 ---
 name: history-rewrite
-description: MUST be read in full and followed step-by-step before rewriting any
+description: MUST be read in full and followed step-by-step before rewriting any repository's main into the canonical structure (per-feature f/ branches that never existed, anchor commits, archive/ tombstone tags, squash template, commit-count notes, optional operator QES on squashes). Two prior migrations failed because the agent inferred or bypassed the procedure — execute verbatim, verify every gate, STOP on anything uncovered.
 roles: [process/workflow]
-  repository's main into the canonical structure (per-feature f/ branches that never
-  existed, anchor commits, archive/ tombstone tags, squash template, commit-count
-  notes, optional operator QES on squashes). Two prior migrations failed because the
-  agent inferred or bypassed the procedure — execute verbatim, verify every gate,
-  STOP on anything uncovered.
+share: github
+compatibility: Requires git
 metadata:
-  tags: [ migration, history, rewrite, main, forensics, anchor, squash, archive, notes, qes ]
-  share: github
+  tags: [history-rewrite, main-branch-rewrite, anchor-commit, archive-tombstone, sha-map, qes-signing]
 ---
 
 # History rewrite (main-branch migration)

@@ -5,7 +5,7 @@ roles: [process/workflow]
 share: github
 compatibility: Requires git
 metadata:
-  tags: [git, workflow, branch, plan, task]
+  tags: [branch-trailer, main-immutable, squash-merge-gate, make-it-so, workflow-branch]
 ---
 
 # git workflow mechanics (MUST)
