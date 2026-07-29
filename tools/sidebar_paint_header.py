@@ -79,16 +79,27 @@ def _draw_edge_taper_row(
     core_attr = colours.pair(text_fg, primary) | extra_attr
 
     if not band_gradient_fits(text, width, ramp_cells):
-        rendered = core_text(text, width)
+        # Reserve the window's own literal last column exactly as
+        # `_draw_task_row` already does (its "filled separately" comment) —
+        # `_safe_addch` drops whatever glyph lands on `max_x - 1` in favour
+        # of a plain space, so real content is rendered only into the first
+        # `width - 1` columns and that trailing column is always filled
+        # with an explicit blank below. Without this, a title that fills
+        # the row exactly to its own edge can land its trailing ellipsis on
+        # the trapped column and lose it silently (observed defect).
+        reserved_width = max(width - 1, 0)
+        rendered = core_text(text, reserved_width)
         col = 0
         for ch in rendered:
-            if col >= width:
+            if col >= reserved_width:
                 break
             _safe_addch(stdscr, y, col, ch, core_attr)
             col += _cell_width(ch)
-        while col < width:
+        while col < reserved_width:
             _safe_addch(stdscr, y, col, " ", core_attr)
             col += 1
+        if width > 0:
+            _safe_addch(stdscr, y, width - 1, " ", core_attr)
         return
 
     core_width = width - 2 * ramp_cells

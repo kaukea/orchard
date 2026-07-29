@@ -43,6 +43,7 @@ if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
 import sidebar  # noqa: E402
+import sidebar_band  # noqa: E402
 
 _SIDEBAR_PY = os.path.join(_TOOLS_DIR, "sidebar.py")
 _SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
@@ -348,20 +349,44 @@ class SidebarEmulatorFrameTests(unittest.TestCase):
         lines = self._capture_when_ready()
         stripped = [_strip_sgr(line) for line in lines]
 
-        # The header row is a FALLING BLOCK (operator spec, 2026-07-28,
-        # superseding the earlier symmetric two/three-cell ramp reaching
-        # BOTH pane edges: "the gradient should only be on the left...
-        # falling towards the end of the screen"): the title's own core
-        # sits solid at column 0, falling away toward SECONDARY over the
-        # rest of the row via the eighth-resolution block ladder. This
-        # pane is wide enough (PANE_WIDTH=60) for the fade to actually
-        # show.
+        # The header row is a FULL-WIDTH EDGE-TAPER BAND (sidebar-spec.md
+        # §5, operator ruling 2026-07-29 superseding the earlier "falling
+        # block" reading, which had the title solid at column 0 fading
+        # away to the right only -- the operator identified that as the
+        # opposite of what he asked): a taper of `header_ramp_cells()`
+        # cells sits at EACH pane edge, taming the repo's PRIMARY down
+        # toward SECONDARY as it nears its own edge, with the PRIMARY
+        # core -- the title -- left-anchored immediately after the left
+        # taper, filling and widening with whatever width is left before
+        # the right taper. The gradient FOLDS IN from the left screen edge
+        # (ruling 1): the left taper's own cells (`left_taper_cells`) are
+        # computed by the geometry itself, not independently re-guessed
+        # here, so this assertion tracks whichever ramp variant is live.
+        # This pane is wide enough (PANE_WIDTH=60) for the taper to fit --
+        # `band_gradient_fits` -- so the fits path is what is exercised
+        # here, not the no-room flat fallback.
         header_idx = next(i for i, l in enumerate(stripped) if "orchids" in l)
         self.assertTrue(_has_any_bg(lines[header_idx]))
-        self.assertTrue(stripped[header_idx].startswith(" orchids"))
+        header_row = stripped[header_idx]
+        ramp_cells = sidebar_band.header_ramp_cells()
+        left_taper_glyphs = "".join(
+            glyph for glyph, _fg, _bg in
+            sidebar_band.left_taper_cells(ramp_cells, (0, 0, 0), (0, 0, 0))
+        )
+        self.assertEqual(
+            header_row[:ramp_cells], left_taper_glyphs,
+            f"left taper does not fold in from the pane edge: {header_row!r}",
+        )
+        # The PRIMARY core -- the title -- is left-anchored immediately
+        # after the left taper with one space of padding (`core_text`),
+        # never shortened to protect the gradient (ruling 7).
         self.assertTrue(
-            any(ch in stripped[header_idx] for ch in sidebar._LEFT_EIGHTHS[1:-1]),
-            f"no fade glyph found in the header row: {stripped[header_idx]!r}",
+            header_row[ramp_cells:].startswith(" orchids"),
+            f"title not left-anchored immediately after the left taper: {header_row!r}",
+        )
+        self.assertTrue(
+            any(ch in header_row for ch in sidebar._LEFT_EIGHTHS[1:-1]),
+            f"no fade glyph found in the header row: {header_row!r}",
         )
 
         done_idx = next(

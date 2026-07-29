@@ -1417,20 +1417,22 @@ class FlattenTests(unittest.TestCase):
             ["b-done", "d-done", "a-working", "c-idle"],
         )
 
-    def test_name_drop_rule_is_retired(self):
+    def test_solo_duplicate_task_name_renders_as_literal_task(self):
         # A feature and its sole task sharing the identical NAME used to
-        # trigger a NAME-DROP (the task row fell back to its own status
-        # word instead of repeating the string). Retired (operator,
-        # 2026-07-28: "neither are correct" -- rejecting both the blank and
-        # the status-word drafts): the actual fix is upstream, in
-        # `_identity_task_keys` deriving genuinely different feature/task
-        # names from `identity.feature_name` or an `f/<feature>/<task>`
-        # identifier's own segments, so the two rows carry different text
-        # BY CONSTRUCTION rather than by a downstream patch. This test
-        # builds the model directly (bypassing that upstream resolution,
-        # same as a real Feature/Task pair that happens to share a name)
-        # to confirm the rows now show their own labels PLAINLY, with no
-        # special-casing left in `sidebar_rows.py`.
+        # trigger a NAME-DROP (blank) or a status-word substitute -- both
+        # rejected by the operator 2026-07-28 ("neither are correct").
+        # Superseded again, 2026-07-29 (spec sidebar-spec.md §6): the
+        # feature's ONLY task, when its name is a plain duplicate of the
+        # feature's own already-shown name, renders labeled literally
+        # "Task" (`_task_display_label` in sidebar_rows.py) rather than
+        # repeating the string a second time right under the feature row
+        # that already shows it. This test builds the model directly
+        # (bypassing `_identity_task_keys`'s upstream name derivation, same
+        # as a real Feature/Task pair that happens to share a name) to
+        # confirm both directions of the rule: the solo-duplicate case
+        # collapses to "Task", while a genuinely different name is left
+        # alone (the second-task and differing-name cases proper are
+        # covered in full by the two tests directly below this one).
         task = sidebar.Task(task_id="t", name="Close family fakes", status="working",
                              steps=[sidebar.Step(name="building", state="active")])
         feature = sidebar.Feature(feature_id="f", name="Close family fakes",
@@ -1443,11 +1445,25 @@ class FlattenTests(unittest.TestCase):
         feature_row = next(r for r in rows if r.kind == "feature")
         task_row = next(r for r in rows if r.kind == "task")
         self.assertEqual(feature_row.label, "🧩/Close family fakes")
-        self.assertEqual(task_row.label, "Close family fakes")
+        self.assertEqual(task_row.label, "Task")
         # the row itself, its progress circle and its accordion are all
-        # still there -- only the redundant string is gone.
+        # still there -- only the redundant string is replaced.
         self.assertIsNotNone(task_row.progress_glyph)
         self.assertTrue(any(r.kind == "accordion" for r in rows))
+
+        # The other direction: a differing name is NOT this case and keeps
+        # showing plainly, unchanged, even on an otherwise-identical solo
+        # task/feature pair.
+        distinct_task = sidebar.Task(task_id="t2", name="a genuinely different name",
+                                      status="working")
+        distinct_feature = sidebar.Feature(feature_id="f2", name="Close family fakes",
+                                            status="working", tasks=[distinct_task])
+        distinct_fleet = sidebar.Fleet(repos=[
+            sidebar.Repo(name="r", activity="", status="working",
+                         waiting_on_operator=False, features=[distinct_feature]),
+        ])
+        distinct_task_row = next(r for r in sidebar.flatten(distinct_fleet) if r.kind == "task")
+        self.assertEqual(distinct_task_row.label, "a genuinely different name")
 
     def test_task_keeps_its_name_when_the_feature_has_a_second_task(self):
         # the drop is specific to "the ONLY task" -- a second task, even a
