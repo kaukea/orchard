@@ -2506,3 +2506,32 @@ assumed either way by an implementer.
 **Each of these axes needs an extra ripening round before it goes to development**
 (operator, same message). Nothing here is launch-ready on the strength of these rulings
 alone.
+
+## [2026-07-29 CEST] Decision-134: The wire specification is kept in sync with the code, and unimplemented parts are marked
+#courier #wire #documentation #staleness #spec
+
+Operator ruling, 2026-07-29: *"the documentation of the wire format should also be kept in
+sync rather than only when a design happens, including a note for the ones not implemented
+yet"*.
+
+The wire specification is a **living document maintained alongside the code**, updated in
+the SAME change that alters the wire — not a snapshot produced during a design round and
+left to rot until the next one.
+
+Every claim carries its state: `[SPEC]` (the operator's stated design), `[CODE]` (verified
+against the implementation, file named), `[GAP]` (spec and code disagree, **or the design
+is stated but not yet implemented**).
+
+**`[GAP]` is mandatory for anything specified but unbuilt.** A specification that silently
+omits what does not exist yet reads as a description of reality, and gets built against as
+though it were one. Marking the unimplemented parts is the document's purpose, not a
+courtesy: an agent must be able to see what it may rely on and what it may not.
+
+Why this is a decision and not a preference: charter prose and code drifted far enough
+apart that agents built against the wrong half and rewrote the courier five times, and a
+complete specification sat on disk for two days unread because nobody owned its freshness.
+Both are the same failure. The contract lives in `AGENTS.files.md` §Wire format and is a
+close-gate item for any branch touching the wire.
+
+Consequence: `docs/orchard-bus.md` is renamed `docs/courier-wire.md` — its current name
+contradicts Decision-131.
