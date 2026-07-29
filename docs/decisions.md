@@ -2362,3 +2362,40 @@ located by its tags alone (without the name or description) — a working discov
 not a placeholder. Tags that don't earn a place in that index are dropped. This is
 folded into the `authoring-skills` contract.
 
+
+## [2026-07-29 02:18 CEST] Decision-125: skill vs consuming agent-def duplication resolves toward the SKILL
+#skills #agent-defs #duplication #terseness
+
+Where a skill and an agent-def it feeds restate the same content, the skill stays
+full and authoritative and the AGENT-DEF is thinned to defer to it — never the
+reverse. This applies even where orchids is currently the sole real consumer of the
+skill: no cross-repo manifest exists to verify other consumers' agent-layer status,
+so "orchids-only today" is not grounds to fold a skill's content into one role's
+agent-def.
+
+Ruled by the operator at the `skill-terseness-pass` plan gate ("keep skills full,
+defer agent-defs"). Note the measurement taken the same night, which supports it
+without being its reason: all thirteen vendored mirrors on this disk carry the full
+agents layer (Decision-122 addendum) — so the population the earlier caution was
+written about does not exist, and the ruling does not depend on it either way.
+
+## [2026-07-29 02:18 CEST] Decision-126: `workflow` and `workflow-complete` never merge into a role
+#skills #workflow #agent-defs
+
+`skills/workflow` and `skills/workflow-complete` stay separate, reusable skills,
+permanently — never folded wholesale into any single role's agent-def (for example
+`agents/landscaper.md`) — because WHICH ROLE opens versus closes a workflow is
+expected to keep changing. A role's agent-def may defer to these skills and stop
+restating their content inline, but the skills' own content is never merged elsewhere.
+
+## [2026-07-29 02:18 CEST] Decision-127: a skill is named for the BEHAVIOUR, never for an agent
+#skills #naming #authoring-skills
+
+A skill's name must describe the reusable behaviour it provides and must never
+duplicate an agent or role name. A skill is meant to be usable by ANY agent; naming
+it after one role asserts the opposite. Folded into the `authoring-skills` contract
+as a naming rule so it binds future skills, not just this pass.
+
+`skills/gardener` was the corpus's single violation and is renamed
+`skills/board-walking`, with a dated migration
+(`2026-07-29-gardener-to-board-walking.md`) converging consuming repositories.

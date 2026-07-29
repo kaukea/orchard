@@ -6,6 +6,22 @@ _base: `f65ad36`_
 
 ### ✨ New features
 
+- ✂️ **Every skill cut to what it actually says, and tags became a real index.**
+  A first quality pass over all 19 skills: `description` fields tightened to their
+  genuine trigger, and `metadata.tags` — which until now were consumed by nothing —
+  given a job, as a discovery index a skill must be findable by on its tags alone.
+  Passages that restated `AGENTS.shared.md`, or a consuming agent's own system
+  prompt, are replaced by a reference to the one authoritative copy. Where a skill
+  and an agent-def said the same thing, the skill stays whole and the agent-def
+  defers to it, so `agents/gardener.md` and `agents/landscaper.md` are thinner
+  without anything being lost; `workflow` and `workflow-complete` stay permanently
+  separate and reusable, because which role opens and closes a workflow keeps
+  changing. `skills/gardener` is renamed `skills/board-walking`: a skill is named
+  for the behaviour it provides, never for an agent, since any agent may use it — a
+  rule now written into the authoring contract, with a dated migration converging
+  consuming repositories. Two pre-existing invalid-YAML frontmatter bugs
+  (`history-rewrite`, `workflow-complete`) were found and fixed along the way.
+
 - ✂️ **`git-commit` split into `git` and `git-workflow`, and each role loads only
   the half it needs.** One skill had been carrying two audiences: generic commit
   hygiene that applies to every commit in every repository, and process rules that
