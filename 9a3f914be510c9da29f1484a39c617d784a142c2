@@ -1,0 +1,22 @@
+landscaper exit interview — observability attempt 2 (fable-5, effort max)
+Outcome: FAIL by operator verdict at the acceptance gate; operator took over.
+Deviations distilled:
+1. Questions asked via in-pane AskUserQuestion, not courier ask (broker not
+   always-on fleet-wide; operator present in pane; global rule mandates the popup).
+2. Shared-index commit race: a bare 'git add && git commit' swept a concurrent
+   sower's staged signal-dissolve work under the wrong message (0c45814); nothing
+   lost; repaired by documentation only; all later commits by pathspec.
+3. Briefly misread 'the supervisor listens' as forbidding directed queries;
+   operator corrected: the event base does not preclude querying when logical.
+4. Misjudged elapsed wall-clock by session-feel after a six-hour operator absence
+   and nearly 'fixed' correct time code; file mtimes settled it.
+5. The E2E mount caught a real cross-worktree marker-fold defect after 634 green
+   tests — and a second real defect class (renderer dying silently) surfaced at
+   the gate; surface-first acceptance proved its worth both ways.
+6. Final verdict was formed while an old-renderer sidebar (main's code) was the
+   visible surface and the branch surface had been interrupted; re-presentation
+   was mounted but the operator took over before judging it. Ambiguity recorded,
+   not resolved.
+Fan-out: discovery inherited (7 explorers, predecessor); build: 9 sowers + 1 guide
++ 2 courier sidecars; inline: reconciliation review, marker-fold fix, bloomer
+ruling edit (each justified in log). 58 commits, tree clean, kept work intact.
