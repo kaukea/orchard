@@ -398,5 +398,188 @@ class MultiProjectFoldTests(_ModelTestCase):
         self.assertEqual(agent_b.status, "failed")
 
 
+class M2TelemetryFoldTests(_ModelTestCase):
+    """M2: `Agent.effort` (courier-wire.md §2b's `effort` field) and
+    `Task.context_tokens` (the most-recently-updated live agent's own
+    `context_tokens`, `_task_context_tokens`)."""
+
+    def test_agent_carries_effort_from_the_status_snapshot(self):
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     status={"model": "claude-opus-4-1", "effort": "high"})
+        agent = self._sole_feature().tasks[0].unstepped_agents[0]
+        self.assertEqual(agent.effort, "high")
+
+    def test_agent_effort_is_none_when_the_status_snapshot_carries_none(self):
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     status={"model": "claude-opus-4-1"})
+        agent = self._sole_feature().tasks[0].unstepped_agents[0]
+        self.assertIsNone(agent.effort)
+
+    def test_task_context_tokens_reads_the_most_recently_updated_live_agent(self):
+        # two unstepped agents on the same task, one posting later than
+        # the other -- the task's own context figure follows the FRESHER
+        # one, not the first one folded.
+        _write_event(self.projects_root, self.slug, "s-old",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     status={"context_tokens": 11111}, mtime=1000)
+        _write_event(self.projects_root, self.slug, "s-new",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "sower", "feature": "feat-a"},
+                     status={"context_tokens": 22222}, mtime=2000)
+        task = self._sole_feature(now=3000).tasks[0]
+        self.assertEqual(task.context_tokens, 22222)
+
+    def test_task_context_tokens_is_none_when_no_agent_carries_one(self):
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"})
+        task = self._sole_feature().tasks[0]
+        self.assertIsNone(task.context_tokens)
+
+
+class WaitingStatusTests(_ModelTestCase):
+    """M2: the "waiting" STATUS word (courier-wire.md §4's notify_user-
+    removal note — "a waiting agent is STATUS ('waiting')") maps onto
+    Decision-058's own waiting glyph state via `_status_for`, closing a
+    previously-recorded gap ("no waiting/awaiting_agent variant exists").
+    `awaiting_agent` stays deliberately unreachable — its producer word is
+    still being settled with the operator (M2 scope guard)."""
+
+    def test_a_status_post_of_the_word_waiting_reads_as_waiting(self):
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"})
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:status", identity={"agent": "landscaper", "feature": "feat-a"},
+                     body="waiting")
+        agent = self._sole_feature().tasks[0].unstepped_agents[0]
+        self.assertEqual(agent.status, "waiting")
+
+    def test_a_status_word_other_than_waiting_is_not_mistaken_for_it(self):
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"})
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:status", identity={"agent": "landscaper", "feature": "feat-a"},
+                     body="building tree")
+        agent = self._sole_feature().tasks[0].unstepped_agents[0]
+        self.assertEqual(agent.status, "working")
+
+    def test_a_waiting_agent_still_goes_stale_past_the_active_window(self):
+        # Decision-094: staleness is a colour, not a removal -- it
+        # overrides a stuck "waiting" activity word the same way it
+        # already overrides a stuck lifecycle state.
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:status", identity={"agent": "landscaper", "feature": "feat-a"},
+                     body="waiting", mtime=1000)
+        agent = self._sole_feature(
+            now=1000 + sidebar_model.ACTIVE_WINDOW_SECONDS + 300,
+        ).tasks[0].unstepped_agents[0]
+        self.assertEqual(agent.status, "stale")
+
+    def test_waiting_task_status_combines_between_working_and_stale(self):
+        # `_combine_status`'s own precedence (failed > working > waiting >
+        # stale > idle): a task with one working and one waiting agent
+        # still reads "working" as a whole -- the more urgent of the two.
+        self.assertEqual(
+            sidebar_model._combine_status(["waiting", "working"]), "working",
+        )
+        self.assertEqual(
+            sidebar_model._combine_status(["waiting", "stale"]), "waiting",
+        )
+        self.assertEqual(sidebar_model._combine_status(["waiting"]), "waiting")
+
+
+class RepoFooterAggregateTests(_ModelTestCase):
+    """M2: `Repo.age`/`worked`/`tokens` (spec §3's `age⏱ vs worked +
+    tokens⚡/dollars` footer grammar), computed deterministically from this
+    repo's own agent records by `_repo_time_and_tokens`. `dollars` has no
+    source on this wire and stays permanently None (see `Repo.dollars`'s
+    own docstring in sidebar_model.py)."""
+
+    def test_age_is_now_minus_the_repos_own_earliest_event(self):
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=1000)
+        repo = self._build(now=1000 + 3600).repos[0]
+        self.assertEqual(repo.age, "1h00")
+
+    def test_worked_is_the_union_of_two_overlapping_agent_spans_not_their_sum(self):
+        # agent one: [0, 100]; agent two: [50, 150] -- overlapping by 50s.
+        # WORKED must read the union (150s), never the naive sum (200s).
+        _write_event(self.projects_root, self.slug, "s-one",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=1000)
+        _write_event(self.projects_root, self.slug, "s-one",
+                     "orchard:agent:outcome:success",
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=1100)
+        _write_event(self.projects_root, self.slug, "s-two",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "sower", "feature": "feat-a"}, mtime=1050)
+        _write_event(self.projects_root, self.slug, "s-two",
+                     "orchard:agent:outcome:success",
+                     identity={"agent": "sower", "feature": "feat-a"}, mtime=1150)
+        repo = self._build(now=1150 + 10).repos[0]
+        self.assertEqual(repo.worked, "2m")  # 150s, union not 200s (3m20s)
+
+    def test_worked_excludes_the_gap_before_the_first_agent_and_between_agents(self):
+        # a real idle stretch between two agents' own spans must not count
+        # toward WORKED, even though it counts toward AGE.
+        _write_event(self.projects_root, self.slug, "s-one",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=1000)
+        _write_event(self.projects_root, self.slug, "s-one",
+                     "orchard:agent:outcome:success",
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=1010)
+        _write_event(self.projects_root, self.slug, "s-two",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "sower", "feature": "feat-a"}, mtime=5000)
+        _write_event(self.projects_root, self.slug, "s-two",
+                     "orchard:agent:outcome:success",
+                     identity={"agent": "sower", "feature": "feat-a"}, mtime=5010)
+        repo = self._build(now=5010).repos[0]
+        self.assertEqual(repo.age, "1h06")  # 4010s since the very first event
+        self.assertEqual(repo.worked, "20s")  # 10s + 10s, the gap excluded
+
+    def test_tokens_sums_tokens_in_and_out_across_every_agent(self):
+        _write_event(self.projects_root, self.slug, "s-one",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     status={"tokens_in": 1000, "tokens_out": 2000})
+        _write_event(self.projects_root, self.slug, "s-two",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "sower", "feature": "feat-a"},
+                     status={"tokens_in": 500, "tokens_out": 500})
+        repo = self._build().repos[0]
+        self.assertEqual(repo.tokens, "4.0k")  # 1000+2000+500+500
+
+    def test_dollars_stays_none_the_wire_carries_no_cost_figure(self):
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     status={"tokens_in": 1000, "tokens_out": 2000})
+        repo = self._build().repos[0]
+        self.assertIsNone(repo.dollars)
+
+    def test_empty_repo_has_no_age_worked_or_tokens(self):
+        _write_marker(self.projects_root, self.slug, "feat-a", {
+            "schema": 2, "feature": "feat-a",
+            "tasks": [{"task": "feat-a", "state": "done", "updated": _now_iso()}],
+            "updated": _now_iso(),
+        })
+        # a marker-only feature carries no LIVE agent record at all -- the
+        # repo footer figures, sourced purely from agent records, are
+        # honestly absent, not zero.
+        repo = self._build().repos[0]
+        self.assertIsNone(repo.age)
+        self.assertIsNone(repo.worked)
+        self.assertIsNone(repo.tokens)
+
+
 if __name__ == "__main__":
     unittest.main()

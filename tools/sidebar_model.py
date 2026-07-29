@@ -76,12 +76,22 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from sidebar_text import _format_running_time, _format_token_count  # noqa: E402
+
 # --------------------------------------------------------------------------
 # Canonical vocabulary
 # --------------------------------------------------------------------------
 
 # Canonical five-phase order (bus-message-specifying B3's phase vocabulary).
 PHASES = ("ideation", "scoping", "designing", "building", "releasing")
+
+# Stage spans (spec §1 / bus-message-specifying.md:209, ruled): the five
+# PHASES do NOT weigh an equal fifths each — ideation/scoping/designing/
+# building/releasing weigh 10/15/15/45/15 -> 100%. The client-side progress
+# surface that already exists (`sidebar_rows._task_progress_glyph`)
+# reweights its computation against this rather than counting done steps
+# 1-for-1 (M2).
+PHASE_WEIGHTS: dict[str, int] = dict(zip(PHASES, (10, 15, 15, 45, 15)))
 
 # Separates the repo half of an orchard project slug from its branch half:
 # `<owner>.<repo>@<branch>`. Must match courier.py's BRANCH_SEPARATOR, and is
@@ -91,6 +101,15 @@ BRANCH_SEPARATOR = "@"
 # A task's terminal states (Decision-058: done and failed never share a
 # glyph or a colour-pair with each other, nor with a still-working task).
 TERMINAL_TASK_STATUSES = {"done", "failed"}
+
+# The exact `orchard:agent:status` freetext word that maps onto Decision-
+# 058's "waiting" glyph state (M2, courier-wire.md §2b's "blocked and
+# waiting are status" ruling, §4's notify_user-removal note). An exact,
+# case-sensitive match — the wire defines this as a specific status WORD,
+# not a case-folded pattern, and no other spelling is ruled.
+# "awaiting-another-agent"'s own producer word is still being settled with
+# the operator and is deliberately NOT mapped here (M2 scope guard).
+_WAITING_ACTIVITY = "waiting"
 
 # A session with no event inside this window, and no terminal outcome,
 # renders "stale" (gray) rather than "working"/"idle" — it is NOT dropped
@@ -164,13 +183,20 @@ class Agent:
     `context_tokens`/`spend` ride straight off the status snapshot
     (`docs/courier-wire.md` §2b, `orchard_topic.py`'s `_status()`) — raw
     pass-through, no derived dollar figure or in/out split computed here
-    (that reading of `spend`'s nested token classes, and any dollar
-    estimate, is the renderer's job in a later step; `effort` has no wire
-    source yet — [GAP] — so no field is added for it here rather than one
-    that would sit permanently None). `started_ts`/`updated_ts` are this
-    agent's own earliest/latest event timestamps (`rec["_first_ts"]`/
-    `rec["_seen_ts"]`) — the raw material `Task` aggregates into its own
-    running time (see `_agent_timestamp_bounds`)."""
+    (that reading of `spend`'s nested token classes is the renderer's job
+    in a later step). `context_tokens` is USAGE/occupancy
+    (`courier.status_of()`'s own `occupancy` count — "an agent watching
+    context occupancy, its own death condition"), never "remaining":
+    turning it into a remaining-of-budget figure would need a per-model
+    context-window-size table the wire does not carry, so none is
+    invented (M2, spec §3). `effort` now rides too (courier-wire.md §2b,
+    `CLAUDE_EFFORT` when a launcher sets it) — raw pass-through, same as
+    `model`; None when the status snapshot carries no `effort` at all, no
+    value invented. `started_ts`/`updated_ts` are this agent's own
+    earliest/latest event timestamps (`rec["_first_ts"]`/`rec["_seen_ts"]`)
+    — the raw material `Task` aggregates into its own running time (see
+    `_agent_timestamp_bounds`) and the repo footer aggregates into its own
+    age/worked figures (see `_repo_time_and_tokens`)."""
     session_id: str
     role: str | None
     model: str | None
@@ -181,6 +207,7 @@ class Agent:
     subagents: list[Subagent] = field(default_factory=list)
     context_tokens: int | None = None
     spend: dict | None = None
+    effort: str | None = None
     started_ts: float | None = None
     updated_ts: float | None = None
 
@@ -213,7 +240,16 @@ class Task:
     its own `now`, never recomputed from a live wall clock inside the
     renderer — see `sidebar_rows._task_metrics_text`): for a still-open
     task, `now - started_ts`; for a terminal one, frozen at
-    `updated_ts - started_ts`. None whenever `started_ts` is None."""
+    `updated_ts - started_ts`. None whenever `started_ts` is None.
+
+    `context_tokens` (M2) is the CONTEXT-occupancy figure the task row's
+    own metrics text surfaces (`sidebar_rows._task_metrics_text`) — the
+    most-recently-updated live agent's own `Agent.context_tokens` among
+    this task's agents (`_task_context_tokens`), an implementer's reading
+    of "which agent represents a multi-agent task's context", not itself a
+    ruling. None whenever no agent on this task carries a context figure
+    (a marker-only task, or a live one whose agents' status snapshots
+    never carried `context_tokens`)."""
     task_id: str
     name: str
     status: str
@@ -222,6 +258,7 @@ class Task:
     started_ts: float | None = None
     updated_ts: float | None = None
     running_seconds: float | None = None
+    context_tokens: int | None = None
 
 
 @dataclass
@@ -251,11 +288,27 @@ class Repo:
     features: list[Feature] = field(default_factory=list)
     status_word: str = ""
     # role/model come straight off the gardener session's identity/status
-    # snapshot; tokens/dollars have no source in this grammar and stay None
-    # (see module docstring).
+    # snapshot.
     role: str | None = None
     model: str | None = None
+    # age/worked/tokens (M2) feed `sidebar_render_text.footer_lines`/
+    # `done_footer_line` — spec §3's `age⏱ vs worked + tokens⚡/dollars`
+    # footer grammar — computed deterministically from this repo's own
+    # agent records by `_repo_time_and_tokens` (event timestamps for age/
+    # worked, the status snapshot's `tokens_in`/`tokens_out` for tokens).
+    # Already-formatted human text, same convention `running_seconds`'s own
+    # renderer-side formatting uses.
+    age: str | None = None
+    worked: str | None = None
     tokens: str | None = None
+    # `dollars` has NO source on this wire: `orchard_topic.py`'s `_status()`
+    # attaches `model`/`context_tokens`/`spend`/`tokens_in`/`tokens_out`/
+    # `effort` only — no cost/dollar figure (courier.py's own `cost_usd`
+    # estimate, built in `estimates_for()` from a per-model price table, is
+    # never promoted into the snapshot the wire carries). Spec §3 rules out
+    # inventing a price table here, so this stays permanently None until
+    # the wire itself carries a dollar figure — FLAGGED, not silently
+    # worked around (courier-side fix, out of this footprint).
     dollars: str | None = None
 
 
@@ -650,19 +703,35 @@ def _marker_task_id(task: dict) -> str | None:
 # --------------------------------------------------------------------------
 
 def _status_for(rec: dict, now: float) -> str:
-    """working/done/failed/idle/stale, derived from the lifecycle+outcome
-    signals this grammar actually carries, plus `now` for the staleness
-    check. No waiting/awaiting_agent variant exists (no blocked/notify_user
-    post verb), so those STATUS_EMOJI entries are simply never produced
-    here.
+    """working/done/failed/idle/waiting/stale, derived from the
+    lifecycle+outcome+status signals this grammar actually carries, plus
+    `now` for the staleness check. No awaiting_agent variant exists — its
+    producer word is still being settled with the operator (M2 scope
+    guard) — so that one STATUS_EMOJI entry is still never produced here.
+
+    "waiting" (M2, closing a previously-recorded gap — courier-wire.md §4's
+    `notify_user` removal note: "a waiting agent is STATUS ('waiting'), per
+    §2's four-channel ruling") is Decision-058's own waiting glyph state,
+    reached when this record's own latest `orchard:agent:status` post body
+    (`rec["activity"]`, `_apply_event`) is the literal word "waiting" — an
+    ordinary STATUS post, the same channel "building tree" or any other
+    one-word activity already rides, not a new subject or verb. Checked
+    AFTER the terminal-outcome and staleness gates (a waiting agent that
+    then finishes, or goes quiet past ACTIVE_WINDOW_SECONDS, is done/
+    failed/stale like any other — Decision-094: staleness is a colour, not
+    a removal, and it overrides a stuck activity word the same way it
+    already overrides a stuck "starting" lifecycle state) but BEFORE the
+    working/idle split, since "waiting" is itself more specific than the
+    generic "working" a live lifecycle state alone would otherwise read as.
 
     A terminal outcome (done/failed) always wins — it is never demoted to
     stale, no matter how old (retention ruling, 2026-07-25 revision: a
     finished task is a permanent green/red one-liner). Absent a terminal
     outcome, a session with no event inside ACTIVE_WINDOW_SECONDS reads
-    stale (gray) rather than working/idle — checked before the
-    working/idle split, since staleness overrides even a stuck "starting"
-    lifecycle state that never followed up.
+    stale (gray) rather than working/idle/waiting — checked before every
+    other live-status read, since staleness overrides even a stuck
+    "starting" lifecycle state (or a stuck "waiting" activity word) that
+    never followed up.
 
     A live record (one folded from real traffic, always carrying its own
     "sid") with no surviving lifecycle event still reads "working" once it
@@ -674,13 +743,16 @@ def _status_for(rec: dict, now: float) -> str:
     is a real signal rather than an absence and still reads idle. A
     synthetic marker-only record (no "sid") never had live traffic to
     infer from, so it is unaffected and keeps falling through to idle
-    absent an explicit state."""
+    absent an explicit state — and never carries an `activity` either, so
+    it can never read "waiting" (live-only, same footing as role/model)."""
     if rec.get("outcome") == "fail" or rec.get("task_outcome") == "failed":
         return "failed"
     if rec.get("outcome") == "success" or rec.get("task_outcome") == "completed":
         return "done"
     if now - rec.get("_seen_ts", 0.0) >= ACTIVE_WINDOW_SECONDS:
         return "stale"
+    if rec.get("activity") == _WAITING_ACTIVITY:
+        return "waiting"
     state = rec.get("state")
     if state in ("starting", "started", "stopping"):
         return "working"
@@ -822,6 +894,7 @@ def _agent_from_rec(sid: str, rec: dict, now: float, role_step_map: dict[str, st
         subagents=_live_subagents(rec.get("subs", {})),
         context_tokens=status.get("context_tokens"),
         spend=status.get("spend"),
+        effort=status.get("effort"),
         started_ts=rec.get("_first_ts"),
         updated_ts=rec.get("_seen_ts"),
     )
@@ -850,15 +923,18 @@ def _build_task_steps(agents: list[Agent], active_step: str | None) -> list[Step
     ]
 
 
-_STATUS_PRECEDENCE = ("failed", "working", "stale", "idle")
+_STATUS_PRECEDENCE = ("failed", "working", "waiting", "stale", "idle")
 
 
 def _combine_status(statuses: list[str]) -> str:
     """A parent's own status, aggregated from its children's (a feature
     from its tasks, a task from its live agents): the status most needing
-    attention wins (failed > working > stale > idle); "done" only once
-    EVERY child is done (operator ruling, 2026-07-26: a feature/task is
-    complete only when everything inside it is)."""
+    attention wins (failed > working > waiting > stale > idle — "waiting"
+    (M2) slotted between working and stale: a gated agent needs less
+    attention than one still actively working, but more than a merely
+    stale/idle one); "done" only once EVERY child is done (operator
+    ruling, 2026-07-26: a feature/task is complete only when everything
+    inside it is)."""
     if not statuses:
         return "idle"
     for candidate in _STATUS_PRECEDENCE:
@@ -902,6 +978,23 @@ def _task_running_seconds(
     return max(now - started_ts, 0.0)
 
 
+def _task_context_tokens(agents: list[Agent]) -> int | None:
+    """The task row's own CONTEXT figure (M2, spec §3's "context remaining"
+    ruled metric — rendered as USAGE, see `Task.context_tokens`'s own
+    docstring for why): the most-recently-updated live agent's own
+    `context_tokens` among this task's agents — an implementer's reading
+    of "which agent represents a multi-agent task's context", mirroring
+    how `sidebar_model`'s own "activity line" concept already picks
+    "whichever agent runs there now" for a task's live position, rather
+    than a new rule invented for this figure alone. None when no agent on
+    this task carries a `context_tokens` figure at all (no source, never a
+    guess)."""
+    candidates = [a for a in agents if a.context_tokens is not None and a.updated_ts is not None]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda a: a.updated_ts).context_tokens
+
+
 def _finalize_task(
     task_id: str, name: str, agents: list[Agent], marker_status: str | None, now: float,
 ) -> Task:
@@ -917,6 +1010,7 @@ def _finalize_task(
         unstepped_agents=unmapped,
         started_ts=started_ts, updated_ts=updated_ts,
         running_seconds=_task_running_seconds(status, started_ts, updated_ts, now),
+        context_tokens=_task_context_tokens(agents),
     )
 
 
@@ -1048,6 +1142,81 @@ def _identity_task_keys(
     return feature_id, feature_name, task_id, task_name
 
 
+def _merged_interval_seconds(intervals: list[tuple[float, float]]) -> float:
+    """Total seconds covered by the UNION of `intervals` (each an agent
+    record's own `[_first_ts, _seen_ts]` span) — overlapping/concurrent
+    agent spans count ONCE, not twice, so two agents working the SAME
+    stretch of wall-clock time never double the repo's own "worked" total.
+    Pure interval-union arithmetic over already-known timestamps, no wall
+    clock read of its own."""
+    if not intervals:
+        return 0.0
+    ordered = sorted(intervals)
+    total = 0.0
+    cur_start, cur_end = ordered[0]
+    for start, end in ordered[1:]:
+        if start <= cur_end:
+            cur_end = max(cur_end, end)
+        else:
+            total += cur_end - cur_start
+            cur_start, cur_end = start, end
+    total += cur_end - cur_start
+    return total
+
+
+def _repo_time_and_tokens(
+    agent_records: dict[AgentKey, dict], now: float,
+) -> tuple[str | None, str | None, str | None]:
+    """(age, worked, tokens) for the repo footer (M2, spec §3's `age⏱ vs
+    worked + tokens⚡/dollars` grammar, `sidebar_render_text.footer_lines`/
+    `done_footer_line`) — all three deterministic, script-computed from
+    this repo's own agent records at `build_model()` time against its own
+    `now`, never a live wall clock read inside a renderer (spec §3: "never
+    through an agent's context"). `dollars` is deliberately not this
+    function's job — see `Repo.dollars`'s own docstring for why it stays
+    permanently None.
+
+    AGE is the wall-clock span since this repo's OWN earliest event, across
+    every agent (`now - min(_first_ts)`) — "how long has anything been
+    happening here at all".
+
+    WORKED is the UNION of every agent record's own `[_first_ts, _seen_ts]`
+    span (`_merged_interval_seconds`) — the total wall-clock time during
+    which AT LEAST ONE agent was actually posting, excluding any stretch
+    before the first agent ever started or between two agents where
+    nothing was live. This is an implementer's reading of "time actually
+    worked" (spec §3 names the STAT — "the feature's lifetime/age
+    displayed against the time actually worked on it" — not this exact
+    aggregation): the model carries no finer-grained activity timeline
+    than each agent's own first/last-seen timestamps to derive it from, so
+    AGE and WORKED can differ only by the gaps those timestamps expose
+    (idle stretches before/between agents), never by anything finer.
+
+    TOKENS is the sum of each agent's own latest known `tokens_in` +
+    `tokens_out` (already-accumulated running totals per session, promoted
+    to first-class status fields per courier-wire.md §2b), formatted via
+    `_format_token_count`. None whenever no agent record carries a
+    timestamp/token figure at all (an empty repo)."""
+    intervals: list[tuple[float, float]] = []
+    earliest: float | None = None
+    total_tokens = 0
+    have_tokens = False
+    for rec in agent_records.values():
+        first_ts, seen_ts = rec.get("_first_ts"), rec.get("_seen_ts")
+        if first_ts is not None and seen_ts is not None:
+            intervals.append((first_ts, seen_ts))
+            earliest = first_ts if earliest is None else min(earliest, first_ts)
+        status = rec.get("status") or {}
+        tokens_in, tokens_out = status.get("tokens_in"), status.get("tokens_out")
+        if tokens_in is not None or tokens_out is not None:
+            total_tokens += (tokens_in or 0) + (tokens_out or 0)
+            have_tokens = True
+    age = _format_running_time(max(now - earliest, 0.0)) if earliest is not None else None
+    worked = _format_running_time(_merged_interval_seconds(intervals)) if intervals else None
+    tokens = _format_token_count(total_tokens) if have_tokens else None
+    return age, worked, tokens
+
+
 def _assemble_repo(
     dir_name: str, project_dir: Path, sess: dict[str, dict],
     agent_records: dict[AgentKey, dict], now: float, role_step_map: dict[str, str],
@@ -1124,6 +1293,7 @@ def _assemble_repo(
 
     repo.features = [_finalize_feature(fid, b, now) for fid, b in features.items()]
     repo.has_session = header_sid is not None or bool(repo.features)
+    repo.age, repo.worked, repo.tokens = _repo_time_and_tokens(agent_records, now)
     return repo
 
 

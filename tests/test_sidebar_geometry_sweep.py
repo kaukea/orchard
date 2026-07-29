@@ -71,9 +71,13 @@ import sidebar  # noqa: E402
 
 _SIDEBAR_PY = os.path.join(_TOOLS_DIR, "sidebar.py")
 _SGR_RE = re.compile(r"\x1b\[([0-9;]*)m")
-# A task row's own METRICS tail (`sidebar_rows._format_running_time`'s own
-# shapes: "0s"/"12m"/"1h05") -- matched so BRAVO's ellipsis-suffix check
-# below can peel it off before judging whether the NAME half was cut.
+# A task row's own METRICS tail (`sidebar_text._format_running_time`'s own
+# shapes: "0s"/"12m"/"1h05" -- moved here from sidebar_rows.py by M2 so
+# sidebar_model.py could share it too, same function, new home) -- matched
+# so BRAVO's ellipsis-suffix check below can peel it off before judging
+# whether the NAME half was cut. None of this sweep's own fixtures set a
+# `context_tokens` figure, so `_task_metrics_text`'s M2 addition (a
+# trailing " N ctx" segment) never reaches this regex.
 _METRICS_TAIL_RE = re.compile(r" \d+(?:h\d{2}|m|s)$")
 
 _HAS_TMUX = shutil.which("tmux") is not None

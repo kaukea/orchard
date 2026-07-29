@@ -14,10 +14,14 @@ row's band sweep animates. Colour-family checks accept either the mock's
 exact truecolor RGB or tools/sidebar.py's own `_rgb_to_xterm256` fallback
 for that RGB — never a hand-guessed index.
 
-NOT asserted here (no source in the new event grammar — see sidebar.py's
-module docstring): phase checklist content, identity-line footer stats
-(age/worked/tokens/dollars), open-question badges/rows. progress_pct is
-never populated by build_model() either, so a "done" row's percentage tail
+NOT asserted here: phase checklist content, open-question badges/rows (no
+source in the new event grammar — see sidebar.py's module docstring). The
+footer stats (age/worked/tokens, M2's `sidebar_model._repo_time_and_tokens`
+— `dollars` alone stays unsourced, see `Repo.dollars`'s own docstring) DO
+now have real data behind them, but nothing in the curses draw path calls
+`footer_lines()`/`done_footer_line()` yet, so there is still nothing for
+this frame-level test to assert against on screen. progress_pct is never
+populated by build_model() either, so a "done" row's percentage tail
 always reads "0%" here, not "100%" — an acknowledged, in-docstring gap, not
 something this test pretends is otherwise.
 

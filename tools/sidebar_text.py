@@ -79,3 +79,46 @@ def render_header_line(title: str, width: int) -> str:
     pad = width - len(text)
     left = pad // 2
     return (" " * left) + text + (" " * (pad - left))
+
+# --------------------------------------------------------------------------
+# Compact numeric formatting — shared by the repo footer (age/worked/tokens,
+# sidebar_model.py's `_repo_time_and_tokens`) and the task row's own metrics
+# text (sidebar_rows.py's `_task_metrics_text`). Lives here rather than in
+# sidebar_rows.py so sidebar_model.py can use it too without importing
+# sidebar_rows.py, which itself imports FROM sidebar_model.py (that import
+# would be circular the other way around).
+# --------------------------------------------------------------------------
+
+
+def _format_running_time(seconds: float) -> str:
+    """Seconds -> compact human text — `Xs` under a minute, `Xm` under an
+    hour, `XhMM` (zero-padded minutes, no unit on the minutes half) from an
+    hour up, echoing the footer mock's own "6h02" shape
+    (`sidebar_render_text.done_footer_line`'s docstring) so the footer and
+    any per-row running-time figure read as one family rather than two
+    invented conventions. Not itself a ruling — the exact text shape is
+    unruled by the spec and is this function's own implementer choice,
+    flagged as such rather than asserted as settled design."""
+    total = int(seconds)
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}"
+    if minutes:
+        return f"{minutes}m"
+    return f"{secs}s"
+
+
+def _format_token_count(n: int) -> str:
+    """A raw token count -> compact human text — bare digits under 1000,
+    then a `k`/`M`-suffixed figure (one decimal place under 100 of the
+    unit, none above, matching the footer mock's own "384k" shape) so a
+    token count reads the same family wherever it appears (repo footer,
+    task-row context figure). Not itself a ruling — the exact threshold/
+    precision is this function's own implementer choice, same footing as
+    `_format_running_time`."""
+    for unit, size in (("M", 1_000_000), ("k", 1_000)):
+        if n >= size:
+            value = n / size
+            return f"{value:.0f}{unit}" if value >= 100 else f"{value:.1f}{unit}"
+    return str(n)
