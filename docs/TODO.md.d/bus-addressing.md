@@ -91,6 +91,35 @@ script it is one implementation, testable, and free at read time.
 
 ## Findings
 
+### THE COURIER HAS BEEN REBUILT FIVE TIMES. That is the finding.
+
+Operator, 2026-07-29: *"then we courier AGAIN (5th freakin time)."*
+
+Five rebuilds of one component is not five unlucky attempts; it is evidence that each
+attempt was started without the thing that would have made it the last one. The record
+in this repository's own history, from `git log -- tools/courier.py`:
+
+1. `847e023`/`c0b2d3f` (2026-07-25) — roles renamed, bus → courier
+2. `5fd8208` (2026-07-25) — orchard flat+markers transport, "stage 1 mechanics"
+3. `4a9cb8a` (2026-07-25) — fan-out killed, telemetry/questions/sidebar converged
+4. `e4e3841` (2026-07-26) — "Bus finishing — the orchard transport"
+5. `dd9586a` (2026-07-27) — close-family-fakes, which silently reverted round 4
+
+Three rewrites in two days, a fourth called "finishing", and a fifth that undid it by
+accident. **Before this task builds anything, it states what makes attempt six the last
+one** — otherwise it is round six of the same loop. Candidate causes, from what this
+sidecar already records:
+
+- Each round chose its mechanism by copying the shape of the previous round rather than
+  from a stated requirement (Decision-123 names this exactly; the verb surface below is
+  the same disease).
+- No round was written against a settled statement of WHAT an agent needs to say and to
+  whom. The addressing rulings of 2026-07-29 (name, session retained, namespace given
+  not derived) are the first such statement in the record.
+- Round 4's work was destroyed by a squash from a stale base and nobody noticed for two
+  days, because the tests that would have screamed were left standing and simply went
+  red — read as pre-existing noise.
+
 ### The CLI verb surface is invented, and it is not the message subjects
 
 Operator, 2026-07-29: *"none of the verbs used by the agent are the message subjects.
