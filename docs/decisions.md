@@ -2442,3 +2442,38 @@ enforced by the tree containing exactly one of the two words, not by this paragr
 
 Standing consequence: any file still saying `bus` is stale by definition, including
 `docs/orchard-bus.md`, whose own filename is now wrong.
+
+## [2026-07-29 CEST] Decision-132: Nearest-first resolution, and only questions and status cross a tree boundary
+#courier #messaging #addressing #resolution #permissions
+
+Operator ruling, 2026-07-29, on what happens when several live agents answer to the same
+name — which he first notes is *"an unlikely scenario unless you haven't listened to the
+loose coupling part"*, since a properly decoupled fleet rarely addresses an individual at
+all.
+
+**Resolution is nearest-first, by tree.** Verbatim: *"if you ask for an agent it will be
+the agent in the same subtree as you, walk up the tree till there is no agent in that
+tree but in the main one, deliver to the main one."*
+
+**Hard rule on what may cross a boundary:** *"an agent can only ask questions or query
+status outside of its tree. Inside, everything is fair game."*
+
+So the permission surface is asymmetric by design:
+
+| | inside your own tree | outside it |
+|---|---|---|
+| ask a question | yes | yes |
+| query status | yes | yes |
+| anything else | yes | **no** |
+
+GARDENER'S READING, marked as reading and not as ruling: this does not reintroduce the
+subtree as an identifier, and does not contradict Decision-123 ("nothing parses a
+worktree; the namespace is GIVEN, not derived") or Decision-130 (the script mints stable
+identifiers). Identity stays minted and global; the tree is a PROXIMITY ORDER used to
+disambiguate, and an agent's place in it is recorded by the script when it mints the
+identifier — never parsed back out of a path. The distinction to preserve in the build:
+the subtree is rejected as identity and as delivery boundary, and accepted only as
+resolution order plus this permission boundary.
+
+The permission rule is enforced by the script, per the standing principle that constraints
+agents dislike must be mechanical rather than written (Decision-124).
