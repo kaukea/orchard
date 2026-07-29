@@ -123,21 +123,53 @@ paid by every agent, every session, before a byte moves.
 Supporting note (operator): research shows agents behave better with **natural language**
 than with message/service/specification talk.
 
-### The vocabulary split — his, versus the code's
+### Lifecycle — RULED, and it is what the specification already says
 
-The operator's concern, confirmed by measurement: the project keeps a different
-vocabulary internally than the one he uses, which is itself a suspected cause of the
-subagent's size, and it means an agent re-reading the specification cannot tell why one
-thing is called one thing rather than another.
+**`starting · started · stopping · stopped`. Exactly four.** `stopping` = cleaning up,
+`stopped` = done (`docs/orchard-bus.md` §2; `orchard_topic.py` enforces
+`LIFECYCLE_STATES` identically). The operator corrected a gardener proposal that had
+dropped `starting`, and directed that the specification is the authority.
 
-| Operator | Code |
+**Asking a question and waiting on something are NORMAL parts of the lifecycle.** They
+mean the agent is **started and not stopping**. They are not states and never were.
+
+> "Are you dead because you are waiting in a queue to send a letter?" — operator, 2026-07-29
+
+**Questions are REQUESTS, not lifecycle events.** The message specification does not
+formalise question-asking because that work was in flight at the same time and an `ask`
+already existed for it.
+
+**`blocked` and `waiting` are what STATUS is for** — freetext, to tell a UX what the
+agent's state is. Not lifecycle.
+
+**Asking the OPERATOR a question is missing from the specification and is encoded exactly
+the same way**: a traditional request/response, where the tmux ask component picks up the
+request, displays it, and returns the response to the agent. The operator is a recipient
+like any other; nothing about the question path is special-cased.
+
+### The invented vocabulary — this is the actual split
+
+Correction to an earlier gardener claim in this sidecar: the operator's spoken
+`closing`/`closed` versus the code's `stopping`/`stopped` is NOT the divergence. The
+specification and `orchard_topic.py` agree, and the specification wins.
+
+The real divergence is `courier.py signal`, which carries a second, parallel state list
+that appears in no specification:
+
+    started · building · testing · done · finished · blocked · abandoned
+
+Against the ruling above, that list dissolves:
+
+| Invented state | What it actually is |
 |---|---|
-| `closing` · `closed` | `stopping` · `stopped` (`orchard_topic.py`), plus a parallel set `started`/`building`/`testing`/`done`/`finished`/`blocked`/`abandoned` in `courier.py signal` |
-| **message bus** | **courier** — both live at once: `bus` in 76 files, `courier` in 81 |
+| `building`, `testing` | **status** — freetext activity words |
+| `blocked` | **status** — a UX state, not a lifecycle state |
+| `done`, `finished` | `stopped` + `outcome:success` — and two words for one thing, neither able to state its difference from the other |
+| `abandoned` | `stopped` + `outcome:fail` |
+| `started` | the only one that is genuinely lifecycle |
 
-`done` and `finished` are both live signal states mapping to his single `closed`, with no
-statable difference — two agents' words for one thing, each kept because neither deleted
-the other's.
+**Naming still open:** `bus` appears in 76 files and `courier` in 81 — both vocabularies
+live simultaneously across the tree, and the operator uses "message bus" throughout.
 
 ### The subtree obsession is rejected at the root
 
