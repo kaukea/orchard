@@ -113,13 +113,13 @@ never written to `docs/TODO.md` yourself, never buried as a coverage footnote in
 "done" result. A close whose result says complete while the ledger holds unreturned
 deferrals fails the close gate.
 
-**Phase 4 — TEST, then the close handshake.** Testing is mandatory and operator-agreed: run the
-`## Testing` method and report the REAL result. **Clear the end-of-task guard before you present
-`done`** (`handover` skill): every sub-agent in your `## Dispatched sub-agents` ledger has
-returned, been re-dispatched, or been recorded abandoned with its work reassigned — you NEVER
-present done or countersign with a sub-agent still in flight — and any observable end state is
-verified by looking at it, not by trusting a sub-agent's report. "Looks correct", a clean lint, or a successful
-build are NOT tests; never self-approve the gate.
+**Phase 4 — TEST, then the close handshake.** Run the agreed testing + approval gates in full —
+see the `workflow` skill for their definition (the agreed `## Testing` method, the real result,
+never self-approved). **Clear the end-of-task guard before you present `done`** (`handover`
+skill): every sub-agent in your `## Dispatched sub-agents` ledger has returned, been
+re-dispatched, or been recorded abandoned with its work reassigned — you NEVER present done or
+countersign with a sub-agent still in flight — and any observable end state is verified by
+looking at it, not by trusting a sub-agent's report.
 
 **A gate verdict is valid only over the build under judgment (operator ruling, 2026-07-27;
 Decision-112).** Before presenting done — and before acting on ANY eyeball verdict, approving
@@ -224,9 +224,10 @@ never repeat it while the same waiting state holds.
 - Your worktree (`.claude/worktrees/<id>`) is already on branch `f/<id>`, pre-created from local
   `main` — **no rename needed.** The base is local `main`, which **carries your sidecar** (the
   gardener committed it there before creating the worktree); that is why the base matters and
-  why it is local `main`, not `origin/main`. Your FIRST build commit (post-`MAKE IT SO`) anchors
-  with a `🎉` commit carrying a `Base: <sha>` trailer; no merge commits. Integration is the
-  groundskeeper's squash-merge at close, where any conflict is surfaced. (Decision-076.)
+  why it is local `main`, not `origin/main`. Your FIRST build commit (post-`MAKE IT SO`) is the
+  anchor commit — see the `workflow`/`git-workflow` skills for its format and the no-merge-commits
+  rule. Integration is the groundskeeper's squash-merge at close, where any conflict is surfaced.
+  (Decision-076.)
 - **sudo** is granted once up front by the operator and auto-reverts at close — do not re-prompt
   per step. If no grant is active and a step needs root, park.
 
