@@ -350,3 +350,49 @@ concise end-to-end usage example. Uses `# <header>` sections; only update sectio
 impacted by your changes (in a monorepo, only the area you touched). The full voice,
 structure, and update playbook live in the `readme-sync` skill — load it at close when
 a user-facing or tooling change fired the README trigger.
+
+---
+
+## §Wire format — the courier's message specification
+
+**File:** `docs/courier-wire.md` (renamed from `docs/orchard-bus.md`; "bus" is retired by
+Decision-131).
+
+**Operator ruling, 2026-07-29:** *"the documentation of the wire format should also be
+kept in sync rather than only when a design happens, including a note for the ones not
+implemented yet"*.
+
+### The contract
+
+The wire specification is a **living document maintained with the code**, not a snapshot
+written during a design round. It is updated in the SAME change that alters the wire —
+never afterwards, never "next round".
+
+**Every claim carries its state**, so a reader can tell design from reality at a glance:
+
+| Tag | Means |
+|---|---|
+| `[SPEC]` | the operator's stated design |
+| `[CODE]` | verified against the implementation, with the file named |
+| `[GAP]` | spec and code disagree, **or the design is stated but NOT YET IMPLEMENTED** |
+
+**`[GAP]` is mandatory for anything specified but unbuilt.** A specification that silently
+omits what does not exist yet reads as a description of reality and gets built against as
+though it were one. Naming the unimplemented parts is the point of the document, not an
+afterthought — an agent must be able to see what it may rely on and what it may not.
+
+### When it is updated
+
+- **Any change to a subject, address form, state, scope, or storage layout** updates this
+  document in the same commit. This is a close-gate item for any branch touching the wire.
+- **Implementing something previously marked `[GAP]`** flips it to `[CODE]` with the file
+  reference — in the same commit that implements it.
+- **A design round that specifies something new** adds it as `[SPEC]` + `[GAP]`
+  immediately, rather than leaving it in a sidecar until someone builds it.
+
+### Why
+
+Charter prose and code drifted apart for long enough that agents built against the wrong
+half, and a specification existed on disk for two days that nobody read. Both failures are
+the same failure: a document whose freshness nobody owns. This section makes the wire
+document's freshness a property of every change that touches the wire.
