@@ -2477,3 +2477,32 @@ resolution order plus this permission boundary.
 
 The permission rule is enforced by the script, per the standing principle that constraints
 agents dislike must be mechanical rather than written (Decision-124).
+
+## [2026-07-29 CEST] Decision-133: A team spanning worktrees talks over a pub/sub topic the supervisor sets up
+#courier #pubsub #topics #teams #worktrees #supervisor
+
+Operator ruling, 2026-07-29, completing Decision-132 (these were being settled when the
+previous session crashed, and are re-recorded here rather than recovered from it).
+
+**A team may have three worktrees with a teammate in each, and they must be able to talk
+to one another.** The mechanism is **pub/sub**: an agent **subscribes to a topic for the
+current feature or task**, and is then free to talk to everyone else working on it —
+**depending on how the SUPERVISOR set it up.**
+
+This is what makes the cross-subtree team case work without the subtree ever becoming an
+address. The topic is the address, and it is exactly the role topics were given at the
+outset: *"a temporary subject that you want to share information about with other nodes"*.
+The supervisor owns the setup — which topic exists, and who is on it — which is also the
+first concrete job that makes "the supervisor supervises and listens" mean something.
+
+GARDENER'S READING, marked as reading and NOT ruled — to be settled in the ripening round
+below: this appears to sit alongside Decision-132's boundary rather than contradict it.
+Decision-132 constrains DIRECTED agent-to-agent traffic across trees to questions and
+status; a topic is a subscription, not a directed message, and is the sanctioned channel
+for cross-tree collaboration. Whether a teammate on a shared topic may therefore do things
+across a tree boundary that a non-teammate may not is **not settled** and must not be
+assumed either way by an implementer.
+
+**Each of these axes needs an extra ripening round before it goes to development**
+(operator, same message). Nothing here is launch-ready on the strength of these rulings
+alone.
