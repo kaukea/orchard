@@ -686,10 +686,17 @@ ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
   a feature's solo duplicate-named task reads literally "Task"; staleness is a
   colour, never a removal; both citation layouts are built for a live A/B.
 
+- 📡 The courier's invented seven-state signal vocabulary is deleted outright, no
+  shim: every piece of agent traffic rides one of the four channels the wire
+  defines — lifecycle · status · outcome · requests.
+
 ### 🐛 Bug fixes
 - 🐛 A truncated header or feature row no longer loses its trailing ellipsis: the
   renderer reserves the terminal's one unsafe column instead of letting real text
   land where curses silently drops it.
+- 🐛 Subagent placement under the stage — asked for repeatedly — is now proven by a
+  real passing test instead of an unverified docstring claim: subagent rows nest
+  beneath their agent's identity line, beneath the task, never between step rows.
 
 #### 📡 `f/observability` → `archive/observability`
 
