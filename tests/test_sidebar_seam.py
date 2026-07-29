@@ -76,18 +76,23 @@ _COURIER_PY = os.path.join(_TOOLS_DIR, "courier.py")
 _ORCHARD_TOPIC_PY = os.path.join(_TOOLS_DIR, "orchard_topic.py")
 _FIXTURES_DIR = Path(_ROOT_DIR) / "fixtures"
 
-# FLAG (not a workaround): "waiting" and "awaiting_agent" are excluded from
-# this scenario's coverage on purpose. `tools/sidebar_model.py::_status_for`
-# derives status purely from lifecycle+outcome signals; no event this
-# grammar's real CLI surface can post (lifecycle/status/delegation/outcome)
-# ever sets `rec["outcome"]`/`rec["state"]` to anything that maps to either
-# — confirmed by reading `_status_for` and `_marker_task_rec` directly, and
-# already recorded as a known gap (docs/TODO.md.d/sidebar-teamwork.md's
-# 2026-07-28 entry: "two of his six cannot be produced by real events at
-# all... making them real is producer work outside this round"). Inventing
-# a marker write or a new CLI verb to force them would be exactly the
-# agent-invented scope the sower brief rules out; this is reported as a
-# standing gap, not silently worked around.
+# FLAG (not a workaround), UPDATED M2: "waiting" is now covered directly
+# (see feat-alpha's third agent, `waiting_sid`, below) — `_status_for` reads
+# it off an ordinary `orchard:agent:status` post whose body is the literal
+# word "waiting" (courier-wire.md §4's notify_user-removal note: "a waiting
+# agent is STATUS ('waiting'), per §2's four-channel ruling"), the SAME
+# verb/channel `shared_sid`'s "building tree" post already used above —
+# nothing new was added to the real CLI surface to make it reachable.
+#
+# "awaiting_agent" stays excluded from this scenario's coverage on purpose:
+# its own producer word is still being settled with the operator (M2 scope
+# guard — do not invent one). No event this grammar's real CLI surface can
+# post (lifecycle/status/delegation/outcome) sets `rec["outcome"]`/
+# `rec["state"]`/`rec["activity"]` to anything that maps to it — confirmed
+# by reading `_status_for` directly. Inventing a marker write or a new CLI
+# verb to force it would be exactly the agent-invented scope the sower
+# brief rules out; this is reported as a standing gap, not silently worked
+# around.
 
 
 def _git(repo: Path, *args: str) -> None:
@@ -199,6 +204,18 @@ def _drive_scenario(world: _FakeWorld) -> dict:
     if stale_marker.exists():
         _backdate(stale_marker, sidebar_model.ACTIVE_WINDOW_SECONDS + 300)
 
+    # M2: a third feat-alpha agent whose own latest STATUS post is the
+    # literal word "waiting" -- Decision-058's own waiting glyph state,
+    # closed by `_status_for`'s M2 fix (see the FLAG note above this
+    # function). A real `orchard_topic.py post status waiting` call, same
+    # verb/channel `shared_sid`'s own "building tree" post already used
+    # above -- proving the real CLI surface, not a synthetic model fixture,
+    # can produce it.
+    waiting_sid = "feat-alpha-waiting-sid"
+    world.init(world.wt_alpha, waiting_sid, "bloomer")
+    world.post(world.wt_alpha, waiting_sid, "bloomer", "lifecycle", "starting")
+    world.post(world.wt_alpha, waiting_sid, "bloomer", "status", "waiting")
+
     # --- orchid-one / feat-beta: full lifecycle, no outcome -> IDLE ---
     beta_sid = "feat-beta-sid"
     world.init(world.wt_beta, beta_sid, "sower")
@@ -217,8 +234,8 @@ def _drive_scenario(world: _FakeWorld) -> dict:
     world.post(world.wt_delta, delta_sid, "bloomer", "lifecycle", "starting")
     world.post(world.wt_delta, delta_sid, "bloomer", "outcome", "fail")
 
-    return {"shared_sid": shared_sid, "stale_sid": stale_sid, "beta_sid": beta_sid,
-            "delta_sid": delta_sid}
+    return {"shared_sid": shared_sid, "stale_sid": stale_sid, "waiting_sid": waiting_sid,
+            "beta_sid": beta_sid, "delta_sid": delta_sid}
 
 
 def _line_containing(lines: list[str], needle: str) -> str:
@@ -268,11 +285,13 @@ class ModelSeamTests(SeamScenarioTestCase):
         self.assertEqual(features_two["feat delta"].status, "failed")
 
     def test_stale_agent_is_a_colour_not_a_removal(self):
-        # feat-alpha's task carries TWO agents: the live one (working) and
-        # the backdated one. The task's own combined status is "working"
-        # (the more urgent of the two, precedence in `_combine_status`) —
-        # the point under test is that the stale agent's OWN row still
-        # renders, carrying "stale", rather than disappearing.
+        # feat-alpha's task carries THREE agents: the live one (working),
+        # the backdated one, and (M2) a third whose latest status post is
+        # the literal word "waiting". The task's own combined status is
+        # "working" (the most urgent of the three, precedence in
+        # `_combine_status`) — the point under test is that the stale
+        # agent's OWN row still renders, carrying "stale", rather than
+        # disappearing.
         fleet = self._build()
         repo_one = next(r for r in fleet.repos if r.name == "orchid-one")
         feat_alpha = next(f for f in repo_one.features if f.name == "feat alpha")
@@ -280,10 +299,23 @@ class ModelSeamTests(SeamScenarioTestCase):
         task = feat_alpha.tasks[0]
         self.assertEqual(task.status, "working")
         agents_by_role = {a.role: a for a in task.unstepped_agents}
-        self.assertEqual(set(agents_by_role), {"landscaper", "groundskeeper"})
+        self.assertEqual(set(agents_by_role), {"landscaper", "groundskeeper", "bloomer"})
         self.assertEqual(agents_by_role["landscaper"].status, "working")
         self.assertEqual(agents_by_role["groundskeeper"].status, "stale")
         self.assertEqual(agents_by_role["groundskeeper"].session_id, self.facts["stale_sid"])
+
+    def test_waiting_status_word_reaches_decision_058s_waiting_state(self):
+        # M2: a real `orchard_topic.py post status waiting` call resolves
+        # to Decision-058's own "waiting" state through the model layer —
+        # the seam's own proof that the fix holds through the real CLI,
+        # not merely a synthetic `sidebar_model` fixture.
+        fleet = self._build()
+        repo_one = next(r for r in fleet.repos if r.name == "orchid-one")
+        feat_alpha = next(f for f in repo_one.features if f.name == "feat alpha")
+        task = feat_alpha.tasks[0]
+        agents_by_role = {a.role: a for a in task.unstepped_agents}
+        self.assertEqual(agents_by_role["bloomer"].status, "waiting")
+        self.assertEqual(agents_by_role["bloomer"].session_id, self.facts["waiting_sid"])
 
     def test_subagents_scheduled_running_and_done_all_appear(self):
         fleet = self._build()
@@ -384,6 +416,23 @@ class RenderTextSeamTests(SeamScenarioTestCase):
         landscaper_line = _line_containing(lines, "landscaper")
         groundskeeper_line = _line_containing(lines, "groundskeeper")
         self.assertNotEqual(landscaper_line, groundskeeper_line)
+
+    def test_waiting_agent_row_carries_decision_058s_waiting_glyph_state(self):
+        # M2: the row-level surface Decision-058's states render through.
+        # `STATUS_EMOJI["waiting"]` shares its glyph with idle/stale BY
+        # DESIGN (spec §6: "idle, waiting, awaiting_agent, and stale share
+        # the same hollow circle") — so asserting a visually distinct
+        # character would be asserting something the spec itself rules
+        # out. The meaningful, honest assertion is that the flattened
+        # ROW's own status resolves to "waiting" (proving the fix reaches
+        # all the way from a real CLI post to the render layer) and that
+        # `STATUS_EMOJI` maps it to its ruled glyph without falling back to
+        # a default, the way an unrecognized status would.
+        rows = sidebar.flatten(self._build())
+        bloomer_row = next(r for r in rows if r.kind == "agent" and r.role == "bloomer")
+        self.assertEqual(bloomer_row.status, "waiting")
+        self.assertEqual(sidebar_glyphs.STATUS_EMOJI["waiting"], sidebar_glyphs.STATUS_EMOJI[bloomer_row.status])
+        self.assertIn("bloomer", _line_containing(self._render(), "bloomer"))
 
     def test_subagent_rows_carry_three_distinct_glyphs_for_scheduled_doing_done(self):
         lines = self._render()
