@@ -481,7 +481,8 @@ def _draw_frame(
     selected = _clamp_selected(selected, len(rows))
     max_y, _max_x = stdscr.getmaxyx()
     scroll_offset = clamp_scroll_offset(scroll_offset, selected, len(rows), max_y)
-    _draw(stdscr, rows, selected, scroll_offset, colour_pairs, agent_colours, colours, tick, has_moved)
+    _draw(stdscr, rows, selected, scroll_offset, colour_pairs, agent_colours, colours, tick, has_moved,
+          repos=fleet.repos)
     return rows, selected, scroll_offset
 
 

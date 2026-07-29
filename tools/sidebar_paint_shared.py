@@ -26,10 +26,11 @@ from sidebar_text import _cell_width, _truncate  # noqa: E402
 # through the same plain path as any other non-feature row below — no
 # separate decoration mechanism is needed any more. `footer_lines()`/
 # `done_footer_line()` remain as pure formatters (still exercised directly;
-# `build_model()` now populates a real `Repo.age`/`worked`/`tokens` source
-# for them, M2's own `sidebar_model._repo_time_and_tokens` — `dollars` stays
-# unsourced, see `Repo.dollars`'s docstring) but nothing in the live draw
-# path calls them yet.
+# `build_model()` now populates a real `Repo.age`/`worked`/`tokens`/`dollars`
+# source for them, M2's own `sidebar_model._repo_time_and_tokens`) and are
+# now wired into the live draw path — see `sidebar_paint_footer.
+# _draw_repo_footer`, called from `sidebar_paint._draw` once a repo's own
+# rows are all drawn (the block's LAST section, spec §3).
 # --------------------------------------------------------------------------
 
 # A "block" background — set once a step is OPEN (its own line, plus every

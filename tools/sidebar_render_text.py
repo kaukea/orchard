@@ -3,9 +3,16 @@ headless caller (or a test) can exercise without a TTY. `render_lines()` is
 the entry point: flatten() a Fleet, then compose each Row's own text
 (feature/task layouts share their width-aware column math with the curses
 painters via `_feature_row_layout`/`_task_row_layout`; an agent row goes
-through the citation ladder's `identity_block`). `footer_lines`/
-`done_footer_line`/`phase_mark`/`phase_dot_suffix` are pure formatters with
-no populated data source yet (kept defined and tested, not dead).
+through the citation ladder's `identity_block`). `footer_lines` now has
+both a populated data source (`Repo.age`/`worked`/`tokens`/`dollars`,
+`sidebar_model._repo_time_and_tokens`) and a live caller
+(`sidebar_paint_footer._draw_repo_footer`, curses-only — this module's own
+`render_lines()` does not call it, same "curses-only" split `sidebar_paint_
+task.py`'s spinner already uses). `done_footer_line`/`phase_mark`/
+`phase_dot_suffix` remain pure formatters with no live caller yet (kept
+defined and tested, not dead) — `done_footer_line` in particular has
+nothing to summarise until a DONE `Feature` carries its own age/tokens/
+dollars, which nothing in this codebase attaches today.
 """
 from __future__ import annotations
 
@@ -30,8 +37,12 @@ def phase_dot_suffix(running: int, queued: int) -> str:
     return "●" * running + "○" * queued
 
 # --------------------------------------------------------------------------
-# Footer stats — omitted entirely when the model doesn't (yet) expose them;
-# a later integration step wires the source, this step invents none of it.
+# Footer stats — omitted entirely when the source (a `Repo`, for
+# `footer_lines`) doesn't carry age/worked/tokens/dollars at all; never a
+# guessed figure. `sidebar_paint_footer._draw_repo_footer` is the live
+# curses caller for `footer_lines`; `done_footer_line` (the collapsed DONE-
+# feature line) still has no data source to call it against — see this
+# module's own docstring.
 # --------------------------------------------------------------------------
 
 

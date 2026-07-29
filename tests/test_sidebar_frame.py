@@ -682,7 +682,9 @@ class SidebarOnceCLITests(unittest.TestCase):
         _write_event(self.projects_root, "orchids", "orch-once",
                      "orchard:agent:lifecycle:starting",
                      identity={"agent": "landscaper", "feature": "once-check",
-                               "name": "once check"})
+                               "name": "once check"},
+                     status={"model": "claude-sonnet-5", "tokens_in": 1000,
+                              "tokens_out": 2000, "dollars": 3.5})
         self._raw_log = Path(self._tmp.name) / "once-raw.log"
         self._socket = f"sidebar-once-{uuid.uuid4().hex[:8]}"
         self.addCleanup(self._kill_tmux_server)
@@ -758,6 +760,35 @@ class SidebarOnceCLITests(unittest.TestCase):
         title_fg = sidebar.header_emphasis_colour(primary)
         self.assertTrue(_raw_has_colour(raw, primary))
         self.assertTrue(_raw_has_colour(raw, title_fg))
+
+    def test_repo_footer_renders_age_worked_tokens_and_dollars(self) -> None:
+        """The FOOTER DRAW CALL step: `footer_lines()` had real data
+        (age/worked/tokens/dollars) but nothing in the curses paint path
+        called it — `sidebar_paint_footer._draw_repo_footer`, wired from
+        `sidebar_paint._draw`, is what makes it actually reach the screen,
+        as the block's LAST section (spec §3). `setUp`'s fixture event
+        carries a recognised model and token counts, so `tokens`/`dollars`
+        both resolve (`sidebar_model._repo_time_and_tokens`) alongside the
+        always-available `age`/`worked`."""
+        self._launch()
+        exit_code = self._await_exit_code()
+        self.assertEqual(exit_code, "0")
+
+        raw = self._raw_log.read_bytes()
+        text = _raw_strip_escapes(raw).decode("utf-8", errors="replace")
+        self.assertIn("⏱", text)
+        self.assertIn("worked", text)
+        self.assertIn("⚡", text)
+        # 1000 in + 2000 out tokens -> "3.0k" (sidebar_text._format_token_count).
+        self.assertIn("3.0k", text)
+        # claude-sonnet-5 at $3/M input, 0 output: courier.estimates_for()
+        # would compute this from raw usage: this fixture instead carries
+        # the already-promoted `dollars: 3.5` directly on the status block
+        # (matching test_sidebar_model.py's own fixture convention), so the
+        # footer's own formatting (`sidebar_text._format_dollars`) is what
+        # this assertion actually proves — not the courier-side estimate,
+        # covered separately in tests/test_orchard_topic.py.
+        self.assertIn("$3.50", text)
 
 
 if __name__ == "__main__":
