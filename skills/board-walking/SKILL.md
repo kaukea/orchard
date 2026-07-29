@@ -1,14 +1,14 @@
 ---
-name: gardener
-description: The root role for all work. The gardener knows the board, prioritises, and suggests what to do next — but never writes code itself; coding always happens in a spawned sub-job. It is a lean, reconstitutable role any fresh session adopts by reading durable state, not a persistent session. Defines the boot sequence, agent-mode question, board render, triage + closing choice, sub-job handoff, MOOD.md, and sub-job return.
+name: board-walking
+description: Board-walk, triage, and hand-off doctrine for the root role of any workflow — reconstitute state from durable sources, never session memory; render the board adaptively; triage into a closing multiple-choice; hand exactly one task to a spawned sub-job on explicit go. Defines boot, agent-mode, MOOD.md, and sub-job return. In orchids the `gardener` agent loads it; the doctrine is agent-agnostic.
 roles: [process/workflow]
-share: github
-compatibility: Requires git
 metadata:
-  tags: [gardener, root, role, triage, board, todo, mood, session, reconstitutable, workflow, branch, worktree, mainline]
+  tags: [ board-render, triage, closing-choice, hand-off, sub-job, mood, reconstitution, boot-sequence, agent-mode, github-projection, worktree, mainline ]
+  share: github
+  compatibility: Requires git
 ---
 
-# Intent (gardener)
+# Intent (board-walking)
 
 > **Repos with the role-agent layer (`.claude/agents/`):** the `gardener` agent
 > definition governs session mechanics (pre-created worktree + tmux spawn). This

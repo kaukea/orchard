@@ -1,13 +1,19 @@
 ---
 name: readme-sync
-description: MUST be read at workflow completion when the work added or changed user-facing behaviour, CLI flags, build steps, or required developer tooling. Checks README.md is still aligned with the current feature set, usage examples, and developer instructions before the squash.
+description: MUST be read at workflow completion when the work added or changed user-facing behaviour, CLI flags, build steps, or required developer tooling. Checks README.md is aligned with the current feature set, usage examples, and developer instructions before the squash.
 roles: [process/workflow]
 metadata:
   share: github
-  tags: [readme, documentation, workflow, end, sync, user-facing]
+  tags: [readme, documentation, doc-sync, pre-squash, user-facing, developer-tooling]
 ---
 
 # Intent (README sync)
+
+`README.md` has two audiences, in this order of priority: **users** deciding whether to
+use the tool and finding their first usage example, then **developers** setting the
+project up to contribute. The README is allowed to diverge from the implementation
+between workflows — this skill is the catch-up point, bringing it back in sync before
+the squash.
 
 ## Checklist
 
@@ -17,13 +23,6 @@ metadata:
 - [ ] No false claims, no references to retired tools, no broken examples
 - [ ] README updates committed on the feature branch (squash carries them to `main`)
 - [ ] README touch noted in the squash body
-
-`README.md` has two audiences, in this order of priority:
-
-1. **Users** — people deciding whether to use the tool, learning what it does, finding their first usage example.
-2. **Developers** — people setting the project up to contribute, needing the tools and build commands.
-
-The README is allowed to diverge from the implementation between workflows. This skill is the catch-up point: at the end of any workflow that touched user-facing behaviour or the developer toolchain, the README is brought back in sync before the squash.
 
 ## When to run
 
@@ -82,6 +81,14 @@ It must NOT:
 
 If keeping a section honest would require disclosing too much, remove the section instead.
 
+## Workflow integration
+
+The `workflow` skill's Documentation Update step lists this skill. When a workflow's user-approval-gate summary mentions any trigger category above:
+
+1. Run this skill's checklist as the final pre-squash step.
+2. Commit README updates on the feature branch so the squash carries them to `main`.
+3. Note the README touch in the squash body.
+
 ## Worked example
 
 What "good" looks like, in the voice this skill is asking for:
@@ -126,11 +133,3 @@ That's the whole flow.
 Build from source: …
 Run the tests: …
 ````
-
-## Workflow integration
-
-The `workflow` skill's Documentation Update step lists this skill. When a workflow's user-approval-gate summary mentions any trigger category above:
-
-1. Run this skill's checklist as the final pre-squash step.
-2. Commit README updates on the feature branch so the squash carries them to `main`.
-3. Note the README touch in the squash body.

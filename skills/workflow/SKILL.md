@@ -1,10 +1,9 @@
 ---
 name: workflow
-description: MUST be read before starting any task, plan, or coding work. Defines branch rules, worktree setup, and the testing + approval gates. When work is finished (the agent prompts the user for MAKE IT SO) or abandoned, the close is executed via the workflow-complete skill. No work begins without following this.
+description: MUST be read before starting any task, plan, or coding job — no work begins without it. Defines the dirty-tree check, worktree/branch setup, the micro-task override, and the testing + approval (MAKE IT SO) gates; the close itself runs via the workflow-complete skill.
 roles: [process/workflow]
-tracked: true
 metadata:
-  tags: [ git, workflow, start, begin, task, plan, branch, finish, complete, gate, approval ]
+  tags: [ workflow-start, worktree-setup, feature-branch, dirty-tree, micro-task, testing-gate, approval-gate, make-it-so, todo-intake, decision-staleness ]
   share: github
 ---
 

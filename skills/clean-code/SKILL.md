@@ -1,9 +1,9 @@
 ---
 name: clean-code
-description: Use for any code change in any language. Boundaries that keep agents from producing what they produce best — hundred-line spaghetti. Short methods, self-descriptive code with no comments, composition over imperative chaining, DRY, SOLID, composable functional style.
+description: Use for any code change in any language. Boundaries that keep agents from writing hundred-line spaghetti — short methods, self-descriptive code with no comments, composition over imperative chaining, DRY, SOLID, composable functional style.
 roles: [development]
 metadata:
-  tags: [ clean-code, quality, composition, solid, dry, functional, methods, style ]
+  tags: [ short-methods, no-comments, composition, dry, solid-principles, self-descriptive-code, functional-style ]
   share: github
 ---
 
@@ -31,7 +31,7 @@ at a time. Per-language skills (`coding-*`) add stack specifics on top.
   calling the next — pipelines of interchangeable parts, not call-chains welded
   together.
 - **DRY.** The second copy is the moment to extract.
-- **SOLID principles** — as also stated in `AGENTS.shared.md`; they bind every edit,
+- **SOLID** — see `AGENTS.shared.md`'s `## Software principles`; binds every edit,
   not just new design.
 - **Functional style — composable, not pure.** Favour small transformations that
   chain; don't contort the code for purity's sake.

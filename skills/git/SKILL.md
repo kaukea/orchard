@@ -5,7 +5,7 @@ roles: [general]
 share: github
 compatibility: Requires git
 metadata:
-  tags: [git, commit, gitmoji]
+  tags: [git, commit, gitmoji, scope-discipline, batch-pushes]
 ---
 
 # git commits (MUST)

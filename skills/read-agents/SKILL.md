@@ -1,11 +1,11 @@
 ---
 name: read-agents
-description: MUST be read at session start, before any other action including replying to the user. Enforces loading of AGENTS.shared.md (generic shared rules) and AGENTS.md (project-specific rules) into context before the agent does anything else in a session. AGENTS.md is created with a stub if missing.
+description: MUST be read at session start, before any other action including replying to the user. Enforces loading of AGENTS.shared.md (generic shared rules) and AGENTS.md (project-specific rules) into context before the agent does anything else in a session.
 roles: [general]
 tracked: true
+share: github
 metadata:
-  tags: [ session, start, agents, bootstrap, rules, mandatory ]
-  share: github
+  tags: [agents-md, agents-shared-md, session-start, load-first, bootstrap]
 ---
 
 # Intent (Read AGENTS files)
