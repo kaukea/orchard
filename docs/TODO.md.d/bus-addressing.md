@@ -745,6 +745,13 @@ ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
   the way. wait-a-round mail now genuinely parks: it sits watch-blind and rides
   the recipient's next ordinary wake instead of the five-second flusher. Effort
   reads documented-first (CLAUDE_EFFORT, per the Claude Code hooks reference).
+- 📝 The agent surface matches the built wire: the courier charter shrank from
+  4,023 to 1,597 words by cutting prose that re-explained what the scripts already
+  enforce; a new occasions skill carries the WHEN-never-HOW an agent needs — the
+  two ruled wait words included ("questioning" while an answer is outstanding, the
+  operator's gate included; "waiting" only on another agent) — and the sidebar maps
+  both words to their own glyphs, proven through real CLI posts. Four charters and
+  one genuinely broken hook migrated off the deleted surface.
 
 ### 🐛 Bug fixes
 - 🐛 A truncated header or feature row no longer loses its trailing ellipsis: the
