@@ -1,9 +1,9 @@
 ---
 name: coding-tofu
-description: Use for any read or edit of Terraform / OpenTofu code. Enforce clean, minimal, readable OpenTofu module structure
+description: Use for any read or edit of Terraform / OpenTofu code. Enforce clean, minimal, readable OpenTofu module structure.
 roles: [development/tofu, infrastructure/tofu]
 metadata:
-  tags: [opentofu, terraform, infrastructure, module]
+  tags: [opentofu, terraform, hcl, module]
   share: github
 ---
 # OpenTofu — Clean Module Guidelines
