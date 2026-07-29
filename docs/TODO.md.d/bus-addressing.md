@@ -304,6 +304,49 @@ anything beyond this list is required is open.
 
 ## Findings
 
+### First landing — RESULT (2026-07-29, resumed session)
+
+Result: done — branch `f/observability`, awaiting the operator's acceptance on his
+screen. Two sessions (one crashed mid-build and lost nothing committed; attempt 2
+reconciled its uncommitted work per file against the gathered spec, kept all of it,
+discarded nothing).
+
+**Built, per the frozen plan:** the wire to spec (name registry + NAME addressing;
+invented signal vocabulary deleted with no shim; relaying families with structural
+operator authority; immediate/wait-a-round/batch priorities with a self-closing
+flusher and ruled park-until-next-wake; topic publish path repaired + real pub/sub;
+wake filtering completed; notify_user deleted for ordinary status; durable feature
+marker writing again; telemetry first-class — model, effort, context occupancy,
+tokens in/out, dollars). The sidebar renders the ruled grammar (edge-taper band,
+active-stage background, spinner, subagent-only bubbles, "Task" solo row, stale as
+colour, both citation rungs, footer metrics, reweighted stage spans, both wait
+words). The agent surface matches (courier charter 4,023→1,597 words; occasions
+skill; charters migrated; two real hook/race bugs found and fixed).
+
+**Tested per the agreed method:** full suite 634 tests, zero red across three
+consecutive runs; seam test drives the real courier CLIs across two projects × four
+features into the rendered tree; token cost MEASURED both directions
+(tools/token-ab.py: charter −60.3%, cost −8.8%, output tokens +47.6% at 4-turn
+scale; live announce path −19%). End-to-end acceptance on the operator's screen is
+the remaining gate.
+
+**Follow-ups for the gardener's board (returned, not written by this branch):**
+1. Context REMAINING metric — operator ruled "ship usage now, remaining later";
+   needs a context-window-size source nothing exposes today.
+2. `question-broker-dead` — operator re-ruled mid-landing: always-on ask deployment
+   belongs there ("part of native terminal feature, which also includes the
+   windowing system").
+3. `tools/sidebar_sim.py` simulates the two wait states via lifecycle instead of
+   driving the real questioning/waiting words — wiring it is unstarted.
+4. A permanent regression test for the Monitor multi-source teardown race (fixed
+   this branch, validated by repetition; no dedicated test added).
+5. `ORCHID_EFFORT` fallback has no launch-site setter yet (documented in the wire
+   spec; harness vars cover live sessions).
+6. Transport-guard deny list misses request/reply/subscribe/unsubscribe — live
+   enforcement gap awaiting the operator's ruling (raised at acceptance).
+7. Two `_closed` streams await gardener ingestion: `sidebar-teamwork`,
+   `skill-terseness-pass`.
+
 ### THE SPEC ALREADY EXISTS: `docs/orchard-bus.md`, on main, unread since 2026-07-27
 
 Recovered 2026-07-29 while ingesting the `close-family-fakes` closed stream. The thing
@@ -774,6 +817,33 @@ ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
   kill window, and the orphan then failed a later, unrelated test. Fixed at the
   root with a stop event checked at both race points, validated by fifty-five
   targeted repeats.
+
+## Readme delta
+
+Staged for the gardener's `readme-sync` at ingest (Decision-034). Four precise
+corrections, README voice, placed not rewritten:
+
+1. Replace "A finish reaches the parent as a directed `lifecycle:stopped` with its
+   outcome; questions to the operator ride the reserved `:session:operator` mailbox."
+   with: "A finish is a `lifecycle:stopped` event with its outcome on the topic feed —
+   whoever cares (the supervisor included) is already listening, and the close happens
+   as a consequence; nobody phones the parent. Questions to the operator ride the
+   reserved `:session:operator` mailbox like any other request."
+2. Replace "Canonical spec: `agents/courier.md`." with: "Canonical wire spec:
+   `docs/courier-wire.md` — kept in sync in the same commit that changes the wire; the
+   charter (`agents/courier.md`) is now a quarter of its old size and teaches only what
+   the courier owns."
+3. In the sidebar paragraph ("**And you get to watch.**"), after "arrow keys + Enter
+   jump you straight to that work's tmux window.", append: "Every block now ends in
+   real numbers: the feature footer shows its age against time actually worked plus
+   live token count and dollar cost, each task shows its running time, and the
+   identity line carries model, effort and context occupancy — all computed by
+   script from the event stream, never by a model."
+4. In the machinery list ("**And the model's own machinery.**"), add `occasions` to
+   the skills that keep the agents honest ("`occasions` teaches every agent WHEN to
+   speak — never how"), and note the measurement tool: "`tools/token-ab.py` measures
+   the messaging path's token cost between any two checkouts with one repeatable
+   scenario."
 
 #### 📡 `f/observability` → `archive/observability`
 
