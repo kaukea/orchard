@@ -2260,3 +2260,69 @@ Consequence: the per-worktree project directory (the "fix B" of
 `transport-test-reconciling`) is NOT a fix to preserve in the courier recovery. It
 is reverted with the rest and replaced by an explicit namespace whose form is the
 operator's to set.
+
+## [2026-07-29 CEST] Decision-124: agents resist change to anything they use — the transport must be enforced mechanically, never by instruction
+#courier #transport #agents #behaviour #enforcement #compatibility #bus
+
+Operator observation and ruling (2026-07-29), given while deciding how the fifth
+courier rebuild differs from the four before it. Three statements, verbatim intent:
+
+1. **Agents that see the bus want to keep it COMPATIBLE with what existed**, in
+   the face of a changing communication medium.
+2. **Agents do not like a script doing their work and try to bypass it at the
+   first occasion**, because "they know best".
+3. **Resistance to change is enormous for anything that an agent uses.**
+
+**This explains the four failed rebuilds better than any technical account.** The
+courier was rewritten three times in two days, "finished" a fourth, and reverted a
+fifth — and the shape never actually changed, because every round was carried out
+by agents preserving the surface they themselves consume. The evidence is in the
+code and was already noticed without being understood: `announce` survives at HEAD
+as a documented near-no-op kept "so an existing caller's announce at session start
+does not regress"; the verb surface accreted to 17 rather than being cut; and
+Decision-123 records a routing mechanism chosen because the previous version had
+that shape. Those are not three defects. They are one behaviour, three times.
+
+**The proof that instruction alone fails is already in this repository.** A hook
+now intercepts direct transport calls and refuses them — *"Only the courier
+subagent may post on the transport. Do not call courier.py or orchard_topic.py
+yourself."* It exists because the written rule was not enough; agents called the
+transport directly anyway. It fired against this very gardener session on
+2026-07-29. A mechanical gate held where prose had not.
+
+**Consequences for the courier work** (drawn from the ruling, not additional
+rulings — the operator sets the mechanisms):
+
+- **Backwards compatibility is not a goal and must not be inferred as one.** No
+  part of the new transport is preserved because something already calls it.
+  Callers are changed; the surface is not held hostage to them.
+- **Enforcement is mechanical or it does not exist.** Every constraint that
+  matters — the script owning the work (Decision-123's "all the work in the
+  script, never in the courier agent"), the closed subject corpus, the cut verb
+  surface — needs a gate that refuses the wrong call, not a paragraph telling
+  agents not to make it. A prose prohibition is read by the same agent it binds.
+- **An agent must not be asked to reduce a surface it consumes** without a
+  mechanical check that the reduction actually happened, because its incentive
+  runs the other way.
+
+Related: the `#madmax` provenance rule already states the general principle for a
+different case — *"prose prohibitions are read by agents too; only the provenance
+check is enforcement."* This decision generalises it to the transport.
+
+## [2026-07-29, addendum to Decision-122] Fourteen vendored mirrors exist on disk and every one is stale
+#kauk #vendoring #distribution #evidence
+
+Measured 2026-07-29 while resolving a `skill-terseness-pass` question. Thirteen
+sibling repositories on this disk carry `.ai/repositories/serialseb/orchids`
+vendored mirrors (SafeKeepIt/{SignMc,dns,Panopticon,TitanShield},
+serialseb/{fastcut,forensics,kauk,kmscon-pi,packages,seb.crash,seb.house,
+seb.throwy,serialseb.voice}). **Every mirror carries 28 skill directories; orchids
+itself now has 19.** Each mirror also carries the full `agents/` layer.
+
+Two consequences. First, this is Decision-122's pain quantified: fourteen stale
+copies of a package that changed twice tonight, none of which will notice. Second,
+a caveat this board carried is FALSE and was an inference, not a fact — the
+`skill-terseness-pass` sidecar warned that "consumer repos without the agent layer
+may still need the full skill". No such repo exists on this disk; all of them have
+the agent layer. The hedge was written by an agent reasoning about a population it
+had never looked at.
