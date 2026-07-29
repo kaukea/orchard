@@ -657,6 +657,26 @@ agent behaviour, and in the courier agent together. Less precise than isolating 
 layer, and preferred for exactly that reason: it reflects real usage. (The continuous
 version of this — alerting on regression — is the `token-regression` task.)
 
+### Decision-NNN — Questioning is not waiting: the two wait words
+
+Operator, 2026-07-29, mid-build (resumed session), verbatim flavour: "If you wait on
+an answer, you're not waiting, you're Questioning, when you wait for another agent
+your are Waiting." The status word an agent posts while a question it asked — the
+operator's answer included — is outstanding is `questioning`; the status word while
+waiting for another agent is `waiting`. The sidebar maps `questioning` to the
+answer-wait glyph and `waiting` to the peer-wait glyph of Decision-058's six task
+states; the occasions skill teaches exactly these two words. An agent waiting at its
+done-gate is waiting on an answer, and is therefore `questioning`.
+
+### Decision-NNN — wait-a-round delivers on the recipient's next wake
+
+Operator, 2026-07-29 (resumed session). The middle agent-mail priority class parks
+its message so that it never triggers a wake of its own: the message is delivered
+when the recipient next wakes for any other reason. `batch` remains the five-second
+flusher cadence; `immediate` remains send-at-once. This distinguishes the two queued
+classes the wire had been delivering identically, flagged at implementation rather
+than invented.
+
 ### Sequencing note
 
 Per the parent sidecar's binding consequence ("not split across parallel workers with
@@ -712,6 +732,12 @@ ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
   old code read an environment variable no launcher sets. Orphan detection is
   resolved by three independent staleness signals instead of depending on a clean
   shutdown hook.
+- 📊 The ruled metrics render from real data: the repo footer's age, worked time
+  and live token count compute deterministically from event timestamps and the
+  status snapshot; context occupancy shows on the task row; effort rides beside
+  the model through the citation's own degradation ladder; the progress circle
+  reflects the ruled 10/15/15/45/15 stage weights; and an agent that says
+  "waiting" shows as waiting, proven through the real CLI seam.
 
 ### 🐛 Bug fixes
 - 🐛 A truncated header or feature row no longer loses its trailing ellipsis: the
