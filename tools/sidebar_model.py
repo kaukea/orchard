@@ -102,13 +102,18 @@ BRANCH_SEPARATOR = "@"
 # glyph or a colour-pair with each other, nor with a still-working task).
 TERMINAL_TASK_STATUSES = {"done", "failed"}
 
-# The exact `orchard:agent:status` freetext word that maps onto Decision-
-# 058's "waiting" glyph state (M2, courier-wire.md §2b's "blocked and
-# waiting are status" ruling, §4's notify_user-removal note). An exact,
-# case-sensitive match — the wire defines this as a specific status WORD,
-# not a case-folded pattern, and no other spelling is ruled.
-# "awaiting-another-agent"'s own producer word is still being settled with
-# the operator and is deliberately NOT mapped here (M2 scope guard).
+# The exact `orchard:agent:status` freetext words that map onto Decision-
+# 058's two wait states — ruled 2026-07-29 ("Questioning is not waiting: the
+# two wait words", docs/TODO.md.d/bus-addressing.md §Decision entries): a
+# status word of `questioning` means an answer this agent asked for is
+# outstanding (the operator's own done-gate included) and reads as
+# Decision-058's "waiting" state — its ORIGINAL glyph slot, unchanged; a
+# status word of `waiting` means this agent is waiting on another AGENT and
+# reads as the separate "awaiting_agent" state, previously unreachable (no
+# producer word had been ruled for it). Both are exact, case-sensitive
+# matches — the wire defines these as specific status WORDS, not a
+# case-folded pattern, and no other spelling is ruled.
+_QUESTIONING_ACTIVITY = "questioning"
 _WAITING_ACTIVITY = "waiting"
 
 # A session with no event inside this window, and no terminal outcome,
@@ -702,34 +707,38 @@ def _marker_task_id(task: dict) -> str | None:
 # --------------------------------------------------------------------------
 
 def _status_for(rec: dict, now: float) -> str:
-    """working/done/failed/idle/waiting/stale, derived from the
-    lifecycle+outcome+status signals this grammar actually carries, plus
-    `now` for the staleness check. No awaiting_agent variant exists — its
-    producer word is still being settled with the operator (M2 scope
-    guard) — so that one STATUS_EMOJI entry is still never produced here.
+    """working/done/failed/idle/waiting/awaiting_agent/stale, derived from
+    the lifecycle+outcome+status signals this grammar actually carries,
+    plus `now` for the staleness check. Both wait states are now reachable
+    (M2 remap, ruled 2026-07-29 — "Questioning is not waiting: the two wait
+    words", docs/TODO.md.d/bus-addressing.md §Decision entries):
 
-    "waiting" (M2, closing a previously-recorded gap — courier-wire.md §4's
-    `notify_user` removal note: "a waiting agent is STATUS ('waiting'), per
-    §2's four-channel ruling") is Decision-058's own waiting glyph state,
-    reached when this record's own latest `orchard:agent:status` post body
-    (`rec["activity"]`, `_apply_event`) is the literal word "waiting" — an
-    ordinary STATUS post, the same channel "building tree" or any other
-    one-word activity already rides, not a new subject or verb. Checked
-    AFTER the terminal-outcome and staleness gates (a waiting agent that
-    then finishes, or goes quiet past ACTIVE_WINDOW_SECONDS, is done/
-    failed/stale like any other — Decision-094: staleness is a colour, not
-    a removal, and it overrides a stuck activity word the same way it
-    already overrides a stuck "starting" lifecycle state) but BEFORE the
-    working/idle split, since "waiting" is itself more specific than the
-    generic "working" a live lifecycle state alone would otherwise read as.
+    - `questioning` -> Decision-058's own "waiting" glyph state (its
+      ORIGINAL slot — an answer this agent asked for is outstanding, the
+      operator's own done-gate included).
+    - `waiting` -> Decision-058's "awaiting_agent" state, previously
+      unreachable (no producer word had been ruled for it) — this agent is
+      waiting on another AGENT, not on an answer.
+
+    Both are read off this record's own latest `orchard:agent:status` post
+    body (`rec["activity"]`, `_apply_event`) — an ordinary STATUS post, the
+    same channel "building tree" or any other one-word activity already
+    rides, not a new subject or verb. Checked AFTER the terminal-outcome
+    and staleness gates (an agent in either wait state that then finishes,
+    or goes quiet past ACTIVE_WINDOW_SECONDS, is done/failed/stale like any
+    other — Decision-094: staleness is a colour, not a removal, and it
+    overrides a stuck activity word the same way it already overrides a
+    stuck "starting" lifecycle state) but BEFORE the working/idle split,
+    since either wait state is itself more specific than the generic
+    "working" a live lifecycle state alone would otherwise read as.
 
     A terminal outcome (done/failed) always wins — it is never demoted to
     stale, no matter how old (retention ruling, 2026-07-25 revision: a
     finished task is a permanent green/red one-liner). Absent a terminal
     outcome, a session with no event inside ACTIVE_WINDOW_SECONDS reads
-    stale (gray) rather than working/idle/waiting — checked before every
-    other live-status read, since staleness overrides even a stuck
-    "starting" lifecycle state (or a stuck "waiting" activity word) that
+    stale (gray) rather than working/idle/waiting/awaiting_agent — checked
+    before every other live-status read, since staleness overrides even a
+    stuck "starting" lifecycle state (or a stuck wait activity word) that
     never followed up.
 
     A live record (one folded from real traffic, always carrying its own
@@ -743,15 +752,18 @@ def _status_for(rec: dict, now: float) -> str:
     synthetic marker-only record (no "sid") never had live traffic to
     infer from, so it is unaffected and keeps falling through to idle
     absent an explicit state — and never carries an `activity` either, so
-    it can never read "waiting" (live-only, same footing as role/model)."""
+    it can never read either wait state (live-only, same footing as
+    role/model)."""
     if rec.get("outcome") == "fail" or rec.get("task_outcome") == "failed":
         return "failed"
     if rec.get("outcome") == "success" or rec.get("task_outcome") == "completed":
         return "done"
     if now - rec.get("_seen_ts", 0.0) >= ACTIVE_WINDOW_SECONDS:
         return "stale"
-    if rec.get("activity") == _WAITING_ACTIVITY:
+    if rec.get("activity") == _QUESTIONING_ACTIVITY:
         return "waiting"
+    if rec.get("activity") == _WAITING_ACTIVITY:
+        return "awaiting_agent"
     state = rec.get("state")
     if state in ("starting", "started", "stopping"):
         return "working"
@@ -922,18 +934,21 @@ def _build_task_steps(agents: list[Agent], active_step: str | None) -> list[Step
     ]
 
 
-_STATUS_PRECEDENCE = ("failed", "working", "waiting", "stale", "idle")
+_STATUS_PRECEDENCE = ("failed", "working", "waiting", "awaiting_agent", "stale", "idle")
 
 
 def _combine_status(statuses: list[str]) -> str:
     """A parent's own status, aggregated from its children's (a feature
     from its tasks, a task from its live agents): the status most needing
-    attention wins (failed > working > waiting > stale > idle — "waiting"
-    (M2) slotted between working and stale: a gated agent needs less
-    attention than one still actively working, but more than a merely
-    stale/idle one); "done" only once EVERY child is done (operator
-    ruling, 2026-07-26: a feature/task is complete only when everything
-    inside it is)."""
+    attention wins (failed > working > waiting > awaiting_agent > stale >
+    idle — M2's two wait states both slotted between working and stale: a
+    gated agent needs less attention than one still actively working, but
+    more than a merely stale/idle one; `waiting` (questioning, an
+    outstanding answer) ranks fractionally above `awaiting_agent` (waiting
+    on a peer) since an unanswered question is the more attention-worthy of
+    the two, a tie-break the ruling itself does not settle further);
+    "done" only once EVERY child is done (operator ruling, 2026-07-26: a
+    feature/task is complete only when everything inside it is)."""
     if not statuses:
         return "idle"
     for candidate in _STATUS_PRECEDENCE:

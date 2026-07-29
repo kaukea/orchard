@@ -41,13 +41,14 @@ SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 # idle, waiting, awaiting_agent, and stale share the same hollow circle —
 # there is no longer a separate operator-wait glyph variant (bus-message-
 # specifying B5 item 7: "hollow circle only, no watch/timer glyphs anywhere
-# in row status"). "waiting"/"awaiting_agent" are part of the full
-# vocabulary the mock defines but are currently unreachable: the fleet
-# model (below) only ever derives working/done/failed/idle/stale from the
-# new event grammar, which has no blocked/notify_user signal to distinguish
-# a wait — see the module docstring's "NOT ported" list. Kept here rather
-# than pruned, since STATUS_EMOJI.get() is used defensively and a future
-# data source may yet supply the signal.
+# in row status"). Both wait states ARE reachable (M2 remap, ruled
+# 2026-07-29 — "Questioning is not waiting: the two wait words",
+# docs/TODO.md.d/bus-addressing.md §Decision entries): a status post of
+# `questioning` reads as "waiting" (an answer this agent asked for is
+# outstanding), a status post of `waiting` reads as "awaiting_agent" (this
+# agent is waiting on another agent) — see `sidebar_model._status_for`.
+# The two share this glyph by design; a curses colour pair distinguishes
+# them instead (`sidebar_curses_colour.py`).
 #
 # "stale" IS reachable (operator ruling, 2026-07-25, revised same day): a
 # session with no event inside the ~1h ACTIVE_WINDOW and no terminal

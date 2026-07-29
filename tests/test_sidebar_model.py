@@ -443,14 +443,27 @@ class M2TelemetryFoldTests(_ModelTestCase):
 
 
 class WaitingStatusTests(_ModelTestCase):
-    """M2: the "waiting" STATUS word (courier-wire.md §4's notify_user-
-    removal note — "a waiting agent is STATUS ('waiting')") maps onto
-    Decision-058's own waiting glyph state via `_status_for`, closing a
-    previously-recorded gap ("no waiting/awaiting_agent variant exists").
-    `awaiting_agent` stays deliberately unreachable — its producer word is
-    still being settled with the operator (M2 scope guard)."""
+    """M2 remap (ruled 2026-07-29 — "Questioning is not waiting: the two
+    wait words", docs/TODO.md.d/bus-addressing.md §Decision entries): the
+    "questioning" STATUS word (an answer this agent asked for is
+    outstanding, the operator's own done-gate included) maps onto
+    Decision-058's own "waiting" glyph state via `_status_for` -- its
+    ORIGINAL slot, unchanged. The "waiting" STATUS word (waiting on another
+    AGENT) now maps onto the separate "awaiting_agent" state, closing a
+    previously-recorded gap ("no awaiting_agent variant exists -- its
+    producer word is still being settled")."""
 
-    def test_a_status_post_of_the_word_waiting_reads_as_waiting(self):
+    def test_a_status_post_of_the_word_questioning_reads_as_waiting(self):
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"})
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:status", identity={"agent": "landscaper", "feature": "feat-a"},
+                     body="questioning")
+        agent = self._sole_feature().tasks[0].unstepped_agents[0]
+        self.assertEqual(agent.status, "waiting")
+
+    def test_a_status_post_of_the_word_waiting_reads_as_awaiting_agent(self):
         _write_event(self.projects_root, self.slug, "s1",
                      "orchard:agent:lifecycle:starting",
                      identity={"agent": "landscaper", "feature": "feat-a"})
@@ -458,9 +471,9 @@ class WaitingStatusTests(_ModelTestCase):
                      "orchard:agent:status", identity={"agent": "landscaper", "feature": "feat-a"},
                      body="waiting")
         agent = self._sole_feature().tasks[0].unstepped_agents[0]
-        self.assertEqual(agent.status, "waiting")
+        self.assertEqual(agent.status, "awaiting_agent")
 
-    def test_a_status_word_other_than_waiting_is_not_mistaken_for_it(self):
+    def test_a_status_word_other_than_the_two_wait_words_is_not_mistaken_for_either(self):
         _write_event(self.projects_root, self.slug, "s1",
                      "orchard:agent:lifecycle:starting",
                      identity={"agent": "landscaper", "feature": "feat-a"})
@@ -470,10 +483,19 @@ class WaitingStatusTests(_ModelTestCase):
         agent = self._sole_feature().tasks[0].unstepped_agents[0]
         self.assertEqual(agent.status, "working")
 
-    def test_a_waiting_agent_still_goes_stale_past_the_active_window(self):
+    def test_a_questioning_agent_still_goes_stale_past_the_active_window(self):
         # Decision-094: staleness is a colour, not a removal -- it
-        # overrides a stuck "waiting" activity word the same way it
+        # overrides a stuck "questioning" activity word the same way it
         # already overrides a stuck lifecycle state.
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:status", identity={"agent": "landscaper", "feature": "feat-a"},
+                     body="questioning", mtime=1000)
+        agent = self._sole_feature(
+            now=1000 + sidebar_model.ACTIVE_WINDOW_SECONDS + 300,
+        ).tasks[0].unstepped_agents[0]
+        self.assertEqual(agent.status, "stale")
+
+    def test_a_waiting_agent_still_goes_stale_past_the_active_window(self):
         _write_event(self.projects_root, self.slug, "s1",
                      "orchard:agent:status", identity={"agent": "landscaper", "feature": "feat-a"},
                      body="waiting", mtime=1000)
@@ -484,8 +506,9 @@ class WaitingStatusTests(_ModelTestCase):
 
     def test_waiting_task_status_combines_between_working_and_stale(self):
         # `_combine_status`'s own precedence (failed > working > waiting >
-        # stale > idle): a task with one working and one waiting agent
-        # still reads "working" as a whole -- the more urgent of the two.
+        # awaiting_agent > stale > idle): a task with one working and one
+        # questioning agent still reads "working" as a whole -- the more
+        # urgent of the two.
         self.assertEqual(
             sidebar_model._combine_status(["waiting", "working"]), "working",
         )
@@ -493,6 +516,20 @@ class WaitingStatusTests(_ModelTestCase):
             sidebar_model._combine_status(["waiting", "stale"]), "waiting",
         )
         self.assertEqual(sidebar_model._combine_status(["waiting"]), "waiting")
+
+    def test_awaiting_agent_task_status_combines_between_waiting_and_stale(self):
+        self.assertEqual(
+            sidebar_model._combine_status(["awaiting_agent", "working"]), "working",
+        )
+        self.assertEqual(
+            sidebar_model._combine_status(["awaiting_agent", "waiting"]), "waiting",
+        )
+        self.assertEqual(
+            sidebar_model._combine_status(["awaiting_agent", "stale"]), "awaiting_agent",
+        )
+        self.assertEqual(
+            sidebar_model._combine_status(["awaiting_agent"]), "awaiting_agent",
+        )
 
 
 class RepoFooterAggregateTests(_ModelTestCase):
