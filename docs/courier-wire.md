@@ -82,14 +82,17 @@ not env-var-driven). Cross-project delivery is allowlist-gated
 from the user's config (`sidebar-registry.json` — a misnomer retained for now: it is
 the courier cross-project allowlist, not a sidebar file).
 
-**[GAP, introduced by the removal]** `ORCHID_PARENT_PROJECT` was, until this commit,
-read ONLY by `cmd_signal` (as the implicit `--target-project` for a parent-directed
-signal with no parent known otherwise) — now that `cmd_signal` is deleted, nothing in
-`courier.py` reads it at all; only `ORCHID_PARENT_SESSION` is still read
-(`identity_of()`'s `parent_session` display field, unrelated to addressing). Whatever
-still sets `ORCHID_PARENT_PROJECT` (e.g. `tools/bloomer-launch.sh`) now sets a variable
-with no consumer — flagged, not fixed here: that setter is not a caller of `signal`
-and touching it is outside this step's scope.
+**[RESOLVED, A1]** `ORCHID_PARENT_PROJECT` was, until `cmd_signal`'s deletion, read ONLY
+by `cmd_signal` (as the implicit `--target-project` for a parent-directed signal with no
+parent known otherwise) — now that `cmd_signal` is gone, nothing in `courier.py` reads
+it at all; only `ORCHID_PARENT_SESSION` is still read (`identity_of()`'s
+`parent_session` display field, unrelated to addressing). Grepped for an orphaned
+setter across the tree (`tools/bloomer-launch.sh` was the suspected one): none exists —
+`tools/bloomer-launch.sh` sets `ORCHID_PARENT_SESSION` only and never set
+`ORCHID_PARENT_PROJECT`, so there was nothing to remove. No directed parent callback
+remains anywhere in the surface: a landscaper's close is a `lifecycle:stopped` +
+`outcome` event the SUPERVISOR listens for (Decision-129's owner-listens shape), never
+a signal addressed at a remembered parent.
 
 ### Addressing by NAME — ruled 2026-07-29
 
