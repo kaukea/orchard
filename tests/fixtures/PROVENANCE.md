@@ -105,6 +105,27 @@ moved, or deleted to produce any of them.
   `identity_of()` reports `agent_type` "landscaper" resolved from this
   exact file.
 
+## Seam-scenario frame fixture (observability M3) — NOT a live-system capture
+
+The one file below is a DIFFERENT kind of fixture from everything above and
+does not carry the "captured from the live system, hand-validated by the
+operator" provenance the rest of this document states. Documented separately
+so that blanket claim at the top is never misread as covering it.
+
+- `seam_scenario_frame.txt` — a plain-text `sidebar.render_lines()` dump
+  (width 100, no curses) of a FAKE multi-project scenario built by
+  `tests/test_sidebar_seam.py` — two fake origin repos, two feature git
+  worktrees under each, driven entirely through REAL `tools/courier.py
+  init` / `tools/orchard_topic.py post lifecycle|status|delegation|outcome`
+  subprocess calls (docs/sidebar-spec.md §8's seam acceptance: "the seam
+  test drives the real courier under a fake project"). Regenerated only by
+  that file's own `python3 tests/test_sidebar_seam.py --recapture` (never
+  at test time — `SeamStaticFixtureTests` only reads it). **PENDING THE
+  OPERATOR'S OWN EYEBALL VALIDATION** (Decision-103 calls for a
+  hand-validated companion; this was generated headless and has not yet
+  been reviewed against the operator's own read of it) — flagged in the
+  M3 sower's return, not presented as already validated.
+
 No fixture in this set is tool-generated any longer: all seven are bytes
 copied read-only off the live tree. Committed verbatim, never regenerated
 or reformatted to match a later code change — a fixture disagreeing with

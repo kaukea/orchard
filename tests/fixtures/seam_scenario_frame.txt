@@ -1,0 +1,15 @@
+ orchid-one
+   ⠧ 🧩/feat alpha                                                                                  
+     ⠧ Task                                                                                         
+       “no activity” — 🧹 groundskeeper
+       “building tree” — 🌿 landscaper
+       ✓ sub-done-one
+       ○ sub-queued-one
+       ● sub-running-one
+   ○ 🧩/feat beta                                                                                   
+     ○ Task                                                                                         
+       “no activity” — 🌱 sower
+ orchid-two
+   ✓ 🧩/feat gamma                                                                                  
+   ❌ 🧩/feat delta                                                                                 
+     ❌ Task                                                                                        
