@@ -417,11 +417,15 @@ request/reply wait. So an UNSOLICITED inbound message woke nothing unless the co
 already happened to be blocking on a reply, and the operator's close gate worked only
 when something was coincidentally waiting. It failed silently the rest of the time.
 
-**[GAP, remaining]** Filtering moved from the watch path to the drain: the project
-directory is shared by every session working that feature, so a courier wakes on its
-siblings' traffic and discards what is not addressed to it. That is a real wake cost
-that grows with the number of agents on one feature, and it is the residue of the
-monitor-overlap problem rather than its solution.
+**[CODE, fixed 2026-07-29]** `_wait_for_orchard_activity()` — the watch
+`request`/`reply`/`ask` block on — now carries the same `--include` filter `monitor`'s
+own mailbox source already used (`_own_mailbox_path_filter(sid)`), so the ONE remaining
+unfiltered watch in the codebase is closed: a sibling session's traffic and a marker
+heartbeat in the shared project directory no longer raise the kernel event that
+re-checks this wait. Per §6 this is a convenience layered on top of the exact
+`in_reply_to` match `_find_orchard_reply()` already did — that match was always
+correct; this only cuts how often it re-runs, closing the wake-cost gap that grew with
+the number of agents on one feature.
 
 **[GAP] `notify_user` is written, validated, and consumed by NOBODY.** Verified across
 `tools/`: every reference either sets the flag or polices its legality — which subject

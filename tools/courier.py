@@ -1915,12 +1915,21 @@ def _find_orchard_reply(dir_path: Path, sid: str, request_id: str) -> dict | Non
     return None
 
 
-def _wait_for_orchard_activity(dir_path: Path, budget: float) -> None:
+def _wait_for_orchard_activity(dir_path: Path, sid: str, budget: float) -> None:
+    """Bounded wait, filtered at the WATCH stage exactly like `monitor`'s own
+    mailbox source (`_own_mailbox_path_filter`): a request/ask waiter is only
+    ever owed a reply file named `<sid>.<ts>.json`, so a sibling session's
+    unrelated traffic and a marker heartbeat in the same shared project
+    directory (docs/courier-wire.md §4, "[GAP, remaining]") never raise the
+    kernel event that re-checks this loop. Per §6 this is a convenience, not
+    correctness: `_find_orchard_reply`'s exact `in_reply_to` match is what
+    HANDS UP the right message; this only cuts how often that check re-runs."""
     if shutil.which("inotifywait"):
         try:
             subprocess.run(
                 ["inotifywait", "-q", "-t", str(max(1, int(round(budget)))),
-                 "-e", "create", "-e", "moved_to", str(dir_path)],
+                 "-e", "create", "-e", "moved_to",
+                 "--include", _own_mailbox_path_filter(sid), str(dir_path)],
                 capture_output=True, text=True, timeout=budget + 5,
             )
             return
@@ -1941,7 +1950,7 @@ def _await_orchard_reply(dir_path: Path, sid: str, request_id: str, timeout: flo
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return None
-        _wait_for_orchard_activity(dir_path, remaining)
+        _wait_for_orchard_activity(dir_path, sid, remaining)
 
 
 def _await_orchard_reply_forever(dir_path: Path, sid: str, request_id: str,
@@ -1953,7 +1962,7 @@ def _await_orchard_reply_forever(dir_path: Path, sid: str, request_id: str,
         reply = _find_orchard_reply(dir_path, sid, request_id)
         if reply is not None:
             return reply
-        _wait_for_orchard_activity(dir_path, poll_interval)
+        _wait_for_orchard_activity(dir_path, sid, poll_interval)
 
 
 def cmd_request(args) -> None:
