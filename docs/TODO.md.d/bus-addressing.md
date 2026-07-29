@@ -346,6 +346,17 @@ the remaining gate.
    enforcement gap awaiting the operator's ruling (raised at acceptance).
 7. Two `_closed` streams await gardener ingestion: `sidebar-teamwork`,
    `skill-terseness-pass`.
+8. "Worked" time computes from live-window event intervals only — compaction eats
+   history and the marker persists no work aggregate, so long features undercount
+   (a 15-hour feature honestly shows minutes). A marker field accumulating worked
+   intervals would fix it. Found at the acceptance gate.
+9. The transport guard's deny list misses request/reply/subscribe/unsubscribe —
+   operator ruled at acceptance: stays on the board as its own item.
+10. A sidebar registry addition only shows after a sidebar restart (watched set is
+    startup-computed). Found at the acceptance mount.
+11. One sidebar instance died silently during a six-hour quiet stretch at the gate;
+    the remount is instrumented (stderr + exit code) so a recurrence is diagnosable.
+    Cause unknown, reported as observed.
 
 ### THE SPEC ALREADY EXISTS: `docs/orchard-bus.md`, on main, unread since 2026-07-27
 
