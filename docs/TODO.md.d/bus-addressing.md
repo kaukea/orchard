@@ -666,3 +666,37 @@ of the parent, and does not narrow or reorder the four sibling tasks listed in
 `observability.md` §Tasks. The Questions above are scoped to what THIS task's Proposal must
 say, not to when it runs relative to `sidebar-teamwork`, `no-agent-teardown`, or
 `question-broker-dead`.
+
+## Changelog entry
+
+ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
+(Decision-034). Aggregate bullets first, per-feature detail block below.
+
+### ✨ New features
+- 📡 The courier resolves agents by NAME: a script-owned registry, nearest-first
+  resolution, delivery to every live holder of a shared name, and an undeliverable
+  error for dead names.
+- 📝 The sidebar's scattered display specification is gathered into one document,
+  `docs/sidebar-spec.md`; the wire specification lives at `docs/courier-wire.md`
+  (it is the courier's wire) with every claim tagged [SPEC]/[CODE]/[GAP] and kept
+  in sync commit by commit.
+- 💄 The sidebar renders the ruled grammar: header and feature rows fold in from
+  both pane edges on a full-width taper band; the active stage alone carries its
+  own background and an animated mark; bubble glyphs belong to subagents alone;
+  a feature's solo duplicate-named task reads literally "Task"; staleness is a
+  colour, never a removal; both citation layouts are built for a live A/B.
+
+### 🐛 Bug fixes
+- 🐛 A truncated header or feature row no longer loses its trailing ellipsis: the
+  renderer reserves the terminal's one unsafe column instead of letting real text
+  land where curses silently drops it.
+
+#### 📡 `f/observability` → `archive/observability`
+
+The courier and the sidebar move to their written specification as one change —
+producer and consumers together. So far: name addressing with a registry the
+script owns; the display and wire specifications consolidated and tag-synced;
+the sidebar renderer brought to the operator's ruled visual grammar with its
+test suite migrated alongside. *(Detail grows as the build advances; breadcrumb:
+`docs/TODO.md.d/observability.md`, `docs/TODO.md.d/bus-addressing.md`,
+`docs/sidebar-spec.md`, `docs/courier-wire.md`.)*

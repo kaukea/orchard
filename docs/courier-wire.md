@@ -63,24 +63,33 @@ whole filtering scheme rests on:
 `<sid>.<ts>.json` can be split unambiguously on its first dot, and it is load-bearing:
 allow a dot into a session id and every name in the tree becomes ambiguous.
 
-**[CODE]** `cmd_signal` normalises the parent id and sends to
-`:session:<parent>`, deliberately stripping a `:session:` prefix first — a caller
-that passes a full address would otherwise produce `:session::session:<id>` and leak
-a `:` into the delivered filename. That bug is already fixed; do not reintroduce it
-by "helpfully" prefixing.
+**[CODE, removed 2026-07-29]** `cmd_signal` used to normalise the parent id by
+building `f":session:{to}"` unconditionally — which, contrary to what this section
+used to claim, did NOT strip an existing `:session:` prefix first, so a caller
+passing an already-prefixed address doubled it (`:session::session:<id>`), leaking a
+`:` into the delivered filename. `cmd_signal` and this whole wrapping step are gone
+(§2's "Agent status tracking" [GAP], now resolved) — every remaining `--to` in
+`courier.py` (`send`/`request`/`reply`) takes a full `:session:<id>`/`:topic:<name>`
+address directly from the caller, with no bare-id convenience wrapping and so no
+doubling to reintroduce.
 
 ### Cross-project
 
-**[CODE]** A session may address a session in ANOTHER project. `ORCHID_PARENT_SESSION`
-names the target session and `ORCHID_PARENT_PROJECT` names the target project slug.
-Cross-project delivery is allowlist-gated exactly like any other `:session:` send;
-the allowlist is a JSON array of project slugs read from the user's config
-(`sidebar-registry.json` — a misnomer retained for now: it is the courier
-cross-project allowlist, not a sidebar file).
+**[CODE]** A session may address a session in ANOTHER project via
+`send`/`request`/`reply --to :session:<id> --target-project SLUG` (an explicit flag,
+not env-var-driven). Cross-project delivery is allowlist-gated
+(`_authorize_cross_project`); the allowlist is a JSON array of project slugs read
+from the user's config (`sidebar-registry.json` — a misnomer retained for now: it is
+the courier cross-project allowlist, not a sidebar file).
 
-**[CODE]** With no parent known, a signal is NOT delivered and says so
-(`signal <state> — no parent known, not delivered`). Silence here is by design, not
-a failure.
+**[GAP, introduced by the removal]** `ORCHID_PARENT_PROJECT` was, until this commit,
+read ONLY by `cmd_signal` (as the implicit `--target-project` for a parent-directed
+signal with no parent known otherwise) — now that `cmd_signal` is deleted, nothing in
+`courier.py` reads it at all; only `ORCHID_PARENT_SESSION` is still read
+(`identity_of()`'s `parent_session` display field, unrelated to addressing). Whatever
+still sets `ORCHID_PARENT_PROJECT` (e.g. `tools/bloomer-launch.sh`) now sets a variable
+with no consumer — flagged, not fixed here: that setter is not a caller of `signal`
+and touching it is outside this step's scope.
 
 ### Addressing by NAME — ruled 2026-07-29
 
@@ -127,9 +136,10 @@ lifecycle post already uses — both `orchard_send()`'s session/topic delivery a
 passes through — never another session's entry (Decision-129, "never delete a live
 peer's entry"). `cmd_signal`'s separate, older lifecycle encoding
 (`orchard:agent:message:content` body `{"kind":"lifecycle",...}`, the 7-state list
-marked `[GAP]` above for deletion) is NOT hooked into this — only the GLOBAL
+resolved above by deletion) was never hooked into this — only the GLOBAL
 `orchard:agent:lifecycle:stopped` subject drives removal, matching "what drives the
-sidebar" elsewhere in this document.
+sidebar" elsewhere in this document. Now that `cmd_signal` is gone entirely, this is
+moot rather than merely unhooked: nothing emits that body shape any more.
 
 **[CODE]** Stale-guard: `live_name_registry_entries()` treats a registry file's own
 mtime as its liveness marker and excludes anything older than
@@ -193,10 +203,23 @@ status) · **outcome** (`success|fail`) · **requests** (questions, the operator
 included). Asking a question and waiting are NORMAL lifecycle — started and not
 stopping — never states.
 
-**[GAP]** `courier.py signal` still carries a parallel invented state list
-(`started · building · testing · done · finished · blocked · abandoned`) that appears
-in no specification. Ruled 2026-07-29: DELETED, no shim — every caller migrates to
-status/lifecycle/outcome in the same change.
+**[CODE, resolved 2026-07-29]** `courier.py signal` and its parallel invented state
+list (`started · building · testing · done · finished · blocked · abandoned`,
+`LIFECYCLE_STATES`) are DELETED outright, no shim: `cmd_signal`, its argparse wiring,
+`SIGNAL_NOTIFY_STATES`, and the `{"kind": "lifecycle", ...}` body shape (and the
+`validate` audit code that only ever checked that shape) are gone from
+`tools/courier.py`. No caller in this repo invoked `courier.py signal` outside its own
+tests and doc comments — the verb was fully dead weight (docs/TODO.md.d/observability.md
+step C2). `orchard_topic.py`'s own `LIFECYCLE_STATES` (the correct four-state
+`starting|started|stopping|stopped`, §2's "Agent lifecycle tracking") is untouched and
+unaffected — it was never the same constant, only confusingly named the same. Two test
+classes exercising the deleted verb (`SignalAttributionTests`,
+`SignalNotifyLegalityCliTests` in `tests/test_courier.py`; `SignalPrefixTests` in
+`tests/test_orchard_transport.py`) are removed rather than migrated: their entire
+premise — a `signal` CLI verb with `--to` prefix-doubling and cross-project
+parent-attribution behaviour — no longer exists to test. Agent charter prose
+(`agents/*.md`) mentioning `signal` still describes the old vocabulary; that rewrite is
+a later step (A1), not done here.
 
 ### Agent lifecycle tracking — GLOBAL (drives the sidebar)
 
@@ -467,5 +490,6 @@ optimises the axis that does not matter.
    next; any number of components may attach to the stream for telemetry, cleanup or
    issue-pushing. A supervising controller and a distributed fleet are not
    antithetical.
-5. **`finished` is not a subject.** It survives as a `courier.py signal --state` value
-   from an early draft. The close is `lifecycle:stopped` + `outcome:success|fail`.
+5. **`finished` is not a subject.** It was a `courier.py signal --state` value from an
+   early draft; `signal` and that whole invented state list are deleted (§2). The
+   close is `lifecycle:stopped` + `outcome:success|fail`.

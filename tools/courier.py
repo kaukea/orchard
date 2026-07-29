@@ -61,7 +61,12 @@ Usage:
                                                 send/request (directed). Fan-out is
                                                 the token leak; nothing fans out any
                                                 more (see below: announce/depart/
-                                                signal/ask all lost their fallback).
+                                                ask all lost their fallback; the
+                                                separate `signal` verb and its
+                                                invented lifecycle vocabulary were
+                                                deleted outright — orchard_topic.py
+                                                post lifecycle|status|outcome carries
+                                                this traffic now).
   courier.py receive                               drain this session's orchard
                                                 mailbox: JSON array, oldest first,
                                                 delete-on-read
@@ -87,14 +92,6 @@ Usage:
   courier.py announce                              no-op (identity rides every
                                                 orchard_topic.py event instead)
   courier.py depart                                no-op (nothing reads it)
-  courier.py signal --state S [--to ID]            lifecycle push, directed at the
-                                                parent ONLY (--to, else
-                                                ORCHID_PARENT_SESSION; cross-repo via
-                                                ORCHID_PARENT_PROJECT, allowlist-
-                                                gated same as any cross-project
-                                                :session: send) — delivered over the
-                                                orchard transport. No parent known
-                                                means not delivered; never broadcast.
   courier.py ask --question Q --option A --option B [...] [--multi]
              [--title T] [--summary S]
                                                 a directed orchard request to the
@@ -225,19 +222,10 @@ def estimates_for(model: str | None, spend: dict, occupancy: int) -> dict:
         "rates_cached": MODEL_CARD_DATE,
     }
 
-LIFECYCLE_STATES = ("started", "building", "testing", "done", "finished", "blocked", "abandoned")
-
-# What a "blocked" signal is blocked ON — the sidebar (sidebar_model.py) needs
-# this to tell "waiting on an external component" (⌚) apart from "waiting on
-# a peer agent" (🪷); absent (older callers, or any state other than
-# "blocked") the sidebar defaults to "component".
-BLOCKED_ON_STATES = ("component", "agent")
-
 # WIRE GRAMMAR v1 (docs/TODO.md.d/bus-message-specifying.md): the closed set of
 # orchid:* body classes a hand-sent send/broadcast may use. orchid:interrupt:*
 # is deliberately absent — courier.py ask is its only emitter.
 NOTIFY_FORBIDDEN_ORCHID_CLASSES = ("status", "update", "phase", "subagent")
-SIGNAL_NOTIFY_STATES = ("done", "blocked", "abandoned")
 
 ORCHID_STATUS_DENYLIST = frozenset({
     "started", "building", "testing", "done", "finished", "blocked",
@@ -651,41 +639,6 @@ def cmd_depart(args) -> None:
     print("depart: no-op — no consumer reads this signal")
 
 
-def cmd_signal(args) -> None:
-    """A lifecycle signal is a push: it carries the data itself, not a
-    request for it. Directed at the parent alone, over the orchard transport
-    — so a parent living in a different repo (ORCHID_PARENT_PROJECT) can
-    receive it too, cross-project allowlist gating applying exactly as it
-    does for any other cross-project :session: send. There is no broadcast
-    fallback any more: a signal with no known parent (no --to, no
-    ORCHID_PARENT_SESSION) is simply not delivered — the fan-out this
-    replaced was the token leak. You signal for yourself, always — the
-    envelope `from` is the caller's own session, never someone else's.
-    """
-    if args.notify_user and args.state not in SIGNAL_NOTIFY_STATES:
-        args.parser.error(
-            f"courier: --notify-user is only legal with --state {'|'.join(SIGNAL_NOTIFY_STATES)}"
-        )
-    feature = args.feature or identity_of()["feature_id"]
-    body = {"kind": "lifecycle", "state": args.state, "feature_id": feature}
-    if args.state == "blocked" and args.blocked_on:
-        body["blocked_on"] = args.blocked_on
-
-    to = args.to or os.environ.get("ORCHID_PARENT_SESSION") or None
-    if not to:
-        print(f"signal {args.state} — no parent known, not delivered")
-        return
-
-    parent_project = os.environ.get("ORCHID_PARENT_PROJECT") or project_slug()
-    ns = argparse.Namespace(
-        to=f":session:{to}", subject="orchard:agent:message:content",
-        body=json.dumps(body), target_project=parent_project,
-        in_reply_to=None, notify_user=args.notify_user,
-    )
-    env = orchard_send(ns)
-    print(f"signal {args.state} -> :session:{to} ({env['id']})")
-
-
 def _question_envelope(sender: str, to: str, question_id: str, question: str,
                         options: list[str], *, title: str | None = None,
                         summary: str | None = None, multi: bool = False) -> dict:
@@ -838,41 +791,34 @@ def _orchid_traffic_violation(env: dict, body: str) -> str | None:
     return None
 
 
-def _lifecycle_traffic_violation(env: dict, body: dict) -> str | None:
-    state = body.get("state")
-    if state not in LIFECYCLE_STATES:
-        return f"lifecycle state {state!r} not one of {LIFECYCLE_STATES}"
-    if env.get("notify_user") and state not in SIGNAL_NOTIFY_STATES:
-        return f"notify_user is not legal on lifecycle state {state!r}"
-    return None
-
-
 def _free_prose_traffic_flag(env: dict) -> tuple[str, str] | None:
     """Free prose (no wire-grammar class, no fixed request, no reply) is only
     legal directed — a broadcast is, at best, legal peer prose flagged for
     the operator's send-path redesign (WARNING), and at worst an unspecified
     summons (VIOLATION) when it carries notify_user: nothing outside
-    ask/lifecycle may summon the operator."""
+    ask may summon the operator (the invented lifecycle-push notify path —
+    courier.py signal — is gone; see docs/courier-wire.md §2)."""
     if env.get("to") != "*":
         return None
     if env.get("notify_user"):
-        return "violation", "free-prose broadcast carries notify_user — only ask/lifecycle may summon"
+        return "violation", "free-prose broadcast carries notify_user — only ask may summon"
     return "warning", "undirected free-prose broadcast (legal peer prose; send-path redesign candidate)"
 
 
 def _classify_traffic(env: dict) -> tuple[str, str] | None:
     """None means the envelope is fine. Otherwise (severity, reason), where
     severity is "violation" or "warning". Checked in the order WIRE GRAMMAR v1
-    defines the traffic: orchid:* classes, lifecycle pushes, identity/depart
-    pushes, fixed requests and replies, then whatever free prose remains."""
+    defines the traffic: orchid:* classes, identity/depart pushes, fixed
+    requests and replies, then whatever free prose remains. (The old
+    body-carried `{"kind": "lifecycle", ...}` push — courier.py signal's
+    invented vocabulary — is gone; lifecycle traffic rides
+    orchard:agent:lifecycle:* subjects instead, outside this legacy grammar
+    entirely.)"""
     if not isinstance(env, dict):
         return "violation", "envelope is not a JSON object"
     body = env.get("body")
     if isinstance(body, str) and body.startswith("orchid:"):
         reason = _orchid_traffic_violation(env, body)
-        return ("violation", reason) if reason else None
-    if isinstance(body, dict) and body.get("kind") == "lifecycle":
-        reason = _lifecycle_traffic_violation(env, body)
         return ("violation", reason) if reason else None
     if isinstance(body, dict) and "session_id" in body:
         return None
@@ -1782,18 +1728,6 @@ def main() -> None:
     s.add_argument("--body")
     s.add_argument("--target-project", dest="target_project")
     s.set_defaults(func=cmd_reply, parser=s)
-
-    s = sub.add_parser("signal")
-    s.add_argument("--state", required=True, choices=LIFECYCLE_STATES)
-    s.add_argument("--feature")
-    s.add_argument("--to")
-    s.add_argument("--blocked-on", dest="blocked_on", choices=BLOCKED_ON_STATES,
-                   help="only meaningful with --state blocked: what the block is "
-                        "on (component, the default sidebar assumption, or agent, "
-                        "a peer awaited)")
-    s.add_argument("--notify-user", dest="notify_user", action="store_true",
-                   help="the sending agent intends this for the user to see")
-    s.set_defaults(func=cmd_signal, parser=s)
 
     s = sub.add_parser("ask")
     s.add_argument("--question", required=True)
