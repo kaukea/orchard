@@ -1311,10 +1311,23 @@ def _await_inotify_armed(process: subprocess.Popen, timeout: float = 5.0) -> Non
 
 
 def _watch_source_forever(source: MonitorSource, sources: list[MonitorSource],
-                           processes: list[subprocess.Popen]) -> None:
-    while True:
+                           processes: list[subprocess.Popen],
+                           stop_event: threading.Event) -> None:
+    while not stop_event.is_set():
         process = _spawn_inotifywait(source)
         processes.append(process)
+        if stop_event.is_set():
+            # `_on_term` sets the event BEFORE it kills anything tracked in
+            # `processes` (see `_monitor_inotify`) — but this thread can
+            # still spawn and append a brand-new process in the narrow
+            # window between that kill pass reading the list and this line
+            # running. Re-checking the flag right after append and
+            # self-killing on the spot closes that TOCTOU gap without
+            # relying on external timing: either `_kill_children` already
+            # saw this process (appended before the pass) or this check
+            # does (spawned after it) — one of the two always fires.
+            process.kill()
+            return
         _await_inotify_armed(process)
         # Closes the startup race: a file created between spawning this
         # watcher and its watch actually going live raises no kernel event
@@ -1350,12 +1363,26 @@ def _monitor_inotify(sources: list[MonitorSource]) -> None:
     On SIGTERM — how the courier's Monitor teardown ends this process —
     every watcher this instance spawned is killed before exit, so nothing
     is ever left behind for the charter to have to hunt down process by
-    process."""
+    process. `stop_event` is set BEFORE any process is killed: each
+    watcher thread's loop only respawns a fresh `inotifywait` after
+    checking that flag, so a thread whose process dies as a direct result
+    of this teardown (pipe EOF on kill) sees the flag already set and
+    returns instead of racing the kill to spawn a replacement that would
+    otherwise outlive this process as an orphan (the leaked-watcher flake
+    diagnosed in this step)."""
     processes: list[subprocess.Popen] = []
-    signal.signal(signal.SIGTERM, lambda *_args: sys.exit(0))
+    stop_event = threading.Event()
+
+    def _on_term(*_args) -> None:
+        stop_event.set()
+        _kill_children(processes)
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _on_term)
     try:
         threads = [
-            threading.Thread(target=_watch_source_forever, args=(source, sources, processes), daemon=True)
+            threading.Thread(target=_watch_source_forever,
+                              args=(source, sources, processes, stop_event), daemon=True)
             for source in sources
         ]
         for thread in threads:
@@ -1363,6 +1390,7 @@ def _monitor_inotify(sources: list[MonitorSource]) -> None:
         for thread in threads:
             thread.join()
     finally:
+        stop_event.set()
         _kill_children(processes)
 
 
