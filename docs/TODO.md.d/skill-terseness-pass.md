@@ -97,7 +97,7 @@ regression, not a win. New: pick 5 skills at random, and confirm each is findabl
 its `metadata.tags` alone (no title, no description) by someone who knows what they're
 looking for but not its name.
 
-## PARKED 2026-07-29 — delayed until the courier work is done
+## Interrupted then RESUMED 2026-07-29 (parking reversed by the operator)
 
 Operator order: *"kill that agent, delay till courier is done."* Its supervisor was
 stopped; the landscaper was left alive, parked at its plan gate in tmux window
@@ -113,4 +113,7 @@ disk (which the worktree-scoped explorers could not reach) and finding something
 materially relevant to the cross-repo audience question; **that finding was not captured
 before the stop and is lost unless the landscaper is resumed.**
 
-Dependency added: `⊘bus-addressing`. The courier work comes first by operator order.
+Parking REVERSED minutes later — operator: *"let it run then, when finished ingest."* A
+fresh supervisor was launched over the same live landscaper and worktree; the
+`⊘bus-addressing` dependency is NOT applied. The landscaper still owes the operator an
+answer at its plan gate before it builds.
