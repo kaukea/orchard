@@ -496,11 +496,12 @@ class WaitingStatusTests(_ModelTestCase):
 
 
 class RepoFooterAggregateTests(_ModelTestCase):
-    """M2: `Repo.age`/`worked`/`tokens` (spec §3's `age⏱ vs worked +
-    tokens⚡/dollars` footer grammar), computed deterministically from this
-    repo's own agent records by `_repo_time_and_tokens`. `dollars` has no
-    source on this wire and stays permanently None (see `Repo.dollars`'s
-    own docstring in sidebar_model.py)."""
+    """M2: `Repo.age`/`worked`/`tokens`/`dollars` (spec §3's `age⏱ vs worked
+    + tokens⚡/dollars` footer grammar), computed deterministically from
+    this repo's own agent records by `_repo_time_and_tokens`. `dollars`
+    rides `orchard_topic.py`'s promoted `status.dollars` field the same way
+    `tokens_in`/`tokens_out` do — None whenever no agent record on the repo
+    carries one (see `Repo.dollars`'s own docstring in sidebar_model.py)."""
 
     def test_age_is_now_minus_the_repos_own_earliest_event(self):
         _write_event(self.projects_root, self.slug, "s1",
@@ -558,13 +559,32 @@ class RepoFooterAggregateTests(_ModelTestCase):
         repo = self._build().repos[0]
         self.assertEqual(repo.tokens, "4.0k")  # 1000+2000+500+500
 
-    def test_dollars_stays_none_the_wire_carries_no_cost_figure(self):
+    def test_dollars_stays_none_when_no_agent_record_carries_a_figure(self):
+        """`orchard_topic.py`'s `_status()` now promotes `dollars` when the
+        wire carries it (docs/courier-wire.md §2b); a fixture event with no
+        `dollars` in its `status` block (an unrecognised model, or no
+        estimate at all) still leaves it None — never invented."""
         _write_event(self.projects_root, self.slug, "s1",
                      "orchard:agent:lifecycle:starting",
                      identity={"agent": "landscaper", "feature": "feat-a"},
                      status={"tokens_in": 1000, "tokens_out": 2000})
         repo = self._build().repos[0]
         self.assertIsNone(repo.dollars)
+
+    def test_dollars_sums_each_agents_own_latest_figure_across_the_repo(self):
+        """Same aggregation convention as `tokens` above — each agent's own
+        latest `status.dollars` (already promoted through the wire, not
+        computed here), summed across every agent on the repo."""
+        _write_event(self.projects_root, self.slug, "s-one",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     status={"tokens_in": 1000, "tokens_out": 2000, "dollars": 1.5})
+        _write_event(self.projects_root, self.slug, "s-two",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "sower", "feature": "feat-a"},
+                     status={"tokens_in": 500, "tokens_out": 500, "dollars": 0.4})
+        repo = self._build().repos[0]
+        self.assertEqual(repo.dollars, "1.90")
 
     def test_empty_repo_has_no_age_worked_or_tokens(self):
         _write_marker(self.projects_root, self.slug, "feat-a", {

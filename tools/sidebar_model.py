@@ -76,7 +76,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from sidebar_text import _format_running_time, _format_token_count  # noqa: E402
+from sidebar_text import _format_dollars, _format_running_time, _format_token_count  # noqa: E402
 
 # --------------------------------------------------------------------------
 # Canonical vocabulary
@@ -301,14 +301,13 @@ class Repo:
     age: str | None = None
     worked: str | None = None
     tokens: str | None = None
-    # `dollars` has NO source on this wire: `orchard_topic.py`'s `_status()`
-    # attaches `model`/`context_tokens`/`spend`/`tokens_in`/`tokens_out`/
-    # `effort` only — no cost/dollar figure (courier.py's own `cost_usd`
-    # estimate, built in `estimates_for()` from a per-model price table, is
-    # never promoted into the snapshot the wire carries). Spec §3 rules out
-    # inventing a price table here, so this stays permanently None until
-    # the wire itself carries a dollar figure — FLAGGED, not silently
-    # worked around (courier-side fix, out of this footprint).
+    # `dollars` rides `orchard_topic.py`'s `_status()`, which now promotes
+    # `estimates.cost_usd` (courier.py's own price-table estimate,
+    # `estimates_for()`) out to a first-class `dollars` field the same way
+    # `tokens_in`/`tokens_out` were promoted — summed the same way tokens
+    # are, by `_repo_time_and_tokens`. None whenever no agent record on this
+    # repo carries a `dollars` figure (an unrecognised model, or no status
+    # snapshot at all) — never invented.
     dollars: str | None = None
 
 
@@ -1166,15 +1165,13 @@ def _merged_interval_seconds(intervals: list[tuple[float, float]]) -> float:
 
 def _repo_time_and_tokens(
     agent_records: dict[AgentKey, dict], now: float,
-) -> tuple[str | None, str | None, str | None]:
-    """(age, worked, tokens) for the repo footer (M2, spec §3's `age⏱ vs
-    worked + tokens⚡/dollars` grammar, `sidebar_render_text.footer_lines`/
-    `done_footer_line`) — all three deterministic, script-computed from
-    this repo's own agent records at `build_model()` time against its own
-    `now`, never a live wall clock read inside a renderer (spec §3: "never
-    through an agent's context"). `dollars` is deliberately not this
-    function's job — see `Repo.dollars`'s own docstring for why it stays
-    permanently None.
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """(age, worked, tokens, dollars) for the repo footer (M2, spec §3's
+    `age⏱ vs worked + tokens⚡/dollars` grammar, `sidebar_render_text.
+    footer_lines`/`done_footer_line`) — all four deterministic,
+    script-computed from this repo's own agent records at `build_model()`
+    time against its own `now`, never a live wall clock read inside a
+    renderer (spec §3: "never through an agent's context").
 
     AGE is the wall-clock span since this repo's OWN earliest event, across
     every agent (`now - min(_first_ts)`) — "how long has anything been
@@ -1196,11 +1193,20 @@ def _repo_time_and_tokens(
     `tokens_out` (already-accumulated running totals per session, promoted
     to first-class status fields per courier-wire.md §2b), formatted via
     `_format_token_count`. None whenever no agent record carries a
-    timestamp/token figure at all (an empty repo)."""
+    timestamp/token figure at all (an empty repo).
+
+    DOLLARS is the sum of each agent's own latest known `dollars` (promoted
+    out of `courier.estimates_for()`'s `cost_usd` by `orchard_topic.py`'s
+    `_status()`, same footing as tokens above), formatted via
+    `_format_dollars`. None whenever no agent record on this repo carries a
+    `dollars` figure — an unrecognised model, or no status snapshot at all —
+    never invented, matching TOKENS' own "no data means no field" rule."""
     intervals: list[tuple[float, float]] = []
     earliest: float | None = None
     total_tokens = 0
     have_tokens = False
+    total_dollars = 0.0
+    have_dollars = False
     for rec in agent_records.values():
         first_ts, seen_ts = rec.get("_first_ts"), rec.get("_seen_ts")
         if first_ts is not None and seen_ts is not None:
@@ -1211,10 +1217,15 @@ def _repo_time_and_tokens(
         if tokens_in is not None or tokens_out is not None:
             total_tokens += (tokens_in or 0) + (tokens_out or 0)
             have_tokens = True
+        dollars = status.get("dollars")
+        if dollars is not None:
+            total_dollars += dollars
+            have_dollars = True
     age = _format_running_time(max(now - earliest, 0.0)) if earliest is not None else None
     worked = _format_running_time(_merged_interval_seconds(intervals)) if intervals else None
     tokens = _format_token_count(total_tokens) if have_tokens else None
-    return age, worked, tokens
+    dollars = _format_dollars(total_dollars) if have_dollars else None
+    return age, worked, tokens, dollars
 
 
 def _assemble_repo(
@@ -1293,7 +1304,7 @@ def _assemble_repo(
 
     repo.features = [_finalize_feature(fid, b, now) for fid, b in features.items()]
     repo.has_session = header_sid is not None or bool(repo.features)
-    repo.age, repo.worked, repo.tokens = _repo_time_and_tokens(agent_records, now)
+    repo.age, repo.worked, repo.tokens, repo.dollars = _repo_time_and_tokens(agent_records, now)
     return repo
 
 

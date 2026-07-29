@@ -109,6 +109,18 @@ def _format_running_time(seconds: float) -> str:
     return f"{secs}s"
 
 
+def _format_dollars(amount: float) -> str:
+    """A raw USD figure (`courier.estimates_for()`'s `cost_usd`, promoted
+    through `orchard_topic.py`'s `_status()`) -> compact human text, always
+    two decimal places (matching the footer mock's own "$7.90" shape,
+    `sidebar_render_text.done_footer_line`'s docstring) so a dollar figure
+    reads as one family with the running-time/token-count formatters beside
+    it. Not itself a ruling — the exact precision is this function's own
+    implementer choice, same footing as `_format_running_time`/
+    `_format_token_count`."""
+    return f"{amount:.2f}"
+
+
 def _format_token_count(n: int) -> str:
     """A raw token count -> compact human text — bare digits under 1000,
     then a `k`/`M`-suffixed figure (one decimal place under 100 of the

@@ -56,7 +56,7 @@ DEFAULT_AGENT = "landscaper"
 
 
 def _run(cwd, runtime_dir, args, sid=SID, agent=DEFAULT_AGENT, parent=None, home=None,
-         effort=None):
+         effort=None, reasoning_effort=None, orchid_effort=None):
     """Shell out to the script with a deterministic identity environment.
 
     CLAUDE_CODE_AGENT is pinned (default "landscaper", overridable for the
@@ -65,10 +65,13 @@ def _run(cwd, runtime_dir, args, sid=SID, agent=DEFAULT_AGENT, parent=None, home
     environment happens to hold — so `courier.identity_of()` resolves the same
     way on every run. `home`, when given, overrides HOME so
     `courier.status_of()`'s transcript lookup (`~/.claude/projects/*/<sid>.jsonl`)
-    resolves against a fixture transcript instead of the real one. `effort`
-    is pinned the same deliberate way as `parent` (deleted unless given) so
-    a test never inherits whatever CLAUDE_EFFORT this test process itself
-    happens to be running under.
+    resolves against a fixture transcript instead of the real one. `effort`/
+    `reasoning_effort`/`orchid_effort` are pinned the same deliberate way as
+    `parent` (deleted unless given) so a test never inherits whatever
+    CLAUDE_EFFORT/CLAUDE_CODE_REASONING_EFFORT/ORCHID_EFFORT this test
+    process itself happens to be running under — the three-way reader chain
+    (docs/courier-wire.md §2b) needs all three independently controllable to
+    prove its priority order.
     """
     env = dict(os.environ)
     env["XDG_RUNTIME_DIR"] = str(runtime_dir)
@@ -80,10 +83,15 @@ def _run(cwd, runtime_dir, args, sid=SID, agent=DEFAULT_AGENT, parent=None, home
         env.pop("ORCHID_PARENT_SESSION", None)
     else:
         env["ORCHID_PARENT_SESSION"] = parent
-    if effort is None:
-        env.pop("CLAUDE_EFFORT", None)
-    else:
-        env["CLAUDE_EFFORT"] = effort
+    for var, value in (
+        ("CLAUDE_EFFORT", effort),
+        ("CLAUDE_CODE_REASONING_EFFORT", reasoning_effort),
+        ("ORCHID_EFFORT", orchid_effort),
+    ):
+        if value is None:
+            env.pop(var, None)
+        else:
+            env[var] = value
     return subprocess.run(
         [sys.executable, _SCRIPT, "post", *args],
         cwd=cwd, env=env, capture_output=True, text=True, timeout=15,
@@ -286,6 +294,103 @@ def test_status_snapshot_has_no_effort_when_claude_effort_unset(repo, runtime_di
     files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
     envelope = json.loads(files[0].read_text(encoding="utf-8"))
     assert "effort" not in envelope["status"]
+
+
+def _effort_envelope(repo, runtime_dir, tmp_path, **effort_kwargs):
+    home = tmp_path / "fake-home"
+    project_dir = home / ".claude" / "projects" / "fake-project"
+    project_dir.mkdir(parents=True)
+    (project_dir / f"{SID}.jsonl").write_text(
+        json.dumps({"message": {"model": "claude-opus-5", "usage": {
+            "input_tokens": 1, "output_tokens": 1,
+        }}}) + "\n",
+        encoding="utf-8",
+    )
+    result = _run(repo, runtime_dir, ["status", "reading"], home=home, **effort_kwargs)
+    assert result.returncode == 0, result.stderr
+    slug = _slug(repo)
+    files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
+    return json.loads(files[0].read_text(encoding="utf-8"))
+
+
+def test_effort_reader_chain_claude_effort_wins_over_the_other_two(repo, runtime_dir, tmp_path):
+    """docs/courier-wire.md §2b: the reader chain is CLAUDE_EFFORT (Claude
+    Code's own documented hooks env var) -> CLAUDE_CODE_REASONING_EFFORT
+    (its documented alias) -> ORCHID_EFFORT (ours, launch-time fallback).
+    The first present wins, so CLAUDE_EFFORT beats the other two even when
+    all three are set at once."""
+    envelope = _effort_envelope(
+        repo, runtime_dir, tmp_path,
+        effort="high", reasoning_effort="low", orchid_effort="medium",
+    )
+    assert envelope["status"]["effort"] == "high"
+
+
+def test_effort_reader_chain_reasoning_effort_wins_when_claude_effort_absent(repo, runtime_dir, tmp_path):
+    """Second in the chain: with CLAUDE_EFFORT unset, the documented alias
+    CLAUDE_CODE_REASONING_EFFORT is read next, ahead of ORCHID_EFFORT."""
+    envelope = _effort_envelope(
+        repo, runtime_dir, tmp_path,
+        reasoning_effort="low", orchid_effort="medium",
+    )
+    assert envelope["status"]["effort"] == "low"
+
+
+def test_effort_reader_chain_orchid_effort_is_the_last_resort(repo, runtime_dir, tmp_path):
+    """Last in the chain: with neither documented var set, ORCHID_EFFORT —
+    the variable WE set at launch sites — is read as the fallback."""
+    envelope = _effort_envelope(repo, runtime_dir, tmp_path, orchid_effort="medium")
+    assert envelope["status"]["effort"] == "medium"
+
+
+def test_status_snapshot_promotes_dollars_from_estimates(repo, runtime_dir, tmp_path):
+    """docs/courier-wire.md §2b: `dollars` is promoted out of
+    `courier.status_of()`'s own `estimates.cost_usd` (built by
+    `estimates_for()` from the existing per-model price table) — a
+    recognised model (`claude-sonnet-5`, in `courier.MODEL_CARD`) yields a
+    real figure, never a rate invented in this script."""
+    home = tmp_path / "fake-home"
+    project_dir = home / ".claude" / "projects" / "fake-project"
+    project_dir.mkdir(parents=True)
+    (project_dir / f"{SID}.jsonl").write_text(
+        json.dumps({"message": {"model": "claude-sonnet-5", "usage": {
+            "input_tokens": 1_000_000, "output_tokens": 0,
+        }}}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = _run(repo, runtime_dir, ["status", "reading"], home=home)
+    assert result.returncode == 0, result.stderr
+
+    slug = _slug(repo)
+    files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
+    envelope = json.loads(files[0].read_text(encoding="utf-8"))
+
+    # 1,000,000 input tokens at claude-sonnet-5's $3/M input rate == $3.00.
+    assert envelope["status"]["dollars"] == 3.0
+
+
+def test_status_snapshot_has_no_dollars_for_an_unrecognised_model(repo, runtime_dir, tmp_path):
+    """The companion negative case: `estimates_for()` returns `{}` for a
+    model absent from `MODEL_CARD`, so no `cost_usd` exists to promote —
+    `dollars` is simply absent, never guessed at a made-up rate."""
+    home = tmp_path / "fake-home"
+    project_dir = home / ".claude" / "projects" / "fake-project"
+    project_dir.mkdir(parents=True)
+    (project_dir / f"{SID}.jsonl").write_text(
+        json.dumps({"message": {"model": "claude-opus-5", "usage": {
+            "input_tokens": 1, "output_tokens": 1,
+        }}}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = _run(repo, runtime_dir, ["status", "reading"], home=home)
+    assert result.returncode == 0, result.stderr
+
+    slug = _slug(repo)
+    files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
+    envelope = json.loads(files[0].read_text(encoding="utf-8"))
+    assert "dollars" not in envelope["status"]
 
 
 # --- delegation ----------------------------------------------------------

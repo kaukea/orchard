@@ -157,14 +157,20 @@ def _status() -> dict:
     reaching into the nested dict for the two classes it actually charts;
     `spend` itself is kept too, unchanged, since the cache classes still only
     live there. `effort` rides straight through from courier.status_of() when
-    a source exists (CLAUDE_CODE_REASONING_EFFORT) and is otherwise absent —
-    no value is invented.
+    a source exists (the reader chain, docs/courier-wire.md §2b) and is
+    otherwise absent — no value is invented. `dollars` is likewise promoted
+    out of `estimates.cost_usd` — courier.status_of()'s own price-table
+    estimate (`courier.estimates_for()`), empty (never a guess) whenever the
+    model is unrecognised — so the sidebar's "tokens tick live, dollars
+    translate them" line (spec §3) has a figure to translate them WITH,
+    without this script inventing or duplicating a rate table of its own.
     """
     try:
         st = courier.status_of()
     except Exception:
         return {}
     spend = st.get("spend") or {}
+    estimates = st.get("estimates") or {}
     keep = {
         "model": st.get("model"),
         "context_tokens": st.get("context_tokens"),
@@ -172,6 +178,7 @@ def _status() -> dict:
         "tokens_in": spend.get("input_tokens"),
         "tokens_out": spend.get("output_tokens"),
         "effort": st.get("effort"),
+        "dollars": estimates.get("cost_usd"),
     }
     return {k: v for k, v in keep.items() if v}
 
