@@ -199,7 +199,7 @@ def _draw_subagent_row(
     `sidebar_rows.py`'s own job (`_agent_and_subagent_rows`/`_task_rows`),
     not this function's — this painter only ever draws whatever Row it is
     handed, at the y its caller (`sidebar_paint.py`'s dispatch loop)
-    already placed it at. Verified empirically for this step (see
+    already placed it at. Verified empirically (see
     `tests/test_sidebar_area_cd.py`'s `SubagentPlacementTests`): a fleet
     built directly from `Agent(subagents=[...])` flattens the subagent row
     immediately after its agent's row, both one depth below their step's
