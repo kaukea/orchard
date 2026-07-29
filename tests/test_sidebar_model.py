@@ -71,7 +71,13 @@ def _install_raw_marker(projects_root: Path, slug: str, feature_id: str, fixture
 
 
 def _write_event(projects_root: Path, slug: str, sid: str, subject: str, *,
-                  identity=None, status=None, body=None) -> None:
+                  identity=None, status=None, body=None, mtime=None) -> None:
+    """`mtime`, when given, overrides the event file's own mtime —
+    `build_model()` reads `f.stat().st_mtime`, not any embedded timestamp
+    (see `sidebar_model._iter_project_events`), so this is what lets a test
+    pin the event timestamps a running-time computation (`Task.
+    running_seconds`) derives from, mirroring `tests/test_sidebar.py`'s own
+    `_write_event(..., mtime=...)`."""
     project_dir = projects_root / slug
     project_dir.mkdir(parents=True, exist_ok=True)
     envelope = {"from": f":session:{sid}", "subject": subject}
@@ -81,9 +87,10 @@ def _write_event(projects_root: Path, slug: str, sid: str, subject: str, *,
         envelope["identity"] = identity
     if status is not None:
         envelope["status"] = status
-    (project_dir / f"{sid}.{next(_counter):08d}.json").write_text(
-        json.dumps(envelope), encoding="utf-8",
-    )
+    path = project_dir / f"{sid}.{next(_counter):08d}.json"
+    path.write_text(json.dumps(envelope), encoding="utf-8")
+    if mtime is not None:
+        os.utime(path, (mtime, mtime))
 
 
 class _ModelTestCase(unittest.TestCase):
@@ -243,6 +250,152 @@ class MarkerStaticFixtureTests(_ModelTestCase):
         # reader's fallback (`_marker_task_id`) must still resolve an id.
         self.assertEqual(feature.tasks[0].task_id, marker["tasks"][0]["feature"])
         self.assertEqual(feature.status, "working")
+
+
+class TelemetryFoldTests(_ModelTestCase):
+    """M1: `docs/courier-wire.md` §2b's status snapshot (model,
+    context_tokens, spend) already rides every post — this is the model
+    layer actually reading it onto `Agent`, plus `Task.running_seconds`,
+    the event-timestamp-derived running time `sidebar-spec.md` §3 rules
+    ("calculations are performed by deterministic script code... never
+    through an agent's context")."""
+
+    def test_agent_carries_model_context_tokens_and_spend_from_the_status_snapshot(self):
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"},
+                     status={"model": "claude-opus-4-1", "context_tokens": 12345,
+                             "spend": {"input_tokens": 100, "output_tokens": 50}})
+        agent = self._sole_feature().tasks[0].unstepped_agents[0]
+        self.assertEqual(agent.model, "claude-opus-4-1")
+        self.assertEqual(agent.context_tokens, 12345)
+        self.assertEqual(agent.spend, {"input_tokens": 100, "output_tokens": 50})
+
+    def test_open_task_running_time_is_now_minus_its_earliest_event(self):
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=1000)
+        task = self._sole_feature(now=1000 + 90).tasks[0]
+        self.assertEqual(task.status, "working")
+        self.assertEqual(task.running_seconds, 90)
+
+    def test_terminal_task_running_time_freezes_at_its_own_last_event(self):
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=1000)
+        _write_event(self.projects_root, self.slug, "s1",
+                     "orchard:agent:outcome:success",
+                     identity={"agent": "landscaper", "feature": "feat-a"}, mtime=1090)
+        # built long after the task actually finished -- the frozen figure
+        # must not keep counting up with wall-clock `now`.
+        task = self._sole_feature(now=1000 + 5000).tasks[0]
+        self.assertEqual(task.status, "done")
+        self.assertEqual(task.running_seconds, 90)
+
+    def test_marker_only_task_has_no_running_time(self):
+        # the marker schema records no task start time -- an honest gap,
+        # never a guess.
+        _write_marker(self.projects_root, self.slug, "feat-a", {
+            "schema": 2, "feature": "feat-a",
+            "tasks": [{"task": "feat-a", "state": "done", "updated": _now_iso()}],
+            "updated": _now_iso(),
+        })
+        task = self._sole_feature().tasks[0]
+        self.assertIsNone(task.started_ts)
+        self.assertIsNone(task.running_seconds)
+
+
+class MultiProjectFoldTests(_ModelTestCase):
+    """observability.md's testing bar (restated at sidebar-spec.md §8): AT
+    LEAST TWO PROJECTS and TWO FEATURES live at once must fold correctly —
+    the (session_id, parent, agent) triple discipline holding throughout,
+    and `<owner>.<repo>` plus its `@<branch>` worktree variant folding as
+    ONE project (spec §1). Model-level (`build_model()` directly), per the
+    M1 brief — the curses/plain-text render side already has its own
+    multi-repo coverage (`test_sidebar.py`, `test_sidebar_geometry_sweep.py`)."""
+
+    def test_two_projects_each_carrying_two_features_fold_independently(self):
+        # project A: two features, each its own task.
+        _write_event(self.projects_root, "owner.repo-a", "a-s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-1",
+                               "feature_name": "A Feature One"})
+        _write_event(self.projects_root, "owner.repo-a", "a-s2",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "sower", "feature": "feat-2",
+                               "feature_name": "A Feature Two"})
+        # project B: two features, each its own task -- session ids
+        # deliberately reused verbatim from project A, since session ids
+        # are only ever meaningful within their own project's runtime tree
+        # and must never fold across projects.
+        _write_event(self.projects_root, "owner.repo-b", "a-s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "groundskeeper", "feature": "feat-1",
+                               "feature_name": "B Feature One"})
+        _write_event(self.projects_root, "owner.repo-b", "a-s2",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "bloomer", "feature": "feat-2",
+                               "feature_name": "B Feature Two"})
+
+        fleet = self._build()
+        by_repo = {repo.name: repo for repo in fleet.repos}
+        self.assertEqual(set(by_repo), {"repo-a", "repo-b"})
+
+        for repo_name, expected_names, expected_roles in (
+            ("repo-a", {"A Feature One", "A Feature Two"}, {"landscaper", "sower"}),
+            ("repo-b", {"B Feature One", "B Feature Two"}, {"groundskeeper", "bloomer"}),
+        ):
+            repo = by_repo[repo_name]
+            self.assertEqual({f.name for f in repo.features}, expected_names)
+            roles = {
+                agent.role
+                for feature in repo.features
+                for task in feature.tasks
+                for agent in task.unstepped_agents
+            }
+            self.assertEqual(roles, expected_roles)
+
+    def test_repo_and_its_branch_worktree_variant_fold_as_one_project(self):
+        # `<owner>.<repo>` and `<owner>.<repo>@<branch>` are the SAME
+        # project (spec §1) -- one feature posted from each directory must
+        # land under one repo row, not two.
+        _write_event(self.projects_root, "owner.repo", "main-s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "gardener", "feature": "feat-main",
+                               "feature_name": "Main Feature"})
+        _write_event(self.projects_root, "owner.repo@f-worktree", "wt-s1",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-wt",
+                               "feature_name": "Worktree Feature"})
+
+        fleet = self._build()
+        self.assertEqual(len(fleet.repos), 1)
+        repo = fleet.repos[0]
+        self.assertEqual(repo.name, "repo")
+        self.assertEqual({f.name for f in repo.features}, {"Worktree Feature"})
+        # "Main Feature" is folded into the repo HEADER (the gardener
+        # session), which is excluded from the features loop by design
+        # (`_assemble_repo`) -- it is not a missing fold, it is the header.
+        self.assertEqual(repo.role, "gardener")
+
+    def test_same_session_id_in_two_different_projects_never_cross_contaminates(self):
+        # session ids are only unique WITHIN a project's own runtime tree;
+        # the same literal id in two projects must resolve to two entirely
+        # separate agent records, keyed apart by their own project's fold.
+        _write_event(self.projects_root, "owner.repo-a", "shared-sid",
+                     "orchard:agent:lifecycle:starting",
+                     identity={"agent": "landscaper", "feature": "feat-a"})
+        _write_event(self.projects_root, "owner.repo-b", "shared-sid",
+                     "orchard:agent:outcome:fail",
+                     identity={"agent": "sower", "feature": "feat-b"})
+        fleet = self._build()
+        by_repo = {repo.name: repo for repo in fleet.repos}
+        agent_a = by_repo["repo-a"].features[0].tasks[0].unstepped_agents[0]
+        agent_b = by_repo["repo-b"].features[0].tasks[0].unstepped_agents[0]
+        self.assertEqual(agent_a.role, "landscaper")
+        self.assertEqual(agent_a.status, "working")
+        self.assertEqual(agent_b.role, "sower")
+        self.assertEqual(agent_b.status, "failed")
 
 
 if __name__ == "__main__":
