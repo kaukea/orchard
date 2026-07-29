@@ -2372,3 +2372,50 @@ as a naming rule so it binds future skills, not just this pass.
 `skills/gardener` was the corpus's single violation and is renamed
 `skills/board-walking`, with a dated migration
 (`2026-07-29-gardener-to-board-walking.md`) converging consuming repositories.
+
+## [2026-07-29 CEST] Decision-129: Encapsulation and loose coupling — if you opened it, you close it
+#architecture #agents #lifecycle #decoupling #ownership
+
+Operator ruling, 2026-07-29, given as two golden rules the project had been violating
+throughout: **encapsulation** and **loose coupling**.
+
+**If you opened it, you close it.** You do not ask an agent to close your window. The
+courier closes its own Monitor because the courier is what armed it — and it does so
+because an agent is closing the courier, not because anyone reached in and killed it.
+
+**A component that manages a resource is ASKED to create it, and then LISTENS for the
+finish to destroy it.** If another component manages windows, it is asked to create the
+window and put an agent in it; it then listens for that agent being finished and closes
+the window itself. The agent never calls a teardown, is never handed a handle, and never
+learns that a window exists.
+
+That listening step is the decoupling. The alternative — the agent calling back to say
+"now close my window" — couples the agent to the resource manager and to the resource,
+and it fails exactly when the agent dies without making the call, which is the common
+case rather than the rare one.
+
+This is the general rule behind Decision-114's placement component and behind the
+removal of `tools/landscaper-teardown.sh`: both are instances, not special cases.
+
+## [2026-07-29 CEST] Decision-130: The script mints identifiers and owns dispatch; agent-initiated addressing is the exception
+#bus #messaging #addressing #identity #script
+
+Operator ruling, 2026-07-29, on what identifies an agent across the three real cases
+(another session on the same machine, another machine, a teammate in a different subtree).
+
+**The SCRIPT is responsible for minting stable identifiers for recipients, for filesystem
+location and access, and for dispatch.** Identification is not derived by a caller, is not
+composed from where an agent happens to run, and is never parsed out of a path.
+
+**An agent asking to talk to a named correspondent is the EXCEPTION, not the rule.** An
+agent may ask to talk to its teammates, to other agents working on a task, or to an agent
+by name when it specifically wants to send that one a message. Those are the exceptional
+paths. The rule is the decoupled one: agents publish lifecycle and status, and consumers
+monitor events about a specific agent they know or about any agent at all.
+
+Consequence for the record: the recurring proposal to make the worktree/subtree the
+delivery boundary or the identifier is rejected at the root. Operator, same session: the
+subtree obsession "has been plaguing this project since the beginning, and it resurfaces
+continuously as a solution to all problems, isolation, and now identification. It is
+wrong." A subtree cannot address the other-machine case at all and actively breaks the
+cross-subtree team case.
