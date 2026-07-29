@@ -689,6 +689,11 @@ ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
 - 📡 The courier's invented seven-state signal vocabulary is deleted outright, no
   shim: every piece of agent traffic rides one of the four channels the wire
   defines — lifecycle · status · outcome · requests.
+- 📊 The sidebar model consumes the telemetry the wire has attached all along —
+  model, context tokens, spend — and computes each task's running time
+  deterministically from event timestamps; the task row's metrics slot shows it.
+  A quiet feature rehydrates from the durable marker, live events always winning;
+  the fold is proven across two projects and two features at once.
 
 ### 🐛 Bug fixes
 - 🐛 A truncated header or feature row no longer loses its trailing ellipsis: the
