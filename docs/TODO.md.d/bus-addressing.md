@@ -573,6 +573,88 @@ this sidecar does not attempt to close that gate on its own strength.
    footprints, so an actual split of WHICH task builds WHAT here needs the operator's
    ruling, not an inference.
 
+## Plan-gate rulings — 2026-07-29, first landing (landscaper session, operator in-pane)
+
+Answers taken at the build gate; the build is frozen on them. Recorded as received:
+
+1. **Sidebar scope**: everything — the ruled A–D render items AND the three OPEN
+   design calls, settled now (stage background → ACTIVE stage only; single-task row →
+   labeled literally "Task", showing its metrics, especially running time; task
+   status marker → already settled by Decision-058, not re-asked).
+2. **Broker deployment**: stays with `question-broker-dead`; this landing implements
+   the ask path to spec script-side only.
+3. **Token A/B method**: static scenario AND static prompts; telemetry collected from
+   the messaging layer, from Claude, and timings — so the A/B catches improvements in
+   the script, agent behaviour, and the courier agent together. "Less precise but
+   more reflective of real usage."
+4. **Relaying on receipt**: operator family = authority + immediate (structural
+   provenance; relayed gate words count as the operator's own). Agent family =
+   ordinary, with a priority optimisation: immediate / wait-a-round / batch; batched
+   traffic written by ONE outbox-flusher script every 5 seconds.
+5. **`signal`**: delete, no shim — and the correction: succeeded/failed are OUTCOME
+   (already `outcome:success|fail`), NOT interrupts; no interrupt class exists; "an
+   ask is not defined in the script or technical spec" — it gets defined in
+   `docs/courier-wire.md` as ordinary request/response.
+6. **Same-name clash**: operator made it conditional on whether same-name multiples
+   are expected team behaviour; Decision-121's own text ("several agents share one
+   logical destination") answers yes ⇒ deliver to EVERY live holder. (The conditional
+   resolution against the recorded ruling was stated to him in-pane before building.)
+7. **Dead name**: error back as undeliverable — "if courier does its work, when
+   agents go down they disappear from the name to identifier / mbox list."
+
+## Operator requests
+
+Ledger of everything the operator asked for during this feature, as received.
+
+| # | Request (as received) | State |
+|---|---|---|
+| 1 | 2026-07-29, mid-build (dictated): "Fallback emojis, all things that are not described in existing statistics or specifications and only existing code because an agent decided so is out of scope unless I say so." | **in force.** Relayed as a narrowing constraint to all four live sowers (removes work, adds none); enforced on every later step-spec. Nothing agent-invented is preserved, extended, or built around as if required. |
+
+## Decision entries
+
+Staged for the groundskeeper's mechanical fold into `docs/decisions.md` at close.
+UNNUMBERED by design — the number is assigned at fold time.
+
+### Decision-NNN — Relayed messages: operator authority is structural, agent traffic has priorities
+
+Operator, 2026-07-29, at the observability plan gate. The two relaying families
+behave differently on receipt. `orchard:operator:message:*` is AUTHORITY + IMMEDIATE:
+it wakes the recipient at once and is handed up AS the operator speaking — provenance
+is structural in the subject family, replacing the `operator_origin` flag, and
+relayed gate words count as the operator's own. `orchard:agent:message:*` is ordinary
+directed mail with a PRIORITY class as an optimisation: `immediate` (sent at once) ·
+`wait-a-round` · `batch`. Batched traffic is written by ONE outbox-flusher script on
+a five-second cadence; immediate traffic never queues.
+
+### Decision-NNN — A name resolves to the living: clash delivers to all, dead names error
+
+Operator, 2026-07-29. A name-addressed send where several live agents hold the name
+at the same resolution level delivers to EVERY live holder — same-name multiples are
+expected team behaviour (Decision-121: several agents share one logical destination).
+A name whose every holder has reached lifecycle `stopped` is an ERROR back to the
+sender: undeliverable. The script maintains the name → identifier/mailbox registry,
+and when agents go down they disappear from it — removal is driven by the lifecycle
+event, in the owner-closes shape of Decision-129.
+
+### Decision-NNN — There is no interrupt class: outcome is outcome, the ask is a request
+
+Operator, 2026-07-29, correcting a draft that carried an earlier vocabulary:
+SUCCEEDED/FAILED are the OUTCOME family (`orchard:agent:outcome:success|fail`), not
+"interrupts"; no interrupt class exists in the wire. Asking — the operator included —
+is ordinary request/response, and is DEFINED in `docs/courier-wire.md` rather than
+special-cased anywhere. `courier.py signal`'s parallel seven-state vocabulary is
+deleted outright, no compatibility shim; every caller migrates to
+status/lifecycle/outcome in the same change.
+
+### Decision-NNN — The token A/B measures the whole path with a static scenario and static prompts
+
+Operator, 2026-07-29. The before/after token measurement for messaging work runs a
+STATIC scenario with STATIC prompts, collecting telemetry from the messaging layer,
+from Claude, and timings — so one comparison catches improvements in the script, in
+agent behaviour, and in the courier agent together. Less precise than isolating one
+layer, and preferred for exactly that reason: it reflects real usage. (The continuous
+version of this — alerting on regression — is the `token-regression` task.)
+
 ### Sequencing note
 
 Per the parent sidecar's binding consequence ("not split across parallel workers with
