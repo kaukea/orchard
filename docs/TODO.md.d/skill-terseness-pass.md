@@ -124,6 +124,72 @@ regression, not a win. New: pick 5 skills at random, and confirm each is findabl
 its `metadata.tags` alone (no title, no description) by someone who knows what they're
 looking for but not its name.
 
+### Result (2026-07-29, post-build)
+
+- **Byte/tag audit** (mechanical, whole corpus, before → after): total `description`
+  bytes 6,518B → 6,249B across 19 skills (18+`board-walking` replacing `gardener`, +1
+  for the `git`/`git-workflow` split already landed pre-build). Median 322B → 289B.
+  Only outlier >2x median is still `handover` (676B) — the operator's own named
+  exception, untouched by design. `shortcut-file` went 0 → 7 tags; `diagnostics` went
+  17 → 7 tags.
+- **Conflict resolution**: every conflict found was resolved, none deferred. The
+  `Branch:` trailer contradiction was already clean (prior feature). The 2
+  skill-vs-agent-def duplication pairs (`gardener`↔`agents/gardener.md`,
+  `workflow`+`workflow-complete`↔`agents/landscaper.md`) are resolved per the frozen
+  ruling — skills stay full, agent-defs thinned. The kauk-audience question was
+  resolved by direct operator ruling in-session, not left open.
+- **3-skill behaviour-equivalence spot check** (fresh Haiku reader, no session
+  history): `agent-behaviour`, `clean-code`, `handover` — all 3 still fire on their
+  original trigger conditions; both `AGENTS.shared.md` references they now carry
+  (Testing gate, Handover & delegation §durable-facts and §sensitive-content) verified
+  to exist with equivalent substance. One nuance, not a defect: `clean-code`'s pointer
+  to `AGENTS.shared.md`'s Software principles is thin (a bare list, doesn't expand
+  SOLID) but the skill's own body still carries the actual applicable rules, so no gap
+  in practice.
+- **5-skill tag-findability blind test** (fresh Haiku reader, tags only, no
+  name/description): `shortcut-file`, `git-workflow`, `coding-lmstudio`,
+  `workflow-complete`, `clean-code` — 5/5 correctly matched to a realistic usage
+  scenario from tags alone. One minor friction noted (both `git-workflow` and
+  `workflow-complete` tags mention "squash-merge"), resolved on second look by each
+  skill's more specific tags.
+- **Zero dangling `gardener`-skill-id references**: confirmed by full-repo grep. Every
+  remaining hit is either this feature's own migration entry, a historical migration
+  record of an unrelated past rename, or this sidecar's own description of the change
+  — no live pointer to the old path remains. `migrations/2026-07-29-gardener-to-board-walking.md`
+  is present.
+- **Full-corpus frontmatter validation** (mechanical, added at the testing gate, not
+  originally in the agreed method but a natural extension of it): all 19 `SKILL.md`
+  files now parse as valid YAML with `name` matching their directory and `roles` /
+  `description` present. This caught **two pre-existing invalid-YAML bugs**, both
+  unrelated to this pass's own edits (verified against the base commit `a421c6c`
+  before this build touched either file): `history-rewrite` (an inserted `roles:` line
+  had split its description scalar, silently truncating it — found and fixed by the
+  batch-C sower as a byproduct) and `workflow-complete` (an unquoted colon inside the
+  description broke YAML parsing — found and fixed directly at this testing gate).
+  Worth a follow-up: a CI/pre-commit lint that validates `SKILL.md` frontmatter would
+  have caught both earlier.
+
+**Process note (shared-worktree sower dispatch)**: 6 parallel sowers were dispatched
+into this same worktree without per-sower `isolation: "worktree"`. 3 intermediate
+commits ended up with commit messages that don't fully match their diffs (one sower's
+plain `git commit` briefly swept up another's staged-but-uncommitted files) — verified
+byte-for-byte that no content was lost or overwritten (every batch touched disjoint
+files) and no two sowers edited the same file. Since this branch is squash-merged at
+close, the messy intermediate history doesn't reach `main`. Recorded as a dispatch
+lesson for future parallel-sower builds sharing one worktree.
+
+### Result
+
+Result: **done**. Branch `f/skill-terseness-pass` @ `be1bf14`. Build: 1 sower for the
+authoring-skills contract update, 6 parallel sowers for the per-skill batches + the two
+coupled duplication-pair steps (2 built inline by the landscaper at the testing gate:
+the workflow-complete YAML fix, and the full-corpus mechanical validation) — 7 sowers
+total, 0 steps built inline from the original 8-step plan. Tested per the agreed method
+plus the mechanical frontmatter validation described above; all results reported
+honestly, including the two bugs it surfaced. No follow-up tasks spawned by this
+feature beyond the one-line lint suggestion above, which is for the gardener to place
+on the board if it agrees.
+
 ## Decision entries
 
 ## [2026-07-29 02:18 CEST] Decision-NNN: Skill vs consuming agent-def duplication resolves toward the skill
@@ -152,3 +218,33 @@ agent/role name — a skill is meant to be usable by any agent, and naming it af
 role suggests the opposite. Folded into the `authoring-skills` contract as a naming
 rule. `skills/gardener` was the one violation in the corpus and is renamed to
 `skills/board-walking`.
+
+## Changelog entry
+
+Cut redundant and contradictory prose across all 19 skills: tightened `description`
+fields to their actual trigger, gave `metadata.tags` a real job as a discovery index
+(a skill must now be findable by its tags alone), and removed passages that restated
+`AGENTS.shared.md` or a consuming agent's own system prompt in favour of a reference.
+Renamed `skills/gardener` → `skills/board-walking` (a skill must never be named after
+an agent/role) and thinned `agents/gardener.md` and `agents/landscaper.md` to defer to
+their skills instead of restating them — `workflow`/`workflow-complete` stay
+permanently separate, reusable skills, never folded into any one role. Fixed two
+pre-existing invalid-YAML frontmatter bugs found along the way (`history-rewrite`,
+`workflow-complete`).
+
+## Readme delta
+
+`README.md`'s skill listing already updated in-branch as a direct, necessary
+correction of the `gardener` → `board-walking` rename (a stale cross-reference would
+have been a live defect, not a staged suggestion) — no further README delta beyond
+that one-line rename is needed for this feature.
+
+## Architecture
+
+No `ARCHITECTURE.md` trigger fired: this feature changed skill/agent-def *content*
+(frontmatter, trigger text, cross-references, one rename) but touched no application's
+or module's responsibility or boundary, added/removed/repurposed no component, changed
+no data flow or wiring between modules, and introduced no new architectural style or
+cross-cutting pattern. Evidenced by the diff itself — every changed file is a `.md`
+skill/agent-def or a migration entry, none of which `ARCHITECTURE.md`'s Composition
+hierarchy (Solution/Application/Module/Component/Element) describes.
