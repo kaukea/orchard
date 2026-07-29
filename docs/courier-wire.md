@@ -427,18 +427,20 @@ re-checks this wait. Per §6 this is a convenience layered on top of the exact
 correct; this only cuts how often it re-runs, closing the wake-cost gap that grew with
 the number of agents on one feature.
 
-**[GAP] `notify_user` is written, validated, and consumed by NOBODY.** Verified across
-`tools/`: every reference either sets the flag or polices its legality — which subject
-classes may carry it, which lifecycle states allow it, a grammar audit that calls it a
-violation on free prose. The only consumer the code names is `sidebar_model.py`
-(`courier.py:733`), which is RETIRED. `sidebar.py` never reads it, and says so: the new
-event grammar has no `notify_user` signal to distinguish a wait.
-
-The consequence is not cosmetic. Charters describe `signal --state done --notify-user`
-as "the operator's SUCCEEDED interrupt" — the summons that tells the operator an agent
-is waiting at a gate. It sets a flag on an envelope nothing acts on. So even with
-delivery repaired, a waiting agent surfaces to no one. Anything designed around
-"notify the operator" today is designed around a mechanism that does not exist.
+**[CODE, resolved 2026-07-29]** `notify_user` is DELETED outright, consequence of the
+no-interrupt-class ruling (`docs/TODO.md.d/bus-addressing.md` §Decision entries,
+"There is no interrupt class: outcome is outcome, the ask is a request"): the flag
+carried no live consumer, only the writers and the policing that guarded it. Removed
+from `tools/courier.py`: the envelope-builder kwarg (`make_envelope`,
+`make_orchard_envelope`), the `--notify-user` CLI flag, `NOTIFY_FORBIDDEN_ORCHID_CLASSES`
+and its two legality checks (`enforce_orchid_grammar`'s send-time reject,
+`_orchid_traffic_violation`'s audit-time reject), the grammar-audit clause in
+`_free_prose_traffic_flag` that called a free-prose broadcast carrying the flag a
+VIOLATION (an undirected broadcast is now uniformly a WARNING, flag or no flag), and
+the `message.schema.json` property. `_question_envelope` (legacy, unused by `cmd_ask`
+today) no longer sets it either. A waiting agent is STATUS (`"waiting"`, per §2's
+four-channel ruling), surfaced by the sidebar like everything else — not a bespoke
+summons mechanism.
 
 **[GAP, introduced by the removal]** Orphan detection lost its structural signal.
 Nothing removes the shared project directory when one session ends, so a departed

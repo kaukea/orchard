@@ -28,10 +28,6 @@
       "type": "string",
       "description": "The id of the request this message answers. Present only on a reply."
     },
-    "notify_user": {
-      "const": true,
-      "description": "Present and true only when the sending agent intends the user to see this."
-    },
     "body": {
       "description": "The payload. Optional; any type. A standard request's body is a fixed identifier string (e.g. \"identity\", \"status\") that the recipient's sidecar answers itself."
     },

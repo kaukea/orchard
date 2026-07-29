@@ -191,14 +191,19 @@ class TrafficValidateNegativeTests(unittest.TestCase):
             capture_output=True, text=True,
         )
 
-    def test_native_prompt_broadcast_with_notify_is_one_violation(self):
+    def test_native_prompt_broadcast_with_stray_notify_is_only_a_warning(self):
+        """notify_user is retired outright (docs/courier-wire.md §4): a
+        stray notify_user field on recorded traffic no longer earns any
+        special VIOLATION treatment — the undirected broadcast itself still
+        earns its ordinary WARNING, same as any other broadcast."""
         self._write(envelope(
             "neg-a", "sidecar1", to="*",
             body="awaiting operator (native prompt)", notify_user=True,
         ))
         proc = self._validate()
-        self.assertNotEqual(proc.returncode, 0)
-        self.assertEqual(proc.stdout.count("VIOLATION"), 1, proc.stdout)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertNotIn("VIOLATION", proc.stdout)
+        self.assertEqual(proc.stdout.count("WARNING"), 1, proc.stdout)
 
     def test_legacy_activity_body_is_a_violation(self):
         self._write(envelope("neg-b", "legacyagent", to="*", body="orchid:activity:Closing"))

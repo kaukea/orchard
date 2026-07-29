@@ -39,7 +39,7 @@ Usage:
                                                 project directory (what a courier's
                                                 Monitor watches, agents/courier.md)
   courier.py send --to :session:<id>|:topic:<name>|operator|NAME --subject S
-             [--body X] [--notify-user] [--target-project SLUG]
+             [--body X] [--target-project SLUG]
              [--in-reply-to ID] [--priority immediate|wait-a-round|batch]
                                                 `:session:operator` is a
                                                 RESERVED, dot-free target: always
@@ -250,7 +250,6 @@ def estimates_for(model: str | None, spend: dict, occupancy: int) -> dict:
 # WIRE GRAMMAR v1 (docs/TODO.md.d/bus-message-specifying.md): the closed set of
 # orchid:* body classes a hand-sent send/broadcast may use. orchid:interrupt:*
 # is deliberately absent — courier.py ask is its only emitter.
-NOTIFY_FORBIDDEN_ORCHID_CLASSES = ("status", "update", "phase", "subagent")
 
 ORCHID_STATUS_DENYLIST = frozenset({
     "started", "building", "testing", "done", "finished", "blocked",
@@ -334,9 +333,6 @@ def enforce_orchid_grammar(args) -> None:
     reason = _orchid_body_error(body)
     if reason:
         args.parser.error(f"courier: {reason} — allowed orchid:* classes: {ORCHID_ALLOWED_CLASSES_TEXT}")
-    cls = _orchid_class(body)
-    if cls in NOTIFY_FORBIDDEN_ORCHID_CLASSES and getattr(args, "notify_user", False):
-        args.parser.error(f"courier: --notify-user is not legal on orchid:{cls}:* bodies")
 
 
 def git(*args: str) -> str:
@@ -457,21 +453,23 @@ def status_of() -> dict:
     return {k: v for k, v in status.items() if v is not None and v != {}}
 
 
-def make_envelope(sender: str, to: str, *, body=None, notify_user=False,
-                  in_reply_to=None) -> dict:
+def make_envelope(sender: str, to: str, *, body=None, in_reply_to=None) -> dict:
     """Build a message envelope carrying only the fields that mean something.
 
     id/ts/from/to are always present. `to` is a recipient id or `*` (everyone).
     Everything else appears only when set: no in_reply_to unless it answers a
-    request, no notify_user unless the user should see it, no body when there
-    is none. A request is not tagged — its id is its identifier, and a
-    standard request is recognised by its body (see the fixed identifiers).
+    request, no body when there is none. A request is not tagged — its id is
+    its identifier, and a standard request is recognised by its body (see
+    the fixed identifiers).
 
     Carries no provenance flag: an operator-authored message is never tagged
     with one, it is sent on the `orchard:operator:message:*` subject family
     instead (see `is_operator_authority` / docs/courier-wire.md §2) — the old
     `operator_origin` flag this replaced was a fact someone had to remember
-    to set; the family makes it structural.
+    to set; the family makes it structural. Nor does it carry `notify_user`
+    any more — written, policed, and read by nobody once `sidebar_model.py`
+    retired; a waiting agent is STATUS ("waiting"), surfaced by the sidebar
+    like everything else (docs/courier-wire.md §4).
     """
     env = {
         "id": uuid.uuid4().hex[:12],
@@ -479,8 +477,6 @@ def make_envelope(sender: str, to: str, *, body=None, notify_user=False,
         "from": sender,
         "to": to,
     }
-    if notify_user:
-        env["notify_user"] = True
     if in_reply_to is not None:
         env["in_reply_to"] = in_reply_to
     if body is not None:
@@ -501,8 +497,7 @@ NAME_CROSS_TREE_SUBJECT = "orchard:agent:message:request"
 
 
 def _deliver_to_registry_entry(sender: str, entry: dict, subject: str, *,
-                                body=None, in_reply_to=None, notify_user=False,
-                                priority=None) -> dict:
+                                body=None, in_reply_to=None, priority=None) -> dict:
     """Deliver one envelope to a name-resolved recipient's own project
     directory. Deliberately bypasses orchard_send()'s cross-REPO allowlist
     gate (_authorize_cross_project): resolve_name() only ever searches this
@@ -533,7 +528,6 @@ def _deliver_to_registry_entry(sender: str, entry: dict, subject: str, *,
         f":session:{sender}", f":session:{sid}", subject,
         body=_parse_orchard_body(body), in_reply_to=in_reply_to,
         repo=project_slug(), project=target_project,
-        notify_user=notify_user,
     )
     violation = _schema_violation(env, _load_envelope_schema())
     if violation:
@@ -571,7 +565,6 @@ def _send_by_name(args) -> None:
         _deliver_to_registry_entry(
             sender, entry, subject, body=getattr(args, "body", None),
             in_reply_to=getattr(args, "in_reply_to", None),
-            notify_user=bool(getattr(args, "notify_user", False)),
             priority=getattr(args, "priority", None),
         )
         delivered += 1
@@ -682,14 +675,17 @@ def _question_envelope(sender: str, to: str, question_id: str, question: str,
     of fanning out — but the shape stays, still covered by unit tests and
     available for reuse.
 
-    `body` is `orchid:interrupt:question:<subject>` with `notify_user=True`
-    — the one interrupt class `ask` alone may emit (send/broadcast reject a
-    hand-sent orchid:interrupt:* outright). question_id/question/options are
+    `body` is `orchid:interrupt:question:<subject>` — the one interrupt
+    class `ask` alone may emit (send/broadcast reject a hand-sent
+    orchid:interrupt:* outright). question_id/question/options are
     additional envelope-level fields a plain interrupt broadcast never
-    carries; sidebar_model.py only reads `body`/`notify_user` and ignores
-    them, so this is the SAME message doing double duty, not two messages.
-    A reply is matched purely on the existing `in_reply_to` field (see
-    _match_answer) — no new field is needed on the answer side.
+    carries. A reply is matched purely on the existing `in_reply_to` field
+    (see _match_answer) — no new field is needed on the answer side.
+
+    Carries no `notify_user` — the flag this used to set is retired
+    outright (docs/courier-wire.md §4: written, policed, and read by
+    nobody). Its only named consumer, `sidebar_model.py`, is retired; a
+    waiting agent is STATUS ("waiting"), surfaced like everything else.
 
     title/summary/multi follow the envelope's existing convention: present
     only when set, so a plain single-select ask (the unchanged default) adds
@@ -702,7 +698,7 @@ def _question_envelope(sender: str, to: str, question_id: str, question: str,
     """
     subject = title or question
     body = f"orchid:interrupt:question:{subject}"
-    env = make_envelope(sender, to, body=body, notify_user=True)
+    env = make_envelope(sender, to, body=body)
     env["question_id"] = question_id
     env["question"] = question
     env["options"] = options
@@ -779,7 +775,6 @@ def cmd_ask(args) -> None:
     ns = argparse.Namespace(
         to=":session:operator", subject="orchard:agent:message:request",
         body=json.dumps(body), target_project=None, in_reply_to=None,
-        notify_user=False,
     )
     sent = orchard_send(ns)
     print(f"courier: asked the operator; question {question_id}; waiting for an answer",
@@ -815,25 +810,18 @@ def _orchid_traffic_violation(env: dict, body: str) -> str | None:
     if validator is None:
         return f"unknown orchid:* class {cls!r}"
     rest = body[len("orchid:"):].partition(":")[2]
-    reason = validator(rest)
-    if reason:
-        return reason
-    if cls in NOTIFY_FORBIDDEN_ORCHID_CLASSES and env.get("notify_user"):
-        return f"--notify-user is not legal on orchid:{cls}:* bodies"
-    return None
+    return validator(rest)
 
 
 def _free_prose_traffic_flag(env: dict) -> tuple[str, str] | None:
     """Free prose (no wire-grammar class, no fixed request, no reply) is only
-    legal directed — a broadcast is, at best, legal peer prose flagged for
-    the operator's send-path redesign (WARNING), and at worst an unspecified
-    summons (VIOLATION) when it carries notify_user: nothing outside
-    ask may summon the operator (the invented lifecycle-push notify path —
-    courier.py signal — is gone; see docs/courier-wire.md §2)."""
+    legal directed — a broadcast is legal peer prose flagged for the
+    operator's send-path redesign (WARNING). `notify_user` no longer carries
+    any special weight here: the flag itself is retired outright
+    (docs/courier-wire.md §4 — written, policed, and read by nobody) rather
+    than kept as a summons distinction nothing acts on."""
     if env.get("to") != "*":
         return None
-    if env.get("notify_user"):
-        return "violation", "free-prose broadcast carries notify_user — only ask may summon"
     return "warning", "undirected free-prose broadcast (legal peer prose; send-path redesign candidate)"
 
 
@@ -1478,13 +1466,15 @@ def resolve_name(name: str) -> list[dict]:
 
 
 def make_orchard_envelope(sender: str, to: str, subject: str, *, body=None,
-                           in_reply_to=None, repo=None, project=None,
-                           notify_user=False) -> dict:
+                           in_reply_to=None, repo=None, project=None) -> dict:
     """No provenance flag: an operator-authored message carries no marker of
     its own — the SUBJECT FAMILY (`orchard:operator:message:*` vs
     `orchard:agent:message:*`) is the provenance now (`is_operator_authority`,
     docs/courier-wire.md §2). This is what the old `operator_origin` flag
-    dissolved into."""
+    dissolved into. Nor a `notify_user` flag: retired outright, written and
+    policed by nobody's actual consumer (docs/courier-wire.md §4) — a
+    waiting agent is STATUS, surfaced by the sidebar like everything else.
+    """
     env = {
         "id": uuid.uuid4().hex[:12],
         "ts": datetime.now(timezone.utc).isoformat(),
@@ -1498,8 +1488,6 @@ def make_orchard_envelope(sender: str, to: str, subject: str, *, body=None,
         env["repo"] = repo
     if project is not None:
         env["project"] = project
-    if notify_user:
-        env["notify_user"] = True
     if body is not None:
         env["body"] = body
     return env
@@ -1624,7 +1612,6 @@ def orchard_send(args) -> dict:
         from_addr, args.to, subject, body=body,
         in_reply_to=getattr(args, "in_reply_to", None),
         repo=repo, project=project_field,
-        notify_user=bool(getattr(args, "notify_user", False)),
     )
     violation = _schema_violation(env, _load_envelope_schema())
     if violation:
@@ -2022,8 +2009,6 @@ def main() -> None:
         # not start hitting an argparse "unrecognized arguments" error.
         s.add_argument("--from", dest="sender", required=False, default=None)
         s.add_argument("--body")
-        s.add_argument("--notify-user", dest="notify_user", action="store_true",
-                       help="the sending agent intends this for the user to see")
         return s
 
     s = msg_args(sub.add_parser("send"))

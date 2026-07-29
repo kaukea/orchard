@@ -310,9 +310,9 @@ class OutboxFlusherProcessTests(unittest.TestCase):
 class QuestionEnvelopeUnitTests(unittest.TestCase):
     """Unit-level: _question_envelope() itself, no subprocess involved."""
 
-    def test_carries_notify_user_and_interrupt_question_body_for_the_existing_sidebar_signal(self):
+    def test_carries_interrupt_question_body_and_no_notify_user(self):
         env = courier._question_envelope("askerX", "peerA", "q1", "Proceed?", ["Yes", "No"])
-        self.assertTrue(env["notify_user"])
+        self.assertNotIn("notify_user", env)
         self.assertEqual(env["body"], "orchid:interrupt:question:Proceed?")
 
     def test_interrupt_question_body_uses_title_as_subject_when_given(self):
@@ -712,29 +712,14 @@ class OrchidGrammarCliTests(unittest.TestCase):
         proc = self._send("orchid:bogus:hi")
         self.assertIn("status, update, phase, subagent", proc.stderr)
 
-    def test_notify_user_rejected_on_status(self):
-        self.assertRejected(
-            self._send("orchid:status:reading", "--notify-user"), "--notify-user",
-        )
-
-    def test_notify_user_rejected_on_update(self):
-        self.assertRejected(
-            self._send("orchid:update:wrote tests", "--notify-user"), "--notify-user",
-        )
-
-    def test_notify_user_rejected_on_phase(self):
-        self.assertRejected(
-            self._send("orchid:phase:building", "--notify-user"), "--notify-user",
-        )
-
-    def test_notify_user_rejected_on_subagent(self):
-        self.assertRejected(
-            self._send("orchid:subagent:start:builder-1", "--notify-user"), "--notify-user",
-        )
-
-    def test_notify_user_stays_legal_on_free_bodies(self):
-        proc = self._send("please look at this", "--notify-user")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
+    def test_notify_user_flag_no_longer_recognised(self):
+        """The flag and its policing are retired outright
+        (docs/courier-wire.md §4): written, validated, and consumed by
+        nobody. `--notify-user` is no longer a recognised argument at all,
+        on any body shape."""
+        proc = self._send("orchid:status:reading", "--notify-user")
+        self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("unrecognized arguments", proc.stderr)
 
 
 class BroadcastRetiredCliTests(unittest.TestCase):
