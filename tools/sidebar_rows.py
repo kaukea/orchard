@@ -17,8 +17,9 @@ from sidebar_glyphs import (  # noqa: E402
     _ACCORDION_STEP_GLYPH,
     _PROGRESS_CIRCLES,
 )
-from sidebar_text import small_caps  # noqa: E402
+from sidebar_text import _format_running_time, _format_token_count, small_caps  # noqa: E402
 from sidebar_model import (  # noqa: E402
+    PHASE_WEIGHTS,
     TERMINAL_TASK_STATUSES,
     Agent,
     Feature,
@@ -55,6 +56,13 @@ class Row:
     activity: str = field(default="")  # kind == "agent" only — the "doing" text
     role: str | None = field(default=None)  # kind == "agent" only
     model: str | None = field(default=None)  # kind == "agent" only
+    # kind == "agent" only — the model's own launch-time effort (spec §3's
+    # "model and effort" ruled metric, courier-wire.md §2b's `effort`
+    # field), threaded down to `sidebar_citation.py`'s ladder so it rides
+    # alongside `model` wherever the citation shows it — see
+    # `attribution_text`/`_model_rungs`. None when the agent's own status
+    # snapshot carries no `effort` (no source, never invented).
+    effort: str | None = field(default=None)
     # kind == "accordion" only — the ACTIVE step's own KITT sweep gate: true
     # only when it also has a genuinely "working" agent, not merely the
     # furthest-along position (an idle/stale/stopped agent's step is still
@@ -77,9 +85,9 @@ class Row:
     # repo/feature rows (not applicable).
     feature_colour: tuple[int, int, int] | None = field(default=None)
     # kind == "task" only — the task row's own right-aligned METRICS text,
-    # running time first (operator ruling, 2026-07-29 — see `_task_metrics_
-    # text`). None when nothing is known yet, which is every task today:
-    # `Task` carries no timestamp of its own for this to read.
+    # running time first, then a "N ctx" context-occupancy figure when one
+    # rides (operator ruling, 2026-07-29 — see `_task_metrics_text`). None
+    # when neither is known (e.g. a marker-only task with no live agent).
     metrics: str | None = field(default=None)
 
 
@@ -89,7 +97,8 @@ def _agent_row(
 ) -> Row:
     return Row(depth=depth, kind="agent", target=target, label=agent.role or agent.session_id,
                task_colour=task_colour, feature_colour=feature_colour,
-               status=agent.status, activity=agent.activity, role=agent.role, model=agent.model)
+               status=agent.status, activity=agent.activity, role=agent.role, model=agent.model,
+               effort=agent.effort)
 
 
 def _subagent_row(
@@ -141,45 +150,42 @@ def _step_row(
                live=live, task_colour=task_colour, feature_colour=feature_colour)
 
 
-def _format_running_time(seconds: float) -> str:
-    """Seconds -> compact human text — `Xs` under a minute, `Xm` under an
-    hour, `XhMM` (zero-padded minutes, no unit on the minutes half) from an
-    hour up, echoing the footer mock's own "6h02" shape
-    (`sidebar_render_text.done_footer_line`'s docstring) so a later step's
-    footer and this task-row figure read as one family rather than two
-    invented conventions. Not itself a ruling — the exact text shape is
-    unruled by the spec and is this function's own implementer choice,
-    flagged as such rather than asserted as settled design."""
-    total = int(seconds)
-    hours, rem = divmod(total, 3600)
-    minutes, secs = divmod(rem, 60)
-    if hours:
-        return f"{hours}h{minutes:02d}"
-    if minutes:
-        return f"{minutes}m"
-    return f"{secs}s"
-
-
 def _task_metrics_text(task: Task) -> str | None:
     """The task row's own right-aligned METRICS text — running time first
     (operator ruling, 2026-07-29: a single-task feature's task row shows
     its METRICS, especially its running time — see `_task_display_label`
-    for the labelling half of the same ruling); tokens/context/model+effort
-    stay a later step's own seam to fill (spec §3's remaining three ruled
-    metrics — none of them belong to a single TASK row the way running
-    time does, and the wider footer/tokens⚡/dollars grammar they'd feed is
-    explicitly out of this step's boundary).
+    for the labelling half of the same ruling), then this task's own
+    CONTEXT figure (spec §3's ruled "context remaining" metric) when one
+    rides — M2's own seam fill, per `_draw_task_row`'s comment naming this
+    exact field as owed "tokens/context/model+effort". Tokens (the repo
+    footer's `⚡`/`$` line) and model+effort (the citation ladder, next to
+    role) are both placed elsewhere — see `sidebar_model._repo_time_and_
+    tokens` and `sidebar_citation.attribution_text`/`_model_rungs` — so
+    only CONTEXT lands on this row.
 
-    `Task.running_seconds` (sidebar_model.py) is the deterministic,
-    script-computed figure this reads — computed once at `build_model()`
-    time from event timestamps, never recomputed here from a live wall
-    clock (spec §3: "never through an agent's context", and this function
-    stays byte-identical across repeated renders of the same Fleet).
-    Still None for a marker-only task (no start time survives in the
-    marker schema) — an honest gap, not a guess."""
-    if task.running_seconds is None:
-        return None
-    return _format_running_time(task.running_seconds)
+    The figure is labelled "ctx", never "remaining": `Agent.context_tokens`
+    rides straight off `courier.status_of()`'s own `occupancy` count (see
+    that function's docstring, "an agent watching context occupancy — its
+    own death condition") — USAGE, not a budget remaining. Turning it into
+    a remaining-of-budget figure would need a per-model context-window-size
+    table the wire does not carry; none is invented here (spec §3: never
+    guess a figure the wire doesn't supply).
+
+    `Task.running_seconds`/`Task.context_tokens` (sidebar_model.py) are
+    both deterministic, script-computed at `build_model()` time from event
+    timestamps/the status snapshot — never recomputed here from a live
+    wall clock or re-read from an agent (spec §3: "never through an
+    agent's context"), so this function stays byte-identical across
+    repeated renders of the same Fleet. Either half is None on its own
+    honest terms (a marker-only task has no running time; a task with no
+    live agent carrying `context_tokens` has no context figure) — None
+    overall only once BOTH are absent."""
+    parts = []
+    if task.running_seconds is not None:
+        parts.append(_format_running_time(task.running_seconds))
+    if task.context_tokens is not None:
+        parts.append(f"{_format_token_count(task.context_tokens)} ctx")
+    return " · ".join(parts) if parts else None
 
 
 def _task_display_label(task: Task, feature_name: str, single_task: bool) -> str:
@@ -202,15 +208,34 @@ def _task_display_label(task: Task, feature_name: str, single_task: bool) -> str
 
 
 def _task_progress_glyph(task: Task) -> str | None:
-    """The task row's right-aligned progress cell — completed steps out of
-    five, computed client-side from `task.steps` (never a wire/marker
-    field: step state is a display concern, per the role->step map ruling
-    already governing it). None for a task with no steps at all (nothing
-    to show progress through — e.g. every agent on it is role-unmapped)."""
+    """The task row's right-aligned progress cell — client-side, computed
+    from `task.steps` (never a wire/marker field: step state is a display
+    concern, per the role->step map ruling already governing it), REWEIGHTED
+    per spec §1's ruled stage spans (`PHASE_WEIGHTS` in sidebar_model.py:
+    ideation/scoping/designing/building/releasing weigh 10/15/15/45/15 ->
+    100%, not an equal fifths split — bus-message-specifying.md:209). This
+    reuses the SAME five-level `_PROGRESS_CIRCLES` scale the unweighted
+    count used before (an existing progress surface, per the step-spec's
+    own instruction not to invent a new one) — only the input feeding it
+    changed, from a raw done-step count to the done steps' own summed
+    weight. A task that has only cleared the small ideation/scoping spans
+    no longer reads as "nearly half done" the way counting steps 1-for-1
+    did; the dominant "building" span (45%) now costs what it actually
+    weighs.
+
+    The weighted percentage is rounded to the NEAREST of the five discrete
+    circle levels (0/25/50/75/100%, `len(_PROGRESS_CIRCLES) - 1` steps) —
+    which exact percentage buckets to a given circle is this function's
+    own implementer reading, not itself a ruling (the spans and the
+    5-level circle glyph both are). None for a task with no steps at all
+    (nothing to show progress through — e.g. every agent on it is
+    role-unmapped)."""
     if not task.steps:
         return None
-    done = sum(1 for step in task.steps if step.state == "done")
-    return _PROGRESS_CIRCLES[min(done, len(_PROGRESS_CIRCLES) - 1)]
+    done_pct = sum(PHASE_WEIGHTS.get(step.name, 0) for step in task.steps if step.state == "done")
+    max_level = len(_PROGRESS_CIRCLES) - 1
+    level = round(done_pct / 100 * max_level)
+    return _PROGRESS_CIRCLES[max(0, min(level, max_level))]
 
 
 def _task_rows(

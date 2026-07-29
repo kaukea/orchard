@@ -123,7 +123,8 @@ def _draw_identity_block(
     _draw_indent_cell(stdscr, y, colours, gutter, fourth)
 
     if not expand:
-        shown_quote, tail = tight_line_parts(row.activity, row.role, content_width, row.model)
+        shown_quote, tail = tight_line_parts(row.activity, row.role, content_width, row.model,
+                                              row.effort)
         _safe_addstr(stdscr, y, _INDENT_WIDTH, _truncate(shown_quote, content_width),
                      colours.pair(quote_fg, bg) | attr_extra)
         if tail:
@@ -144,7 +145,7 @@ def _draw_identity_block(
     # blans, no ash obviuouys") — indented, chosen over right-aligned
     # because `_ATTRIBUTION_INDENT` already existed for exactly this.
     attribution_width = max(content_width - len(_ATTRIBUTION_INDENT), 0)
-    role_text, model_text = attribution_text(row.role, row.model, attribution_width)
+    role_text, model_text = attribution_text(row.role, row.model, attribution_width, row.effort)
     x = _INDENT_WIDTH + len(_ATTRIBUTION_INDENT)
     _safe_addstr(stdscr, y, x, role_text, colours.pair(role_fg, bg) | attr_extra)
     x += _cell_width(role_text)

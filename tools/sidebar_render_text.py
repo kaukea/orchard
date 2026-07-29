@@ -78,7 +78,8 @@ def _agent_row_lines(row: Row, width: int, expand: bool) -> list[str]:
     indent = INDENT_UNIT * row.depth
     content_width = max(width - len(indent), 0)
     return [indent + line for line in
-            identity_block(row.activity, row.role, row.model, content_width, expand)]
+            identity_block(row.activity, row.role, row.model, content_width, expand,
+                            effort=row.effort)]
 
 
 def _row_text(row: Row) -> str:

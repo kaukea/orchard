@@ -132,13 +132,35 @@ def short_model_name(model: str | None) -> str | None:
     return f"{family}{version}"
 
 
-def attribution_text(role: str | None, model: str | None, width: int) -> tuple[str, str]:
+def _with_effort(model_text: str, effort: str | None) -> str:
+    """`model_text` with `effort` bolted on (M2, spec §3's "model and
+    effort" ruled metric — "surface effort alongside the model where the
+    citation/identity ladder shows the model, smallest honest placement"):
+    appended as `/<effort>`, the SAME width budget as the model text it
+    rides with, rather than a new independent field/rung of its own. This
+    is the smallest change that puts effort on screen — the ladder's
+    existing full->short->dropped degradation already governs the result,
+    since effort now travels WITH whichever model-text candidate that
+    ladder picks (dropped once the model itself is dropped, never
+    lingering alone). The "/" separator and the "ride with model, drop
+    with model" behaviour are this function's own implementer choice, not
+    themselves a ruling."""
+    return f"{model_text}/{effort}" if (model_text and effort) else model_text
+
+
+def attribution_text(
+    role: str | None, model: str | None, width: int, effort: str | None = None,
+) -> tuple[str, str]:
     """(role_text, model_text) for the BELOW-QUOTE citation at `width`
     columns — role_text never empties (callers only reach this once
     `role` is truthy); model_text is the full model string (minus its
     "Claude" prefix, `_strip_claude_prefix` — operator: "full odel name
     (minus Claude) and version"), its short form, or '' once neither fits
     — the model degrades, role never does, in the 2-line (expand) form.
+    `effort` (M2), when given, rides bolted onto whichever model-text
+    candidate fits (`_with_effort`) — it is measured as part of that
+    candidate's own width, so a model+effort pair that doesn't fit falls
+    through to the short form, then to '', exactly like a bare model would.
     `width` here is the room for "role · model" — no dash, this rung sits
     on its own line (see the module section docstring)."""
     role_text = _role_text(role)
@@ -146,37 +168,45 @@ def attribution_text(role: str | None, model: str | None, width: int) -> tuple[s
         return role_text, ""
     model = _strip_claude_prefix(model)
     room = width - _cell_width(role_text) - _cell_width(" · ")
-    if _cell_width(model) <= max(room, 0):
-        return role_text, model
+    full_text = _with_effort(model, effort)
+    if _cell_width(full_text) <= max(room, 0):
+        return role_text, full_text
     short = short_model_name(model)
-    if short and _cell_width(short) <= max(room, 0):
-        return role_text, short
+    short_text = _with_effort(short, effort) if short else ""
+    if short_text and _cell_width(short_text) <= max(room, 0):
+        return role_text, short_text
     return role_text, ""
 
 
-def _citation_line(role: str | None, model: str | None, width: int) -> str:
+def _citation_line(
+    role: str | None, model: str | None, width: int, effort: str | None = None,
+) -> str:
     """The below-quote citation (the expand layout's second line) — role
-    then model, middle-dot separated, NO leading dash (operator: "no ash
-    obviuouys" — the dash marks an INLINE attribution; once the citation
-    is its own, positioned line, it is redundant). Falls through `_truncate`
-    as the final safety net if even the role alone overruns `width` (the
-    ordinary ellipsis rule, same as every other rung)."""
-    role_text, model_text = attribution_text(role, model, width)
+    then model(+effort, M2), middle-dot separated, NO leading dash (operator:
+    "no ash obviuouys" — the dash marks an INLINE attribution; once the
+    citation is its own, positioned line, it is redundant). Falls through
+    `_truncate` as the final safety net if even the role alone overruns
+    `width` (the ordinary ellipsis rule, same as every other rung)."""
+    role_text, model_text = attribution_text(role, model, width, effort)
     text = f"{role_text} · {model_text}" if model_text else role_text
     return _truncate(text, width)
 
 
-def _citation_line_indented(role: str | None, model: str | None, width: int) -> str:
+def _citation_line_indented(
+    role: str | None, model: str | None, width: int, effort: str | None = None,
+) -> str:
     """Rung A of the NORMAL (below-quote) citation layout — indented a few
     blanks (`_ATTRIBUTION_INDENT`), operator ruling 2026-07-28: "the
     citation is just below the text itself either right alined or indented
     by a few blans". `width` is the room for the indent PLUS the citation
     text (mirrors `_draw_identity_block`'s own `attribution_width` calc)."""
     text_width = max(width - len(_ATTRIBUTION_INDENT), 0)
-    return _ATTRIBUTION_INDENT + _citation_line(role, model, text_width)
+    return _ATTRIBUTION_INDENT + _citation_line(role, model, text_width, effort)
 
 
-def _citation_line_right_aligned(role: str | None, model: str | None, width: int) -> str:
+def _citation_line_right_aligned(
+    role: str | None, model: str | None, width: int, effort: str | None = None,
+) -> str:
     """Rung B of the NORMAL (below-quote) citation layout — flush against
     the row's right edge instead of indented from its left (operator
     ruling, 2026-07-28, the other half of the same "right alined or
@@ -185,7 +215,7 @@ def _citation_line_right_aligned(role: str | None, model: str | None, width: int
     the indented rung being the only one ever built). Left-padded with
     spaces to `width` so the text itself ends flush right; the padding
     shrinks to 0, never negative, once the citation alone fills `width`."""
-    text = _citation_line(role, model, width)
+    text = _citation_line(role, model, width, effort)
     pad = max(width - _cell_width(text), 0)
     return " " * pad + text
 
@@ -225,46 +255,51 @@ def _tight_quote_floor(width: int) -> int:
     return max(width // 2, _MIN_TIGHT_QUOTE_WIDTH)
 
 
-def _model_rungs(model: str | None) -> list[str | None]:
-    """Model candidates for the ONE-LINE citation, widest first: the full
-    string (minus "Claude", `_strip_claude_prefix`), its abbreviated form
-    (`short_model_name`, skipped if identical), then None (dropped
-    entirely) — operator: "if clipping use abreviatiob, if stil clipping
-    remove model". Always ends in None so a caller's loop always has a
-    final candidate to fall back to."""
+def _model_rungs(model: str | None, effort: str | None = None) -> list[str | None]:
+    """Model(+effort, M2) candidates for the ONE-LINE citation, widest
+    first: the full string (minus "Claude", `_strip_claude_prefix`, with
+    `effort` bolted on via `_with_effort`), its abbreviated form
+    (`short_model_name`, skipped if identical, effort bolted on the same
+    way), then None (dropped entirely — effort along with it, since it
+    never rides without the model it sits "alongside") — operator: "if
+    clipping use abreviatiob, if stil clipping remove model". Always ends
+    in None so a caller's loop always has a final candidate to fall back
+    to."""
     if not model:
         return [None]
     full = _strip_claude_prefix(model)
-    candidates: list[str | None] = [full]
+    candidates: list[str | None] = [_with_effort(full, effort)]
     short = short_model_name(full)
     if short and short != full:
-        candidates.append(short)
+        candidates.append(_with_effort(short, effort))
     candidates.append(None)
     return candidates
 
 
 def tight_line_parts(
     activity: str, role: str | None, width: int, model: str | None = None,
+    effort: str | None = None,
 ) -> tuple[str, str]:
     """(shown_quote, tail) for the tight (1-line) rung — the ONE-LINE
     citation's home (operator: "one line citation style if space" — rare,
     since it costs the most width, but tried FIRST, widest candidate
-    first). `tail` is ` — role · model` (full), ` — role · shortmodel`
-    (abbreviated), ` — role` (model dropped — never a dangling middle dot,
-    since the dot is only ever emitted alongside a model string), or ""
-    (role dropped too) — whichever is the WIDEST one that still keeps the
-    quote at or above `_tight_quote_floor(width)` (sidebar-teamwork defect
-    2: the quote is what a reader scans this line for, so IT is the last
-    thing to yield, not the first). `shown_quote` alone is never truncated
-    below the plain quote unless making room for a tail actually requires
-    it."""
+    first). `tail` is ` — role · model[/effort]` (full), ` — role ·
+    shortmodel[/effort]` (abbreviated, M2's `effort` riding bolted onto
+    either), ` — role` (model dropped — never a dangling middle dot, since
+    the dot is only ever emitted alongside a model string, and effort never
+    lingers alone once the model it rides with is dropped), or "" (role
+    dropped too) — whichever is the WIDEST one that still keeps the quote
+    at or above `_tight_quote_floor(width)` (sidebar-teamwork defect 2: the
+    quote is what a reader scans this line for, so IT is the last thing to
+    yield, not the first). `shown_quote` alone is never truncated below the
+    plain quote unless making room for a tail actually requires it."""
     quote = _quoted_activity(activity)
     if not role:
         return _truncate(quote, width), ""
     role_text = _role_text(role)
     floor = _tight_quote_floor(width)
 
-    for candidate_model in _model_rungs(model):
+    for candidate_model in _model_rungs(model, effort):
         tail = f" — {role_text} · {candidate_model}" if candidate_model else f" — {role_text}"
         quote_budget = width - _cell_width(tail)
         if quote_budget >= floor:
@@ -273,13 +308,17 @@ def tight_line_parts(
     return _truncate(quote, width), ""
 
 
-def tight_line(activity: str, role: str | None, width: int, model: str | None = None) -> str:
-    quote, tail = tight_line_parts(activity, role, width, model)
+def tight_line(
+    activity: str, role: str | None, width: int, model: str | None = None,
+    effort: str | None = None,
+) -> str:
+    quote, tail = tight_line_parts(activity, role, width, model, effort)
     return f"{quote}{tail}"
 
 
 def identity_block(activity: str, role: str | None, model: str | None,
-                    width: int, expand: bool, align: str = "indent") -> list[str]:
+                    width: int, expand: bool, align: str = "indent",
+                    effort: str | None = None) -> list[str]:
     """[quote] or [quote, citation] — see the module section docstring
     above for the exact two-layout, per-layout-ladder degradation.
     `expand` is the caller's real-height decision (`_agent_expansion_
@@ -289,17 +328,22 @@ def identity_block(activity: str, role: str | None, model: str | None,
     parameter existed) or "right" (`_citation_line_right_aligned`) — both
     built side by side for an A/B comparison (operator ruling, 2026-07-29);
     no effect on the tight (non-`expand`) rung, which has never carried a
-    dash-vs-indent choice to make. Lines are returned WITHOUT the row's own
-    depth indent — callers prepend that uniformly; the indented rung's
-    extra `_ATTRIBUTION_INDENT` beneath the quote is already baked in."""
+    dash-vs-indent choice to make. `effort` (M2, spec §3's "model and
+    effort" ruled metric) rides bolted onto `model` wherever the ladder
+    below shows it (`_model_rungs`/`attribution_text`'s own `_with_effort`)
+    — the smallest placement that puts it on screen, per the step-spec's
+    own instruction, rather than a new field of its own. Lines are
+    returned WITHOUT the row's own depth indent — callers prepend that
+    uniformly; the indented rung's extra `_ATTRIBUTION_INDENT` beneath the
+    quote is already baked in."""
     if not role:
         return [_quoted_activity(activity)]
     if expand:
         quote = _quoted_activity(activity)
-        citation = (_citation_line_right_aligned(role, model, width) if align == "right"
-                    else _citation_line_indented(role, model, width))
+        citation = (_citation_line_right_aligned(role, model, width, effort) if align == "right"
+                    else _citation_line_indented(role, model, width, effort))
         return [quote, citation]
-    return [tight_line(activity, role, width, model)]
+    return [tight_line(activity, role, width, model, effort)]
 
 
 def _agent_expansion_fits(rows: list[Row], height: int | None) -> bool:

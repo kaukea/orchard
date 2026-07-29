@@ -106,9 +106,13 @@ verbs are lifecycle/status/delegation/outcome/task only — so nothing below
 fabricates a value for them): courier rows (the old model's collapsed
 inbox-sidecar row — the new grammar has no announce/inbox concept to
 collapse into one); open questions/question badges (routed through the
-`:session:operator` broker instead); tokens/dollars/age/worked (the
-`footer_lines()`/`done_footer_line()` formatters that would show them stay
-defined and tested, but build_model() never populates a source for them).
+`:session:operator` broker instead). `dollars` alone stays unported
+(the wire attaches no cost/dollar figure at all — see `Repo.dollars`'s own
+docstring in sidebar_model.py); `age`/`worked`/`tokens` are wired as of M2
+(`sidebar_model._repo_time_and_tokens`, feeding `footer_lines()`/
+`done_footer_line()` a real `Repo`) — nothing in the curses draw path calls
+either formatter yet, same as before this step, but the data they'd render
+is no longer permanently None.
 
 Presentation is deliberately split from curses: `flatten()` turns a Fleet
 into a flat list of Row objects, and `render_lines()` turns those into plain
@@ -308,6 +312,7 @@ from sidebar_citation import (  # noqa: E402
     _agent_expansion_fits,
     _quoted_activity,
     _tight_quote_floor,
+    _with_effort,
     attribution_text,
     compose_identity_line,
     identity_block,
@@ -319,6 +324,8 @@ from sidebar_rows import (  # noqa: E402
     INDENT_UNIT,
     Row,
     _step_row,
+    _task_metrics_text,
+    _task_progress_glyph,
     flatten,
 )
 from sidebar_render_text import (  # noqa: E402

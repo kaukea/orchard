@@ -16,7 +16,11 @@ directly (see that module's own docstring). This file covers:
 
 Retired along with sidebar_model.py and NOT re-tested here (no source in
 the new event grammar — see sidebar.py's module docstring): courier rows,
-open-question badges, phase ticks, tokens/dollars, age/worked.
+open-question badges, phase ticks. `dollars` alone stays unsourced (the
+wire attaches no cost figure — see `sidebar_model.Repo.dollars`'s own
+docstring); `tokens`/`age`/`worked` are wired as of M2 and covered directly
+against `sidebar_model.build_model()` in `tests/test_sidebar_model.py`
+instead of here.
 
 Runs under both `python3 -m unittest discover` and `pytest`; stdlib only.
 """
@@ -1986,6 +1990,57 @@ class TightQuoteFloorTests(unittest.TestCase):
         self.assertNotIn("…", lines[0].split(" — ")[0])
 
 
+class EffortCitationTests(unittest.TestCase):
+    """M2: `effort` (spec §3's "model and effort" ruled metric) rides
+    bolted onto whichever model-text candidate the citation ladder already
+    picks (`_with_effort`) -- the smallest placement, per the step-spec's
+    own instruction, rather than a new field/rung of its own. Dropped
+    together with the model once the model itself no longer fits, never
+    lingering alone."""
+
+    def test_with_effort_bolts_on_a_slash_suffix(self):
+        self.assertEqual(sidebar._with_effort("opus5", "high"), "opus5/high")
+
+    def test_with_effort_is_a_no_op_without_either_half(self):
+        self.assertEqual(sidebar._with_effort("opus5", None), "opus5")
+        self.assertEqual(sidebar._with_effort("", "high"), "")
+
+    def test_attribution_text_carries_effort_alongside_the_full_model(self):
+        role_text, model_text = sidebar.attribution_text(
+            "landscaper", "claude-opus-4-1", 60, effort="high",
+        )
+        self.assertEqual(model_text, "opus-4-1/high")
+
+    def test_attribution_text_drops_effort_once_the_model_itself_drops(self):
+        # width far too small for role+model+effort together -- the model
+        # (and effort riding with it) falls all the way to "", same as the
+        # existing no-model-fits rung, never a dangling "/high" alone.
+        role_text, model_text = sidebar.attribution_text(
+            "landscaper", "claude-opus-4-1", 3, effort="high",
+        )
+        self.assertEqual(model_text, "")
+
+    def test_tight_line_parts_tail_carries_effort_alongside_the_model(self):
+        quote, tail = sidebar.tight_line_parts(
+            "scaffolding screens", "landscaper", 60, "claude-opus-4-1", effort="high",
+        )
+        self.assertIn("high", tail)
+        self.assertIn("opus", tail)
+
+    def test_tight_line_parts_never_shows_a_bare_effort_with_no_model(self):
+        quote, tail = sidebar.tight_line_parts(
+            "scaffolding screens", "landscaper", 60, None, effort="high",
+        )
+        self.assertNotIn("high", tail)
+
+    def test_identity_block_expand_citation_carries_effort(self):
+        lines = sidebar.identity_block(
+            "no activity", "landscaper", "claude-opus-4-1", 60, expand=True, effort="high",
+        )
+        self.assertEqual(len(lines), 2)
+        self.assertIn("high", lines[1])
+
+
 class PhaseChecklistTests(unittest.TestCase):
     """Five-phase vertical checklist (done / active / todo) -- pure helper,
     unreachable from build_model() today (phase has no source in the new
@@ -2027,9 +2082,13 @@ class PhaseChecklistTests(unittest.TestCase):
 
 class FooterLinesTests(unittest.TestCase):
     """footer_lines()/done_footer_line() are pure formatters that still
-    exist in sidebar.py, unchanged; build_model() never populates
-    age/worked/tokens/dollars (see module docstring), so these are exercised
-    with synthetic sources rather than anything build_model() produces."""
+    exist in sidebar.py, unchanged — exercised here with synthetic sources
+    to pin their own formatting rules regardless of what feeds them.
+    `build_model()` DOES now populate `Repo.age`/`worked`/`tokens` (M2,
+    `sidebar_model._repo_time_and_tokens`) — that integration is covered in
+    `tests/test_sidebar_model.py`'s `RepoFooterAggregateTests` instead of
+    here; `dollars` stays permanently unsourced (see `Repo.dollars`'s own
+    docstring)."""
 
     def test_footer_omitted_entirely_when_no_data_is_available(self):
         feature = sidebar.Feature(feature_id="f", name="f", status="working")
@@ -2332,6 +2391,77 @@ class _StubStdscr:
 
 def _subagent_row(status, label="sub-a"):
     return sidebar.Row(depth=4, kind="subagent", target="feat", label=label, status=status)
+
+
+class TaskProgressReweightTests(unittest.TestCase):
+    """M2: `_task_progress_glyph` reweights its existing five-level circle
+    against spec §1's ruled stage spans (`PHASE_WEIGHTS`, 10/15/15/45/15 ->
+    100%) instead of counting done steps 1-for-1 -- the same
+    `_PROGRESS_CIRCLES` scale as before, fed a weighted input."""
+
+    def _steps(self, *done_names):
+        return [sidebar.Step(name=name, state="done" if name in done_names else "todo")
+                for name in sidebar.PHASES]
+
+    def test_no_steps_at_all_yields_no_glyph(self):
+        task = sidebar.Task(task_id="t", name="t", status="working", steps=[])
+        self.assertIsNone(sidebar._task_progress_glyph(task))
+
+    def test_nothing_done_yet_is_the_empty_circle(self):
+        task = sidebar.Task(task_id="t", name="t", status="working", steps=self._steps())
+        self.assertEqual(sidebar._task_progress_glyph(task), sidebar._PROGRESS_CIRCLES[0])
+
+    def test_only_the_small_early_stages_done_still_reads_near_empty(self):
+        # ideation+scoping = 10+15 = 25% -- under the OLD unweighted count
+        # this read as 2-of-5 (◑, 50%); weighted, it is the 25% level (◔).
+        task = sidebar.Task(task_id="t", name="t", status="working",
+                             steps=self._steps("ideation", "scoping"))
+        self.assertEqual(sidebar._task_progress_glyph(task), sidebar._PROGRESS_CIRCLES[1])
+
+    def test_the_heavy_building_stage_alone_outweighs_three_small_ones(self):
+        # ideation+scoping+designing = 10+15+15 = 40% (rounds to the 50%
+        # level, index 2) vs. building alone = 45% (rounds to the SAME 50%
+        # level) -- building's own weight matches three small stages
+        # combined, not the one-fifth an unweighted count would give it.
+        three_small = sidebar.Task(task_id="a", name="a", status="working",
+                                    steps=self._steps("ideation", "scoping", "designing"))
+        building_alone = sidebar.Task(task_id="b", name="b", status="working",
+                                       steps=self._steps("building"))
+        self.assertEqual(
+            sidebar._task_progress_glyph(three_small),
+            sidebar._task_progress_glyph(building_alone),
+        )
+
+    def test_everything_but_releasing_done_reads_the_75_percent_level(self):
+        # 10+15+15+45 = 85%, nearest level is 75% (index 3).
+        task = sidebar.Task(task_id="t", name="t", status="working",
+                             steps=self._steps("ideation", "scoping", "designing", "building"))
+        self.assertEqual(sidebar._task_progress_glyph(task), sidebar._PROGRESS_CIRCLES[3])
+
+
+class TaskMetricsContextTests(unittest.TestCase):
+    """M2: `_task_metrics_text` appends a "N ctx" context-occupancy figure
+    (never "remaining" -- `Task.context_tokens` rides `Agent.context_tokens`,
+    itself USAGE per `courier.status_of()`'s own `occupancy` semantics)
+    after the running time, reusing the same right-aligned metrics slot
+    (`Row.metrics`, `_draw_task_row`) rather than a new display of its own."""
+
+    def test_running_time_alone_when_no_context_figure_rides(self):
+        task = sidebar.Task(task_id="t", name="t", status="working", running_seconds=90)
+        self.assertEqual(sidebar._task_metrics_text(task), "1m")
+
+    def test_context_alone_when_no_running_time_is_known(self):
+        task = sidebar.Task(task_id="t", name="t", status="working", context_tokens=12345)
+        self.assertEqual(sidebar._task_metrics_text(task), "12.3k ctx")
+
+    def test_running_time_then_context_when_both_ride(self):
+        task = sidebar.Task(task_id="t", name="t", status="working",
+                             running_seconds=90, context_tokens=12345)
+        self.assertEqual(sidebar._task_metrics_text(task), "1m · 12.3k ctx")
+
+    def test_neither_known_is_none_not_an_empty_string(self):
+        task = sidebar.Task(task_id="t", name="t", status="working")
+        self.assertIsNone(sidebar._task_metrics_text(task))
 
 
 class TaskGlyphTests(unittest.TestCase):

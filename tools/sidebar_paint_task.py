@@ -131,11 +131,13 @@ def _draw_task_row(
     # already make — `_safe_addch` blanks whatever lands on the true last
     # column, so it is filled separately below rather than by `_safe_addstr`.
     text_width = max(width - 1, 0)
-    # `row.metrics` (running time first, tokens/context/model+effort a
-    # later step's seam — `_task_metrics_text` in sidebar_rows.py, operator
-    # ruling 2026-07-29) rides the same right-aligned slot the removed
-    # progress-circle bubble used to occupy; always None today, so this is
-    # a no-op until that seam has something real to show.
+    # `row.metrics` (running time, then a "N ctx" context figure when one
+    # rides — `_task_metrics_text` in sidebar_rows.py, operator ruling
+    # 2026-07-29, M2 filling in the context half) rides the same
+    # right-aligned slot the removed progress-circle bubble used to
+    # occupy. Tokens live on the repo footer instead (`_repo_time_and_
+    # tokens`); model+effort live on the agent's own citation line
+    # (`sidebar_citation.py`) — neither belongs to this row.
     body = _truncate(compose_task_row_text(glyph, row.label, row.metrics, text_width), text_width)
     text_fg = MUTED if row.status in ("failed", "stale") else TEXT
     text_fg = ensure_contrast(text_fg, bg, _CONTRAST_MIN_TEXT)
