@@ -318,24 +318,37 @@ validated on every path, write or read.
 
 Priority: `send --priority immediate|wait-a-round|batch` (default `immediate`), legal
 only on `orchard:agent:message:*` — any other subject rejects a non-immediate value.
-`immediate` writes straight through the unchanged `orchard_deliver()` path.
-`wait-a-round`/`batch` both queue into `$XDG_RUNTIME_DIR/orchard/outbox/` (one JSON
-file per pending delivery: `{dir, sid, envelope}`) and lazily start the flusher
-(`courier.py flush-outbox`, spawned by `_ensure_flusher_running`) — a lockfile-singleton
-(`orchard/outbox.flusher.lock`, `flock` exclusive-non-blocking, no PID/staleness logic:
-a losing duplicate just exits) that drains the outbox every 5 seconds and closes itself
-the first time a drain finds nothing left (Decision-129's owner-closes shape applied to
-a queue rather than a registry entry).
+`immediate` writes straight through the unchanged `orchard_deliver()` path. `batch`
+queues into `$XDG_RUNTIME_DIR/orchard/outbox/` (one JSON file per pending delivery:
+`{dir, sid, envelope}`) and lazily starts the flusher (`courier.py flush-outbox`,
+spawned by `_ensure_flusher_running`) — a lockfile-singleton (`orchard/outbox.
+flusher.lock`, `flock` exclusive-non-blocking, no PID/staleness logic: a losing
+duplicate just exits) that drains the outbox every 5 seconds and closes itself the
+first time a drain finds nothing left (Decision-129's owner-closes shape applied to a
+queue rather than a registry entry).
 
-**[GAP, unchanged]** `wait-a-round` and `batch` are not distinguished at delivery —
-both queue through the same outbox/flusher mechanism; the spec gives no delivery-level
-difference between them beyond "immediate traffic never queues," so a second queuing
-mechanism was not invented for `wait-a-round` alone. Flagged for the operator's word,
-not assumed. The "handed up AS the operator speaking" consumption behaviour (relayed
-gate words counting as the operator's own) is a courier-AGENT prompt/consumption
-concern, not a wire-level one — it is not built here; agent charter prose describing it
-is a later step (A1), per this branch's own scoping in the "Agent status tracking"
-section above.
+**[CODE, resolved 2026-07-29 — "wait-a-round delivers on the recipient's next wake",
+`docs/TODO.md.d/bus-addressing.md` §Decision entries]** `wait-a-round` is now
+DISTINCT from `batch` at delivery, not a second name for the same queue.
+`deliver_with_priority` writes it straight through `orchard_deliver()` — at once, like
+`immediate` — but with `message_dir` pointed at `WAIT_A_ROUND_DIRNAME`
+(`<project-dir>/wait-a-round/`), a subfolder of the recipient's own project directory
+that the recipient's own mailbox `Monitor` never scans: `inotifywait` is armed on the
+project directory itself, not recursively (`-r` is never passed), so a file landing in
+a child directory of it raises no `create`/`moved_to` event there at all — the message
+is fully delivered, only its ARRIVAL wakes nobody. `orchard_receive_own()` — the
+function every ordinary drain (`monitor`'s own wake, a plain `receive`) already goes
+through — now reads `WAIT_A_ROUND_DIRNAME` alongside the direct mailbox
+(`_own_mailbox_message_files`, sorted together by filename so a mix of the two still
+reads oldest-first), so a parked message surfaces the next time the recipient wakes
+for ANY other reason, exactly as ruled. Proven both ways in `tests/test_courier.py`
+(`MonitorCliTests.test_wait_a_round_message_alone_wakes_nobody`/
+`test_wait_a_round_message_is_delivered_on_the_next_ordinary_wake`, plus the
+lower-level `PriorityQueueingTests` pair). The "handed up AS the operator speaking"
+consumption behaviour (relayed gate words counting as the operator's own) is a
+courier-AGENT prompt/consumption concern, not a wire-level one — it is not built here;
+agent charter prose describing it is a later step (A1), per this branch's own scoping
+in the "Agent status tracking" section above.
 
 ### The ask — ordinary request/response, defined here (ruled 2026-07-29)
 
@@ -378,15 +391,49 @@ two classes it actually charts. The earlier wording of this section ("tokens in/
 not yet attached") was imprecise: `spend` already nested them; only the top-level
 promotion was missing, and is now built.
 
-**[CODE, corrected 2026-07-29]** `effort` is now attached when a source exists:
-`courier.status_of()` reads `CLAUDE_EFFORT` — the harness's own launch-time effort
-flag, verified present in a live session environment (`CLAUDE_EFFORT=high`,
-un-namespaced like `CLAUDE_PID`, distinct from the `CLAUDE_CODE_*` family) — and
-`_status()` carries it through when set. The previous read
-(`CLAUDE_CODE_REASONING_EFFORT`) matched no variable any launcher actually sets, so
-`effort` was silently always absent; this was a naming bug, not a genuine missing
-source. Absent when `CLAUDE_EFFORT` is unset — no value is invented
-(`test_status_snapshot_has_no_effort_when_claude_effort_unset`).
+**[CODE, corrected 2026-07-29]** `effort` is now attached via an ordered READER CHAIN,
+documented source first, our own fallback last — `courier.status_of()` reads, in
+order: **`CLAUDE_EFFORT`** (Claude Code's own DOCUMENTED hooks environment variable —
+current effort level, values `low|medium|high|xhigh|max`; source: the Claude Code
+hooks reference at code.claude.com) → **`CLAUDE_CODE_REASONING_EFFORT`** (its
+documented alias) → **`ORCHID_EFFORT`** (ours — set at our own launch sites as a
+fallback for any context the two documented harness variables don't reach). The first
+one present wins; `_status()` carries the result through when any of the three is set.
+A plain ordered `or`-chain (`os.environ.get("CLAUDE_EFFORT") or os.environ.get(
+"CLAUDE_CODE_REASONING_EFFORT") or os.environ.get("ORCHID_EFFORT") or None`) —
+deliberately kept simple so a future documented mechanism can be inserted at the HEAD
+of the chain without restructuring it. Absent when none of the three is set — no value
+is invented (`test_status_snapshot_has_no_effort_when_claude_effort_unset`; the chain's
+own priority order is proven by `test_effort_reader_chain_claude_effort_wins_over_the_
+other_two`/`test_effort_reader_chain_reasoning_effort_wins_when_claude_effort_absent`/
+`test_effort_reader_chain_orchid_effort_is_the_last_resort`, `tests/test_orchard_
+topic.py`). **`ORCHID_EFFORT` itself is not yet SET anywhere**: this repo's launch/
+dispatch tooling was grepped for a site that constructs a `claude` process invocation
+and explicitly chooses an effort value to pass it — `tools/bloomer-launch.sh` is the
+only shell script in the tree that spawns a `claude` process at all, and it does not
+pass `--effort` or set an effort env var; every other effort "choice" in the codebase
+(agent-def frontmatter `effort:` keys, `tools/bloom_engine.py`'s launch-sizing
+recommendation) is either read by the harness independently of any script here, or is
+advisory text a human/gardener acts on when spawning via the Agent tool — never a
+shell invocation this repo's own scripts control. FLAGGED, not fixed here: there is
+currently no concrete site to export `ORCHID_EFFORT` at; the fallback exists and is
+tested, but has no producer yet.
+
+**[CODE, built 2026-07-29]** `dollars` — spec §3's "tokens and dollars in one line —
+tokens tick live, dollars translate them" — is promoted the same way `tokens_in`/
+`tokens_out` were: `_status()` now reads `courier.status_of()`'s own `estimates.
+cost_usd` (built by `courier.estimates_for()` from the existing per-model
+`MODEL_CARD` price table — no new rate invented anywhere in this step) and carries it
+through as a first-class `dollars` field. Empty exactly when `estimates` itself is
+empty — an unrecognised model — never a guessed figure
+(`test_status_snapshot_promotes_dollars_from_estimates`/`test_status_snapshot_has_no_
+dollars_for_an_unrecognised_model`, `tests/test_orchard_topic.py`). Consumed by
+`sidebar_model._repo_time_and_tokens`, which now returns `(age, worked, tokens,
+dollars)` — `dollars` summed across each agent's own latest `status.dollars` figure,
+same aggregation convention TOKENS already used, formatted via `sidebar_text.
+_format_dollars` (two decimal places, matching the footer mock's `"$7.90"` shape) —
+feeding `Repo.dollars`, which the footer formatters (`sidebar_render_text.
+footer_lines`/`done_footer_line`) already read duck-typed.
 
 **[RESOLVED]** Timings beyond file timestamps are not needed and none are attached:
 every orchard message filename already carries a timestamp (`<sid>.<ts>.json`), and
