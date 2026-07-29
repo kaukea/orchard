@@ -292,9 +292,13 @@ class; no interrupt vocabulary exists.
 `orchard:agent:message:request` to `:session:operator` with a JSON body
 (`question_id`, `question`, `options`) and blocks on the matching `in_reply_to`.
 
-**[GAP]** Nothing drains that mailbox in a live fleet: the broker
-(`tools/orchard-question-broker.py`, tested) is deployed nowhere, so every ask hangs.
-Deployment is scoped to the `question-broker-dead` task, not this branch.
+**[GAP]** No persistent deployment drains that mailbox: the broker
+(`tools/orchard-question-broker.py`, tested) runs only when started by hand — the
+operator corrects the earlier "deployed nowhere, every ask hangs" absolute: it "was
+used several times. It wasnt used all the time" (2026-07-29). While it is down, an
+ask blocks forever. Keeping it running all the time is scoped to the
+`question-broker-dead` task — operator, 2026-07-29: "it is a part of native terminal
+feature (which also includes the windowing system)" — not this branch.
 
 ---
 
