@@ -266,28 +266,41 @@ The three real cases the design must serve:
 
 ## Questions
 
-- ~~**What is the address?**~~ **RULED: the agent's name**, with `:session:<id>` retained
-  alongside it (see above). The remaining questions are consequences of that ruling, not
-  alternatives to it:
-  - **When does a sender use a name and when a session id?** NOT ruled. The operator named
-    cross-repository as a case for session addressing but did not make it the boundary.
-    Options include: always-name-when-known, name-within-a-repository, sender's choice, or
-    name-resolves-to-session-underneath. Needs his ruling before build.
-  - **What happens when two live agents share a name?** Several landscapers on one
-    feature is the normal case under Decision-121.
-  - **Does a name outlive its agent** — is a message to a name whose agent has stopped an
-    error, a hold, or a drop?
-  - **Who owns the name→destination registry, and where does it live** so that a sender in
-    one worktree can resolve a name in another?
-- **Does an agent ever need to address a SIBLING**, or does all traffic go through the
-  supervisor that introduced them? Decision-121 says the supervisor "introduces the
-  landscapers to one another before they start", which implies direct sibling traffic.
-- **What replaces the per-worktree project directory** as the delivery boundary? It was
-  introduced to fix a real mailbox collision (a second worktree's `teardown` deleting the
-  first's waiting mail) and it created the cross-worktree wake defect. Both problems are
-  real; the boundary needs to be somewhere else.
-- **Is `ORCHID_PARENT_SESSION` injection at spawn still the mechanism**, or does the
-  courier resolve its destination at send time from durable state?
+### Answered by the rulings above — kept so nobody reopens them
+
+- ~~When does a sender use a name and when a session id?~~ The **script mints stable
+  identifiers and owns dispatch** (Decision-130). The agent asks in plain language for a
+  teammate, an agent on a task, or an agent by name; resolution is not its problem.
+- ~~Who owns the name→destination registry?~~ The script.
+- ~~Does an agent address a SIBLING?~~ Yes — teammates are one of the three named
+  exception cases.
+- ~~What replaces the per-worktree project directory?~~ Nothing composed from location.
+  The subtree is rejected at the root as an identifier and as a boundary.
+- ~~Is `ORCHID_PARENT_SESSION` injection still the mechanism?~~ A HOW, not a WHAT — the
+  landscaper's call, constrained by "the script owns dispatch".
+
+### Still open — needed before launch
+
+- **What is it called?** `bus` appears in 76 files, `courier` in 81; the operator says
+  "message bus" throughout. The rename is cheap now and expensive later, and he asked to
+  "finally go back to naming things correctly".
+- **Does `sidebar-teamwork` fold into this feature?** It sits at `plan-ready` as "sidebar
+  redone fresh, with the standing rulings as its specification" — which is now part of
+  THIS scope. Two tasks building one sidebar is exactly the producer/consumer split that
+  costs a day.
+- **Two live agents sharing a name** — normal under Decision-121 (a feature built by a
+  team of landscapers). Is a name-addressed message to an ambiguous name an error, a
+  broadcast to all of them, or resolved by the script picking one?
+- **Does a name outlive its agent?** A message to a name whose agent has `stopped` —
+  error, hold, or drop? (The specification is explicit that there is no delivery guarantee
+  and no acknowledgement, which may already settle this.)
+
+### Sidebar — what it must show
+
+Stated: every **project, feature, task, subtask and metric**, in real time, so the
+operator can manage **multiple features and multiple projects at the same time**. It is an
+independent application with **no AI in it**, reading what the script writes. Whether
+anything beyond this list is required is open.
 
 ## Findings
 
