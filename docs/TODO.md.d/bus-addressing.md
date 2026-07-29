@@ -738,6 +738,13 @@ ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
   the model through the citation's own degradation ladder; the progress circle
   reflects the ruled 10/15/15/45/15 stage weights; and an agent that says
   "waiting" shows as waiting, proven through the real CLI seam.
+- 💰 Token cost flows end to end for the first time: the courier's existing
+  price-table estimate is promoted onto the wire as dollars, aggregated per repo,
+  and the ruled footer — built but never called — is wired into the paint path as
+  the block's last section, fixing a real last-column colour corruption found on
+  the way. wait-a-round mail now genuinely parks: it sits watch-blind and rides
+  the recipient's next ordinary wake instead of the five-second flusher. Effort
+  reads documented-first (CLAUDE_EFFORT, per the Claude Code hooks reference).
 
 ### 🐛 Bug fixes
 - 🐛 A truncated header or feature row no longer loses its trailing ellipsis: the
