@@ -69,9 +69,15 @@ Usage:
                                                 replacing the old
                                                 --operator-origin flag
                                                 (docs/courier-wire.md §2).
-                                                wait-a-round/batch queue into
-                                                the outbox for a lazily-started,
-                                                5-second-cadence flusher.
+                                                batch queues into the outbox
+                                                for a lazily-started,
+                                                5-second-cadence flusher;
+                                                wait-a-round delivers at once
+                                                into a subfolder its own
+                                                recipient's mailbox watch
+                                                never fires on, picked up on
+                                                the recipient's next ordinary
+                                                drain for any other reason.
   courier.py broadcast                             RETIRED — errors, pointing at
                                                 orchard_topic.py post (telemetry) or
                                                 send/request (directed). Fan-out is
@@ -442,12 +448,18 @@ def status_of() -> dict:
 
     occupancy = sum((latest or {}).get(f, 0) or 0 for f in TOKEN_CLASSES
                     if f != "output_tokens")
-    # CLAUDE_EFFORT is the harness's own launch-time effort flag (verified
-    # present in a live session env, e.g. `CLAUDE_EFFORT=high` — distinct
-    # from the CLAUDE_CODE_* family, alongside CLAUDE_PID). The previous
-    # CLAUDE_CODE_REASONING_EFFORT read here matched nothing any launcher
-    # sets (docs/courier-wire.md §2b [GAP], corrected 2026-07-29).
-    effort = os.environ.get("CLAUDE_EFFORT") or None
+    # Reader chain, documented source first (docs/courier-wire.md §2b):
+    # CLAUDE_EFFORT (Claude Code's documented hooks env var, current effort
+    # level) -> CLAUDE_CODE_REASONING_EFFORT (its documented alias) ->
+    # ORCHID_EFFORT (ours, set at launch sites as a fallback for contexts the
+    # two documented vars don't reach). First one present wins; none invents
+    # a value.
+    effort = (
+        os.environ.get("CLAUDE_EFFORT")
+        or os.environ.get("CLAUDE_CODE_REASONING_EFFORT")
+        or os.environ.get("ORCHID_EFFORT")
+        or None
+    )
     status = {
         "session_id": whoami(),
         "state": "live",
@@ -940,13 +952,23 @@ MONITOR_POLL_INTERVAL_S = 2.0
 # AUTHORITY + IMMEDIATE, structural provenance replacing the old
 # `operator_origin` flag — see `is_operator_authority`. The agent family is
 # ordinary directed mail with a PRIORITY class as an optimisation only;
-# `immediate` never queues, `wait-a-round`/`batch` queue into the outbox for
-# the lazily-started flusher below (see "outbox flusher").
+# `immediate` never queues. `wait-a-round` and `batch` are DISTINCT at
+# delivery (docs/courier-wire.md §2, "wait-a-round delivers on the
+# recipient's next wake"): `batch` queues into the outbox for the
+# lazily-started flusher below (see "outbox flusher"); `wait-a-round` writes
+# straight through, at once, but into the WAIT_A_ROUND_DIRNAME subfolder of
+# the recipient's own mailbox — a location the recipient's kernel-side
+# mailbox watch never scans (inotifywait is not run with `-r`, so a file
+# landing in a child directory raises no event on the parent watch it is
+# armed on) — so nothing wakes on its arrival; the next ordinary drain of
+# that mailbox, for any other reason, picks it up alongside everything else
+# (see `_own_mailbox_message_files`).
 OPERATOR_MESSAGE_PREFIX = "orchard:operator:message:"
 AGENT_MESSAGE_PREFIX = "orchard:agent:message:"
 MESSAGE_PRIORITIES = ("immediate", "wait-a-round", "batch")
 DEFAULT_PRIORITY = "immediate"
 OUTBOX_FLUSH_INTERVAL_S = 5.0
+WAIT_A_ROUND_DIRNAME = "wait-a-round"
 
 
 def is_operator_authority(subject: str) -> bool:
@@ -1183,14 +1205,23 @@ def write_orchard_file(dir_path: Path, name: str, envelope: dict) -> Path:
     return final
 
 
-def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
+def orchard_deliver(dir_path: Path, sid: str, envelope: dict, *,
+                     message_dir: Path | None = None) -> Path:
     """Atomically write the message, touch/create the marker heartbeat, merge
     the durable feature-marker node (project mailboxes only — see
     `write_feature_marker`), bump the parent dir's mtime (nested writes
     don't bubble automatically), give the compaction pass a chance to run,
     then let the name registry react.
+
+    `message_dir`, when given, is where the envelope JSON itself lands —
+    everything else (marker touch, feature-marker merge, mtime bump,
+    compaction, deregistration) still targets `dir_path` unchanged. Used by
+    `deliver_with_priority`'s `wait-a-round` case to park the message under
+    `dir_path`'s `WAIT_A_ROUND_DIRNAME` subfolder, outside the kernel watch
+    the recipient's mailbox monitor is armed on, while every other piece of
+    bookkeeping proceeds exactly as an immediate delivery's would.
     """
-    final = write_orchard_file(dir_path, orchard_message_name(sid), envelope)
+    final = write_orchard_file(message_dir or dir_path, orchard_message_name(sid), envelope)
     (dir_path / f"{sid}.marker").touch(exist_ok=True)
     if dir_path.parent.name == "projects":
         # A topic subscriber folder (`orchard/topics/<name>/<sid>/`) is also
@@ -1377,14 +1408,17 @@ def persist_session_role(sid: str, role: str | None) -> None:
 
 # ---------------------------------------------------------------------------
 # outbox flusher (docs/courier-wire.md §2, "Session messages ... ruled
-# 2026-07-29"): `wait-a-round`/`batch` priority traffic is queued HERE
-# instead of going straight through orchard_deliver(), and is picked up by
-# ONE lockfile-singleton flusher process on a fixed cadence — lazily started
-# by the first batch-class send, and closing itself the first time a drain
+# 2026-07-29"): `batch` priority traffic is queued HERE instead of going
+# straight through orchard_deliver(), and is picked up by ONE
+# lockfile-singleton flusher process on a fixed cadence — lazily started by
+# the first batch-class send, and closing itself the first time a drain
 # finds nothing left (Decision-129's owner-closes shape: the thing that
 # created the work is also what ends it, rather than a daemon nothing ever
 # stops). `immediate` priority never touches this — it is the unchanged
 # direct orchard_deliver() call every other subject already used.
+# `wait-a-round` doesn't touch it either (see `deliver_with_priority`/
+# `_wait_a_round_dir`, just below) — it delivers at once, just into a
+# subfolder its recipient's own watch never scans.
 # ---------------------------------------------------------------------------
 
 
@@ -1474,12 +1508,23 @@ def cmd_flush_outbox(args) -> None:
         os.close(fd)
 
 
+def _wait_a_round_dir(dir_path: Path) -> Path:
+    return dir_path / WAIT_A_ROUND_DIRNAME
+
+
 def deliver_with_priority(dir_path: Path, sid: str, envelope: dict, priority: str) -> None:
-    """`immediate` writes straight through orchard_deliver(), unchanged;
-    `wait-a-round`/`batch` queue into the outbox and wake the flusher —
-    'immediate traffic never queues' (docs/courier-wire.md §2)."""
+    """`immediate` writes straight through orchard_deliver(), unchanged —
+    'immediate traffic never queues' (docs/courier-wire.md §2). `batch`
+    queues into the outbox and wakes the flusher, delivered on its 5-second
+    cadence. `wait-a-round` delivers AT ONCE, same as immediate, but into
+    the recipient's `WAIT_A_ROUND_DIRNAME` subfolder instead of straight
+    into `dir_path` — a shape its own mailbox watch never fires on, so the
+    message sits there, already delivered, until the recipient's ordinary
+    drain next runs for any other reason (`_own_mailbox_message_files`)."""
     if priority == "immediate":
         orchard_deliver(dir_path, sid, envelope)
+    elif priority == "wait-a-round":
+        orchard_deliver(dir_path, sid, envelope, message_dir=_wait_a_round_dir(dir_path))
     else:
         _enqueue_outbox(dir_path, sid, envelope)
         _ensure_flusher_running()
@@ -1817,6 +1862,19 @@ def orchard_send(args) -> dict:
     return env
 
 
+def _own_mailbox_message_files(dir_path: Path, sid: str) -> list[Path]:
+    """Every message file addressed to this session, in delivery order: the
+    ordinary mailbox PLUS its `WAIT_A_ROUND_DIRNAME` subfolder
+    (`deliver_with_priority`'s `wait-a-round` case). A wait-a-round message
+    is already fully delivered — only its ARRIVAL raised no kernel event —
+    so the ordinary drain picks both up together, sorted by filename (sid
+    then timestamp) so a mix of the two still reads oldest-first."""
+    direct = list(dir_path.glob(f"{sid}.*.json"))
+    wait_dir = _wait_a_round_dir(dir_path)
+    deferred = list(wait_dir.glob(f"{sid}.*.json")) if wait_dir.is_dir() else []
+    return sorted(direct + deferred, key=lambda p: p.name)
+
+
 def orchard_receive_own(*, skip_replies: bool = False) -> list[dict]:
     """This session's personal-mailbox messages, delete-on-read. Skipped
     (returns []) when XDG_RUNTIME_DIR is unset, so a plain `receive` in an
@@ -1840,7 +1898,7 @@ def orchard_receive_own(*, skip_replies: bool = False) -> list[dict]:
     out = []
     if not dir_path.is_dir():
         return out
-    for f in sorted(dir_path.glob(f"{sid}.*.json")):
+    for f in _own_mailbox_message_files(dir_path, sid):
         if f.name.startswith("."):
             continue
         try:
@@ -2220,8 +2278,10 @@ def main() -> None:
                          "sender's own project")
     s.add_argument("--priority", choices=MESSAGE_PRIORITIES, default=DEFAULT_PRIORITY,
                     help="orchard:agent:message:* only: immediate (default, never "
-                         "queues), wait-a-round, or batch (queued for the "
-                         "outbox-flusher's 5-second cadence)")
+                         "queues), wait-a-round (delivered at once but into a "
+                         "subfolder that wakes nobody — picked up on the "
+                         "recipient's next ordinary drain), or batch (queued "
+                         "for the outbox-flusher's 5-second cadence)")
     s.set_defaults(func=cmd_send, parser=s)
 
     s = msg_args(sub.add_parser("broadcast"))
@@ -2272,8 +2332,8 @@ def main() -> None:
 
     s = sub.add_parser(
         "flush-outbox",
-        help="internal — never call directly; lazily spawned by a batch/"
-             "wait-a-round send (_ensure_flusher_running)",
+        help="internal — never call directly; lazily spawned by a batch "
+             "send (_ensure_flusher_running)",
     )
     s.add_argument("--interval", type=float, default=OUTBOX_FLUSH_INTERVAL_S,
                     help=f"seconds between drains (default {OUTBOX_FLUSH_INTERVAL_S})")

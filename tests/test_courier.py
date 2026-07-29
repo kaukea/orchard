@@ -251,6 +251,53 @@ class PriorityQueueingTests(unittest.TestCase):
         self.assertFalse(courier.outbox_dir().is_dir()
                           and list(courier.outbox_dir().glob("*.json")))
 
+    def test_wait_a_round_priority_neither_queues_nor_writes_to_the_direct_mailbox(self):
+        """docs/courier-wire.md §2, 'wait-a-round delivers on the
+        recipient's next wake': distinct from BOTH `immediate` (writes
+        straight into the mailbox, matched here by the kernel watch) and
+        `batch` (queues into the outbox) — it writes AT ONCE, but into
+        `WAIT_A_ROUND_DIRNAME`, a subfolder of the recipient's own mailbox
+        directory."""
+        target = self.runtime_dir / "orchard" / "projects" / "own.repo@main"
+        env = courier.make_orchard_envelope(
+            ":session:senderX", ":session:recipientA",
+            "orchard:agent:message:content", body="parked",
+        )
+        courier.deliver_with_priority(target, "recipientA", env, "wait-a-round")
+
+        self.assertFalse(
+            any(target.glob("recipientA.*.json")),
+            "wait-a-round priority wrote straight into the direct mailbox like immediate",
+        )
+        self.assertFalse(
+            courier.outbox_dir().is_dir() and list(courier.outbox_dir().glob("*.json")),
+            "wait-a-round priority queued into the outbox like batch",
+        )
+        parked = list(courier._wait_a_round_dir(target).glob("recipientA.*.json"))
+        self.assertEqual(len(parked), 1)
+        self.assertEqual(json.loads(parked[0].read_text())["body"], "parked")
+
+    def test_wait_a_round_message_is_picked_up_by_the_ordinary_drain(self):
+        """The delivery half of the same ruling: `orchard_receive_own` (the
+        function every ordinary wake — `monitor`, `receive` — drains
+        through) reads the wait-a-round subfolder alongside the direct
+        mailbox, so a parked message surfaces on the next ordinary drain
+        without anything having woken on its arrival."""
+        target = self.runtime_dir / "orchard" / "projects" / "own.repo@main"
+        env = courier.make_orchard_envelope(
+            ":session:senderX", ":session:recipientA",
+            "orchard:agent:message:content", body="parked",
+        )
+        courier.deliver_with_priority(target, "recipientA", env, "wait-a-round")
+
+        with mock.patch("courier.project_slug", return_value="own.repo@main"), \
+             mock.patch("courier.whoami", return_value="recipientA"):
+            drained = courier.orchard_receive_own()
+
+        self.assertEqual([e["body"] for e in drained], ["parked"])
+        self.assertEqual(list(courier._wait_a_round_dir(target).glob("recipientA.*.json")), [],
+                          "delete-on-read should have consumed the parked file")
+
 
 class OutboxFlusherProcessTests(unittest.TestCase):
     """CLI-level: the real `flush-outbox` subprocess — lockfile-singleton,
@@ -1030,6 +1077,81 @@ class MonitorCliTests(unittest.TestCase):
         env = json.loads(line)
         self.assertEqual(env["to"], ":topic:widgets")
         self.assertEqual(env["body"], "topic hello")
+
+    def _start_armed_monitor(self, session_id):
+        """`_start_monitor` plus one throwaway immediate round-trip, read
+        back before returning — `monitor`'s own unconditional startup
+        catch-up drain (the "closes the startup race" comment at
+        `_watch_source_forever`) would otherwise race a wait-a-round send
+        made right after spawning: a message that lands before the watch
+        is actually armed is deliberately still delivered by that catch-up,
+        which is correct behaviour but indistinguishable, by a bare
+        `_readline_within` immediately after `_start_monitor`, from a
+        genuine kernel wake — exactly the distinction these tests exist to
+        prove. Consuming one real round trip first proves the watch is
+        live before the message under test is ever sent."""
+        proc = self._start_monitor(session_id)
+        self._courier(
+            "armed-probe", "send", "--to", f":session:{session_id}",
+            "--subject", "orchard:agent:message:content", "--body", "armed-probe",
+        )
+        self.assertIsNotNone(self._readline_within(proc, 10), "monitor never armed")
+        return proc
+
+    def test_wait_a_round_message_alone_wakes_nobody(self):
+        """docs/courier-wire.md §2, 'wait-a-round delivers on the
+        recipient's next wake': a wait-a-round send lands in
+        WAIT_A_ROUND_DIRNAME, a subfolder `monitor`'s own-mailbox watch
+        never scans (inotifywait is not run with `-r`), so its arrival
+        raises no kernel event and the monitor stays silent."""
+        proc = self._start_armed_monitor("recipientA")
+        self._courier(
+            "senderX", "send", "--to", ":session:recipientA",
+            "--subject", "orchard:agent:message:content", "--body", "park me",
+            "--priority", "wait-a-round",
+        )
+
+        self.assertIsNone(
+            self._readline_within(proc, 2),
+            "monitor woke on a wait-a-round message that should have parked silently",
+        )
+
+    def test_wait_a_round_message_is_delivered_on_the_next_ordinary_wake(self):
+        """The other half of the same ruling: a wait-a-round message IS
+        delivered once the recipient wakes for any OTHER reason — here, an
+        ordinary immediate send to the same mailbox. Both bodies come back
+        from the one drain that wake triggers."""
+        proc = self._start_armed_monitor("recipientA")
+        self._courier(
+            "senderX", "send", "--to", ":session:recipientA",
+            "--subject", "orchard:agent:message:content", "--body", "park me",
+            "--priority", "wait-a-round",
+        )
+        self.assertIsNone(
+            self._readline_within(proc, 1),
+            "wait-a-round message woke the monitor immediately, defeating the point",
+        )
+
+        self._courier(
+            "senderY", "send", "--to", ":session:recipientA",
+            "--subject", "orchard:agent:message:content", "--body", "wake trigger",
+        )
+
+        # Both envelopes come from the SAME drain, one `print()` apiece,
+        # microseconds apart — `select.select` on the pipe's raw fd only
+        # proves the FIRST is ready; `TextIOWrapper.readline()` can slurp
+        # both already-written lines off the OS pipe in one underlying
+        # read and hand back just the first, leaving the second fully
+        # buffered client-side where a second `select()` on the (by then
+        # empty) raw fd would never see it ready. A direct `readline()`
+        # right after — no `select` — reads it out of that same buffer
+        # instantly instead of blocking, since it is already there.
+        first = self._readline_within(proc, 10)
+        self.assertIsNotNone(first, "monitor did not wake on the triggering message at all")
+        second = proc.stdout.readline()
+        self.assertTrue(second, "monitor delivered only one of the two pending messages")
+        bodies = {json.loads(first)["body"], json.loads(second)["body"]}
+        self.assertEqual(bodies, {"park me", "wake trigger"})
 
 
 if __name__ == "__main__":
