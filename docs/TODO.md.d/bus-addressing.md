@@ -752,6 +752,14 @@ ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
   operator's gate included; "waiting" only on another agent) — and the sidebar maps
   both words to their own glyphs, proven through real CLI posts. Four charters and
   one genuinely broken hook migrated off the deleted surface.
+- 📏 Token cost is measured, not asserted: a repeatable harness (tools/token-ab.py)
+  drives the ruled static scenario through real headless courier sessions against
+  any two checkouts, collecting messaging-layer snapshots, Claude usage and
+  timings in one pass. First honest run, base against this branch: charter
+  −60.3%, cost −8.8%, output tokens +47.6% at the harness's small four-turn scale
+  — reported as measured, both directions; the live announce path separately
+  measured −19%. Continuous regression alerting stays with the token-regression
+  task.
 
 ### 🐛 Bug fixes
 - 🐛 A truncated header or feature row no longer loses its trailing ellipsis: the
