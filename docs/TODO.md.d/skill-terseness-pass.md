@@ -96,3 +96,21 @@ the same behaviour as the old — a skill that got terser but stopped firing is 
 regression, not a win. New: pick 5 skills at random, and confirm each is findable from
 its `metadata.tags` alone (no title, no description) by someone who knows what they're
 looking for but not its name.
+
+## PARKED 2026-07-29 — delayed until the courier work is done
+
+Operator order: *"kill that agent, delay till courier is done."* Its supervisor was
+stopped; the landscaper was left alive, parked at its plan gate in tmux window
+`orchids ▸ skill-terseness-pass`, worktree `.claude/worktrees/skill-terseness-pass`
+on `f/skill-terseness-pass` at `a421c6c`. **Zero commits, clean tree — no edits were
+made.** The branch and worktree are intact for resumption.
+
+Where it stopped: at the plan gate, asking the operator the duplication-scope call for
+`skills/gardener` vs `agents/gardener.md` and `skills/workflow` +
+`skills/workflow-complete` vs `agents/landscaper.md` — which side of each pair stays
+authoritative. Its dying supervisor also reported having checked sibling repositories on
+disk (which the worktree-scoped explorers could not reach) and finding something
+materially relevant to the cross-repo audience question; **that finding was not captured
+before the stop and is lost unless the landscaper is resumed.**
+
+Dependency added: `⊘bus-addressing`. The courier work comes first by operator order.

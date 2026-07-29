@@ -2214,7 +2214,7 @@ Consequences:
 - The publish direction remains a real, separate concern; nothing here says orchids
   stops shipping. It says orchids does not consume what it ships.
 
-## [2026-07-29 CEST] Decision-123: cross-worktree agents never communicate — that is a NAMESPACE, and nothing parses a worktree
+## [2026-07-29 CEST] Decision-123: nothing parses a worktree; delivery scope is a NAMESPACE the sender is given, and its form is unruled
 #courier #transport #namespace #worktree #addressing #bus
 
 Operator ruling (2026-07-29), given while verifying the courier recovery:
@@ -2225,10 +2225,22 @@ be it they're the right tool for the job or not."*
 
 Two separate statements, both binding:
 
-**1. Isolation is correct, and its name is a namespace.** Agents in different
-worktrees are not meant to reach each other. That is not a defect to be bridged;
-it is the intended boundary. The mechanism is a NAMESPACE — an identifier a
-sender is given, not a fact it derives.
+**1. The mechanism is a NAMESPACE — an identifier a sender is GIVEN, not a fact it
+derives.** This part stands unchanged.
+
+**CORRECTED same day, by the operator, before anything was built on it:** the first
+draft of this entry recorded "agents in different worktrees are not meant to reach
+each other" as the ruling. That is WRONG and he struck it: *"just isolating worktrees
+does not work for agents communicating on what work they are doing across worktrees
+(feature teams)."* A feature is built by a TEAM of landscapers (Decision-121), that
+team spans worktrees, and its members must talk about the work they are doing.
+Isolation by worktree would cut the team apart.
+
+So: worktree is not the boundary, and it is not the namespace either. **What the
+namespace IS remains OPEN and is the operator's to set** — it is explicitly NOT
+inferred here to be the feature, the task, or anything else. What is settled is only
+the negative: it is not derived from a worktree, and it is not a branch name parsed
+into a string.
 
 **2. Nothing parses a worktree. Ever.** The current implementation computes its
 delivery directory from the git branch (`current_branch()` → `_sanitise_branch()`

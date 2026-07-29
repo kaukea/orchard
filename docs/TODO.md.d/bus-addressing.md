@@ -91,6 +91,31 @@ script it is one implementation, testable, and free at read time.
 
 ## Findings
 
+### The CLI verb surface is invented, and it is not the message subjects
+
+Operator, 2026-07-29: *"none of the verbs used by the agent are the message subjects.
+The language was made up to fit various iterations, giving too many options to agents
+when they don't need them."*
+
+Two distinct vocabularies exist and they do not correspond:
+
+- **CLI verbs** (17 at HEAD): `init whoami teardown receive monitor project-dir announce
+  depart identity status send broadcast request reply signal ask validate`
+- **Message subjects**: a separate closed corpus of exact strings (README: 22), validated
+  by membership.
+
+The verbs accreted across successive rewrites — each iteration adding the shape it needed
+and leaving the previous one in place — rather than being derived from what an agent
+actually has to express. The result is a surface an agent must choose from, with no rule
+telling it which verb carries which subject, and most of the choices are ones it never
+needed. `announce` at HEAD is already documented in its own docstring as a near-no-op kept
+only so an existing caller does not regress.
+
+This is the same failure Decision-123 names in the routing code: a shape kept because the
+previous version had it. **Whatever addressing this task lands, the verb surface is cut to
+what agents actually need to say — it is not extended.** The number and names of verbs are
+the operator's to set.
+
 ### The courier AGENT costs ~21k tokens to send ~7 messages — measured this session
 
 Operator, 2026-07-29, on watching it run: *"you cannot have 8 messages but 10k [tokens]
