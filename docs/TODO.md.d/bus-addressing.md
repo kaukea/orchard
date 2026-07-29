@@ -705,6 +705,13 @@ ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
   test: real courier and topic CLI calls drive a fake two-project, four-feature
   world end to end into the rendered tree — every reachable state, stale as colour,
   cross-project isolation — plus a frozen-frame companion for human validation.
+- 🔧 The durable feature marker has its writer back (Decision-099): every delivered
+  envelope merges into a per-(project, feature) marker, fail-open and never
+  truncating, so a quiet task survives a restart instead of vanishing. The status
+  snapshot carries tokens in and out first-class and a working effort reading — the
+  old code read an environment variable no launcher sets. Orphan detection is
+  resolved by three independent staleness signals instead of depending on a clean
+  shutdown hook.
 
 ### 🐛 Bug fixes
 - 🐛 A truncated header or feature row no longer loses its trailing ellipsis: the
