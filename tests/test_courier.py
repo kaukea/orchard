@@ -9,6 +9,7 @@ Runs under both `python3 -m unittest discover` and `pytest`.
 """
 import json
 import os
+import re
 import select
 import subprocess
 import sys
@@ -16,6 +17,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 try:
     import jsonschema
@@ -108,6 +110,36 @@ class CliRoundTripTests(unittest.TestCase):
 
         if jsonschema is not None:
             jsonschema.validate(instance=msg, schema=_schema())
+
+
+class WakeFilterTests(unittest.TestCase):
+    """Unit-level: `_wait_for_orchard_activity` — the blocking wait used by
+    `request`/`ask` — filters its inotifywait watch to exactly the recipient's
+    own reply pattern, the same `--include` regex `monitor`'s own mailbox
+    source already uses, instead of waking on every sibling session's traffic
+    in the shared project directory."""
+
+    def test_activity_wait_includes_the_recipients_own_pattern(self):
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return subprocess.CompletedProcess(cmd, 0)
+
+        with mock.patch("courier.shutil.which", return_value="/usr/bin/inotifywait"), \
+             mock.patch("courier.subprocess.run", side_effect=fake_run):
+            courier._wait_for_orchard_activity(Path("/tmp/some-project-dir"), "recipientA", 1.0)
+
+        cmd = captured["cmd"]
+        self.assertIn("--include", cmd)
+        include_value = cmd[cmd.index("--include") + 1]
+        self.assertEqual(include_value, courier._own_mailbox_path_filter("recipientA"))
+
+    def test_activity_wait_filter_matches_own_reply_not_a_sibling(self):
+        pattern = courier._own_mailbox_path_filter("recipientA")
+        self.assertIsNotNone(re.search(pattern, "/some/dir/recipientA.2026-01-01T00-00-00.000000.json"))
+        self.assertIsNone(re.search(pattern, "/some/dir/siblingB.2026-01-01T00-00-00.000000.json"))
+        self.assertIsNone(re.search(pattern, "/some/dir/recipientA.marker"))
 
 
 class SignalAttributionTests(unittest.TestCase):
