@@ -32,7 +32,7 @@ name: <folder-name>                  # MUST equal the directory name
 description: <when to load it — the trigger — then what it does, one flowing sentence(s).>
 roles: [ <slash-path>, … ]           # ≥1 placement in the role vocabulary; `general` is explicit
 metadata:
-  tags: [ <grep-able trigger words> ]
+  tags: [ <short, specific — see Rules: tags are a discovery index> ]
   share: github                      # present on every fleet-shared skill
 ---
 ```
@@ -61,6 +61,15 @@ selection mechanism. A placeholder description is a bug: the skill will never fi
 
 - **Trigger-first descriptions.** The description sells the trigger; the body carries the
   procedure.
+- **Tags are a discovery index, not decoration.** Each tag MUST be specific and short
+  enough that someone who knows the behaviour they want — but not this skill's name —
+  can find it by grepping tags alone, title and description hidden. Tags MUST
+  disambiguate this skill from its siblings; drop generic tags any skill could carry,
+  and drop any tag that doesn't earn its place in that index.
+- **Name the behaviour, never the agent.** A skill's name MUST describe the reusable
+  behaviour it provides and MUST NEVER duplicate an agent/role name — skills are usable
+  by any agent, and naming one after a role implies the opposite; treat it as a defect
+  to fix on sight.
 - **One concern.** A skill that needs "and also…" is two skills.
 - **Reference, don't restate.** Formats live in `AGENTS.files.md`; principles in
   `AGENTS.shared.md`. A skill that copies them will drift from them.
