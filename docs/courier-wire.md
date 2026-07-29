@@ -487,10 +487,33 @@ today) no longer sets it either. A waiting agent is STATUS (`"waiting"`, per §2
 four-channel ruling), surfaced by the sidebar like everything else — not a bespoke
 summons mechanism.
 
-**[GAP, introduced by the removal]** Orphan detection lost its structural signal.
-Nothing removes the shared project directory when one session ends, so a departed
-courier no longer leaves an absence anyone can observe; detection now depends entirely
-on `hooks/courier-end.sh`'s self-wake landing.
+**[RESOLVED 2026-07-29]** Orphan detection lost its structural signal (no directory
+removal to observe on departure), but does NOT depend entirely on
+`hooks/courier-end.sh`'s self-wake landing — that was true only while the durable
+feature marker had no writer (§2b's now-resolved GAP). Three independent MTIME-based
+signals stand in for the removed absence, none of them needing a departure event to
+fire at all (they read stillness, not a message):
+
+1. **Per-task staleness, the sidebar's own signal** — `tools/sidebar_model.py`'s
+   `_status_for()` reads a feature-marker task's `updated` field (written by
+   `courier.write_feature_marker()`/`merge_feature_marker()`, §2b) and flips it to
+   `stale` once it ages past `ACTIVE_WINDOW_SECONDS` (60 minutes), checked BEFORE the
+   lifecycle/outcome read — a marker still claiming `working` whose `updated` is old
+   renders stale regardless (Decision-094/100: staleness is a colour, never a
+   removal). This is the row-level orphan signal an operator actually sees, and it
+   was starved of data — not broken — while the writer was missing.
+2. **Per-session heartbeat** — the `<sid>.marker` touched by every `orchard_deliver()`
+   (§3) ages the same way; a session that stops posting simply stops advancing it.
+3. **Name-registry stale-guard** — `live_name_registry_entries()` /
+   `_is_name_entry_live()` (`NAME_REGISTRY_STALE_SECONDS`, 1 hour) already reads a
+   dead registry-entry mtime as not-live "even if `lifecycle:stopped` never arrived
+   (a crash)" — independent of both markers above, covering name-resolution
+   liveness specifically.
+
+`hooks/courier-end.sh`'s self-wake remains the PROMPT clean path (an orderly
+`lifecycle:stopped` removes the name-registry entry at once, §4 "Writing"/`_deregister_on_stop`)
+— what changed is that it is no longer the ONLY path: a crash or a silently killed
+session still ages out under all three mtime signals above without it.
 
 ---
 
