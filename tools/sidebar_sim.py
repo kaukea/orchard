@@ -491,22 +491,28 @@ def build_static_scenario(root: Path, base_dt: datetime) -> Emitter:
 # ONCE, in a single repo, each row named so it can be pointed at
 # unambiguously ("that one is wrong").
 #
-# Two of the six named scenarios have NO signal in the current event
-# grammar and are approximated rather than reproduced:
+# Two of the six named scenarios are still APPROXIMATED here, not because
+# the grammar lacks signal for them (it no longer does) but because this
+# simulator has not been updated to drive it:
 #   - "blocked on another task" and "blocked on the user answering a
-#     question" have no lifecycle/outcome verb to carry them (sidebar.py:
-#     279's "waiting"/"awaiting_agent" are defined in STATUS_EMOJI but
-#     never produced by `_status_for` — see tools/sidebar_model.py:615).
-#     `Repo.waiting_on_operator` is likewise always False
-#     (`_apply_common`, tools/sidebar_model.py:676, "no source in this
-#     grammar") and is never read by anything that draws a row, so it
-#     cannot carry the second one either. Both are approximated here as an
-#     explicit "stopped" lifecycle (-> status "idle", the same hollow
-#     circle STATUS_EMOJI gives "waiting"/"awaiting_agent" themselves)
-#     with the blocked reason spelled out in the activity text, since the
-#     glyph alone cannot distinguish them. This is a label-level stand-in,
-#     not a rendered state — do not read a passing look at these two rows
-#     as proof the real states work.
+#     question" now DO have a producer: an ordinary `orchard:agent:status`
+#     post with body "questioning" (an answer this agent asked for is
+#     outstanding) or "waiting" (this agent is waiting on another agent).
+#     `_status_for` (tools/sidebar_model.py) maps those two activity words
+#     to Decision-058's "waiting" and "awaiting_agent" glyph states
+#     respectively (M2 remap, ruled 2026-07-29 — "Questioning is not
+#     waiting: the two wait words", docs/TODO.md.d/bus-addressing.md
+#     §Decision entries). `Repo.waiting_on_operator` remains always False
+#     (`_apply_common`, tools/sidebar_model.py:796, "no source in this
+#     grammar") — that repo-level field is a separate, still-unbuilt
+#     signal from the per-agent activity word used above.
+#     This module still approximates both rows below as an explicit
+#     "stopped" lifecycle (-> status "idle") with the blocked reason
+#     spelled out in the activity text, rather than emitting the real
+#     "questioning"/"waiting" activity words. This is a label-level
+#     stand-in, not a rendered state — do not read a passing look at these
+#     two rows as proof the real states render; that proof lives in
+#     `tests/test_sidebar_model.py`'s coverage of `_status_for`, not here.
 #   - a feature with NO tasks at all has no code path either: `_assemble_
 #     repo` (tools/sidebar_model.py:983-1009) only ever creates a
 #     `_FeatureBuilder` entry alongside at least one task, whether from a
@@ -750,11 +756,12 @@ def build_major_scenarios_scenario(root: Path, base_dt: datetime) -> Emitter:
     em.post(DIR_SURVEY, REPO_SURVEY, SURVEY_TRUNC_SHORT_SID, "orchard:agent:outcome:success",
             identity_block=trunc_short_identity, status_block=trunc_short_status)
 
-    # --- "Blocked" pair: SIMULATED APPROXIMATIONS ONLY. Neither state
-    # exists in the current event grammar (see the module comment above);
-    # both are an explicit "stopped" lifecycle (-> status "idle") with the
-    # blocked reason spelled out in the activity text, since the glyph
-    # cannot carry the distinction itself. --------------------------------
+    # --- "Blocked" pair: SIMULATED APPROXIMATIONS ONLY. Both states now
+    # have real signal in the event grammar (see the module comment above)
+    # but this simulator still emits an explicit "stopped" lifecycle
+    # (-> status "idle") with the blocked reason spelled out in the
+    # activity text, instead of the real "questioning"/"waiting" activity
+    # words. --------------------------------------------------------------
     blocked_task_identity = identity(
         "sower", feature=FEATURE_BLOCKED, feature_name=FEATURE_BLOCKED_NAME,
         task="blocked-on-other-task", task_name="Blocked on another task (simulated)",
