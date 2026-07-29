@@ -107,11 +107,19 @@ session ──spawns──> courier sidecar (shares parent's session id)
 - **The fan-out is killed** — there is no broadcast to every inbox any more
   (it was the token leak). Instead: status/lifecycle/outcome/delegation
   telemetry are TOPIC posts (`orchard_topic.py post ...`) into the project
-  layout, which is the sidebar's feed; a lifecycle `signal` to a parent is a
-  DIRECTED `:session:<parent>` message (cross-repo via `ORCHID_PARENT_PROJECT`,
-  the same allowlist gating as any other cross-project `:session:` send); an
-  operator question is a directed request to the reserved `:session:operator`
-  mailbox. The old `orchid:*` broadcast WIRE GRAMMAR v1 is retired.
+  layout, which is the sidebar's feed. There is no directed lifecycle
+  callback to a parent: a watcher (the supervisor included) LISTENS for
+  `lifecycle:stopped` + `outcome` on the feed, and the close is a consequence
+  of those events (the invented `signal` verb and its seven-state vocabulary
+  are deleted; `ORCHID_PARENT_PROJECT` has no consumer). Session messages
+  carry two relaying families — `orchard:operator:message:*` is authority,
+  delivered immediately, provenance structural in the subject;
+  `orchard:agent:message:*` is ordinary directed mail with an
+  immediate/wait-a-round/batch priority (batch rides a five-second
+  outbox flusher; wait-a-round parks watch-blind and rides the recipient's
+  next ordinary wake). An operator question is a directed request to the
+  reserved `:session:operator` mailbox. The old `orchid:*` broadcast WIRE
+  GRAMMAR v1 is retired.
 - **Subjects** are a CLOSED corpus of 22 exact strings, validated by exact
   membership — no regex, no `startswith`, no derivation:
   `orchard:agent:{status, outcome:success|fail,
@@ -149,9 +157,9 @@ session ──spawns──> courier sidecar (shares parent's session id)
   reaps, or removes another agent's process, pane, window, or files — killing
   corrupts state and hides bugs. Agents start and stop themselves (self-teardown
   is each agent's own last act); whatever a dead agent leaves behind is reported
-  to the operator as observed state, never cleaned up unilaterally. A lifecycle
-  `signal` is always attributed to the caller's own session — signing as another
-  session does not exist.
+  to the operator as observed state, never cleaned up unilaterally. Every post
+  is attributed to the caller's own session — signing as another session does
+  not exist.
 - **No delivery guarantee** outside `request`/`reply`/`ask`. An ordinary
   directed send is ephemeral, unacknowledged, and delete-on-read; a sender
   expects no answer and chooses to retry, abandon, or error.
@@ -239,16 +247,19 @@ $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
   information; done subagents vanish), and dim guide-line footers (age vs
   worked, tokens/dollars — deterministic zero-token local sources).
   Role-emoji and location-badge maps are data-driven so pending picks drop in
-  without code changes. The event grammar this model reads (`orchard_topic.py`'s
-  `lifecycle`/`status`/`delegation`/`outcome`/`task` verbs) carries no phase
-  tick, question badge, or age/worked/tokens/dollars signal yet — those row
-  fields stay in the model (so the renderer needs no special-casing once a
-  source lands) but currently always render at their empty default; the `?N`
-  question badge is retired outright (questions no longer reach a feature
-  row at all — see below).
+  without code changes. Every post now carries a script-attached telemetry
+  snapshot (model, effort, context occupancy, tokens in/out, dollars from the
+  courier's own price table), and the model consumes it: the repo footer's
+  age/worked/tokens/dollars and each task's running time render from real
+  data, computed deterministically from event timestamps — no phase tick on
+  the wire (the active stage stays a client-side derivation from the agent's
+  role), and the `?N` question badge is retired outright (questions no longer
+  reach a feature row at all — see below).
   A scroll offset follows the selected row once the tree exceeds the pane's
-  height. The project header is a static half-block colour-gradient bevel (the
-  classic orchid family), flat light-gray instead for a paused project. Each
+  height. The project header is a full-width band whose ends taper toward both
+  pane edges through eighth-resolution block glyphs, the PRIMARY core widening
+  with the pane (every feature row shares the identical band, differing only
+  in text colour); flat light-gray instead for a paused project. Each
   live agent gets a stable colour from an 8-entry orchid-species palette,
   degrading gracefully on a limited terminal. Truncated text ends in an ellipsis,
   never a hard cut. Role names appear nowhere; structure carries the role.
