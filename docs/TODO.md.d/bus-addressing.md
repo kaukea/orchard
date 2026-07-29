@@ -768,6 +768,12 @@ ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
 - 🐛 Subagent placement under the stage — asked for repeatedly — is now proven by a
   real passing test instead of an unverified docstring claim: subagent rows nest
   beneath their agent's identity line, beneath the task, never between step rows.
+- 🐛 The whole suite — 634 tests — holds zero red across three consecutive runs,
+  which required fixing a real concurrency bug: the courier's Monitor could orphan
+  a live filesystem watcher on teardown when a watcher thread respawned inside the
+  kill window, and the orphan then failed a later, unrelated test. Fixed at the
+  root with a stop event checked at both race points, validated by fifty-five
+  targeted repeats.
 
 #### 📡 `f/observability` → `archive/observability`
 
