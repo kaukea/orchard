@@ -1,13 +1,14 @@
-"""Paints a feature's own row: shares the header's "falling block" layout
-verbatim (`sidebar_paint_shared._draw_falling_block_row`) — the SAME
-PRIMARY-core/SECONDARY-fade background as the repo header above it, differing
-only in font colour (operator, 2026-07-28: "the feature should do exactly
-the same, but maybe in a slightly different color for the font while
-keeping the same background we chose for the project... That shared
-background is deliberate: it is what ties feature to project visually, and
-the font colour is what separates them. Do not give the feature row its own
+"""Paints a feature's own row: shares the header's edge-taper band layout
+verbatim (`sidebar_paint_header._draw_edge_taper_row`) — the SAME
+PRIMARY-core/SECONDARY-taper background as the repo header above it, on
+EVERY feature row, not just the first (ruling 3), differing only in font
+colour (operator, 2026-07-28: "the feature should do exactly the same, but
+maybe in a slightly different color for the font while keeping the same
+background we chose for the project... That shared background is
+deliberate: it is what ties feature to project visually, and the font
+colour is what separates them. Do not give the feature row its own
 background family"). A DONE feature keeps its own separate flat green band
-(unchanged by this step — not part of the falling-block instruction).
+(unchanged by this step — not part of the edge-taper instruction).
 """
 from __future__ import annotations
 
@@ -24,7 +25,8 @@ from sidebar_colour import (  # noqa: E402
 )
 from sidebar_curses_colour import _ColourCache, _safe_addch  # noqa: E402
 from sidebar_glyphs import SPINNER_FRAMES, STATUS_EMOJI  # noqa: E402
-from sidebar_paint_shared import _draw_falling_block_row, _selection_highlight  # noqa: E402
+from sidebar_paint_header import _draw_edge_taper_row  # noqa: E402
+from sidebar_paint_shared import _selection_highlight  # noqa: E402
 from sidebar_rows import Row  # noqa: E402
 from sidebar_text import _truncate  # noqa: E402
 
@@ -56,11 +58,14 @@ def _draw_feature_row(
 
     DONE is the one status that still gets its own separate flat band
     (`FILL_GREEN`, unchanged by this step — this branch predates and is
-    orthogonal to the falling-block redesign, and nothing in the new
+    orthogonal to the edge-taper redesign, and nothing in the new
     instructions touches it). Every other status shares the repo header's
-    own PRIMARY/SECONDARY falling block verbatim — `feature_emphasis_
+    own PRIMARY/SECONDARY edge-taper band verbatim — `feature_emphasis_
     colour` is the "slightly different" font colour that ties this row to
-    its header while still telling the two apart.
+    its header while still telling the two apart. Every row emits its own
+    background regardless of status (ruling 9) — `repo_colour_roles(hue)`
+    is recomputed here rather than assumed carried over from whatever row
+    painted above it.
 
     `selected` lifts PRIMARY/SECONDARY toward white (`_selection_
     highlight`, Decision-111 — never `curses.A_REVERSE`) paired with
@@ -88,4 +93,4 @@ def _draw_feature_row(
         primary = _selection_highlight(primary)
         secondary = _selection_highlight(secondary)
     text_fg = feature_emphasis_colour(primary)
-    _draw_falling_block_row(stdscr, y, width, content, primary, secondary, text_fg, colours, attr_extra)
+    _draw_edge_taper_row(stdscr, y, width, content, primary, secondary, text_fg, colours, attr_extra)
