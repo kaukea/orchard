@@ -7,7 +7,8 @@ for a screen.
 THE RULED TREE (operator, 2026-07-27 — `docs/TODO.md.d/sidebar-teamwork.md`
 section "The tree, as ruled by the operator 2026-07-27" is the
 specification this module is built against; see also Decision-105 through
-Decision-110, Decision-099, Decision-101, and `docs/orchard-bus.md:159`):
+Decision-110, Decision-099, Decision-101, and `docs/courier-wire.md` §4
+(a subagent inherits its parent's session id)):
 
   - **project** — the repository; `<owner>.<repo>` and any `@<branch>`
     worktree variant of it are ONE project, folded together

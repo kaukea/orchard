@@ -1,9 +1,12 @@
-# The orchard bus — messaging specification
+# The courier wire — messaging specification
 
-Status: **DRAFT for operator correction.** Written 2026-07-27 because the messaging
-design existed only as fragments across agent charters, `docs/decisions.md` and the
-code, so every session re-derived it and several built against the wrong half. The
-operator's spoken specification of 2026-07-27 is the authority for the GRAMMAR; the
+Status: **LIVING DOCUMENT (Decision-134).** Kept in sync with the code in the SAME
+commit that changes the wire; never a snapshot from a design round. It is named the
+COURIER (Decision-131). First written 2026-07-27 because the messaging design existed
+only as fragments across agent charters, `docs/decisions.md` and the code, so every
+session re-derived it and several built against the wrong half. The operator's spoken
+specification of 2026-07-27 is the authority for the GRAMMAR, extended by his rulings
+of 2026-07-29 (recorded in `docs/TODO.md.d/observability.md` and folded in below); the
 code is the authority for CURRENT BEHAVIOUR. Where they differ this document says so
 rather than picking a winner.
 
@@ -79,6 +82,35 @@ cross-project allowlist, not a sidebar file).
 (`signal <state> — no parent known, not delivered`). Silence here is by design, not
 a failure.
 
+### Addressing by NAME — ruled 2026-07-29
+
+**[SPEC]** The address an agent uses is the agent's NAME; `:session:<id>` addressing
+STAYS alongside it (cross-repository was named as one case where it is used; the
+division of labour between the two forms is deliberately unsettled). The SCRIPT mints
+stable identifiers and owns filesystem location, access and dispatch (Decision-130);
+resolution is never the agent's problem and never appears in an agent definition.
+
+**[SPEC]** The script maintains a name → identifier/mailbox REGISTRY. An agent enters
+it when its courier initialises; **when agents go down they disappear from the list**
+— the courier removes the entry when `lifecycle:stopped` lands (Decision-129: the
+component that created the entry listens for the finish and destroys it).
+
+**[SPEC]** Resolution is NEAREST-FIRST (Decision-132): a name resolves in your own
+tree first; failing that, walk up until only main has one, and deliver there.
+Outside your own tree an agent may ONLY ask questions or query status — enforced by
+the script, not by prose. OPEN, not to be assumed by an implementer: whether
+teammates sharing a topic gain rights across a tree boundary that non-teammates do
+not.
+
+**[SPEC]** Two live agents holding the same name at the same level is EXPECTED team
+behaviour (Decision-121: several agents share one logical destination) — a
+name-addressed send is delivered to EVERY live holder. A name whose every holder has
+`stopped` is an ERROR back to the sender: undeliverable, nobody live by that name.
+
+**[GAP]** None of the above is built. `tools/courier.py` at this commit has no
+registry, no name resolution, no liveness-driven removal; directed sends accept
+`:session:` forms only.
+
 ---
 
 ## 2. The fixed message list
@@ -94,6 +126,17 @@ written later, by someone else, interoperate without coordinating with the sende
 
 **[SPEC]** The outcome messages are the CONTRACT — they are what other tools consume.
 Emit them faithfully; never overload or approximate a body to suit a local need.
+
+**[SPEC, ruled 2026-07-29]** Four channels, kept apart: **lifecycle** (four states,
+below) · **status** (freetext, one word, for a UX — `blocked` and `waiting` are
+status) · **outcome** (`success|fail`) · **requests** (questions, the operator
+included). Asking a question and waiting are NORMAL lifecycle — started and not
+stopping — never states.
+
+**[GAP]** `courier.py signal` still carries a parallel invented state list
+(`started · building · testing · done · finished · blocked · abandoned`) that appears
+in no specification. Ruled 2026-07-29: DELETED, no shim — every caller migrates to
+status/lifecycle/outcome in the same change.
 
 ### Agent lifecycle tracking — GLOBAL (drives the sidebar)
 
@@ -113,8 +156,23 @@ Emit them faithfully; never overload or approximate a body to suit a local need.
     orchard:bus:subscribe:<topic-name>       script creates the agent's folder and monitor
     orchard:bus:unsubscribe:<topic-name>     script deletes it, discarding remaining content
 
-**[SPEC, changed]** The operator notes pubsub has moved on from the form above; treat
-this section as indicative until re-stated.
+**[SPEC, restated 2026-07-29 — Decision-133]** A team may span several worktrees with
+a teammate in each; the mechanism is pub/sub: subscribe to a topic FOR THE CURRENT
+FEATURE OR TASK, then talk freely to everyone working on it, depending on how the
+SUPERVISOR set it up. The topic is the address — which is how the cross-subtree case
+is served without the subtree ever becoming an identifier. Owning which topic exists
+and who is on it is the supervisor's duty.
+
+**NOTE, unresolved naming:** the subject literals above carry `bus`, which
+Decision-131 retires everywhere — but these exact strings are the operator's own
+dictated grammar of 2026-07-27. Renaming a wire constant he dictated needs his word;
+flagged, not assumed.
+
+**[GAP]** The topic PUBLISH path is broken at this commit: `orchard_topic.py:106`
+calls `courier.write_orchard_file()` and `courier.orchard_message_name()`, neither of
+which exists — any `:topic:` post raises `AttributeError`. (The PROJECT-feed path via
+`orchard_deliver()` works and carries all current traffic.) `subscribe`/`unsubscribe`
+are not implemented as subjects.
 
 ### Session messages — content in the body
 
@@ -128,6 +186,56 @@ Relaying AGENT instructions:
 
 **[SPEC]** Operator content has its OWN subject family, distinct from agent content.
 This is what makes provenance structural rather than a flag someone remembers to set.
+
+**[SPEC, ruled 2026-07-29 — consumption on receipt]** The operator family is
+AUTHORITY + IMMEDIATE: it wakes the recipient at once and is handed up AS the
+operator speaking — structural provenance replaces the `operator_origin` flag, and
+relayed gate words count as the operator's own. The agent family is ordinary directed
+mail, with a PRIORITY class as an optimisation: `immediate` (sent at once) ·
+`wait-a-round` · `batch`. Batched traffic is written by ONE outbox-flusher script on
+a 5-second cadence; immediate traffic never queues.
+
+**[GAP]** Neither relaying family is built; no priority classes, no outbox flusher.
+
+### The ask — ordinary request/response, defined here (ruled 2026-07-29)
+
+**[SPEC]** Asking the OPERATOR is a request like any other: a directed request to the
+reserved `operator` mailbox; the question broker picks it up, displays it, and
+returns the response. The operator is a recipient like any other — no special class,
+sender, or bespoke path. SUCCEEDED/FAILED are the OUTCOME family, not an interrupt
+class; no interrupt vocabulary exists.
+
+**[CODE]** `cmd_ask` (`tools/courier.py:677`) sends
+`orchard:agent:message:request` to `:session:operator` with a JSON body
+(`question_id`, `question`, `options`) and blocks on the matching `in_reply_to`.
+
+**[GAP]** Nothing drains that mailbox in a live fleet: the broker
+(`tools/orchard-question-broker.py`, tested) is deployed nowhere, so every ask hangs.
+Deployment is scoped to the `question-broker-dead` task, not this branch.
+
+---
+
+## 2b. Telemetry — the four metrics, attached by the script
+
+**[SPEC, ruled 2026-07-29]** The metrics are **time · tokens in and out · context
+remaining · model and effort**. They are detected and attached by the SCRIPT, with no
+model involved and at negligible cost (Decision-130): status, identity and telemetry
+are answered inside the script, never leaving it, at zero tokens.
+
+**[CODE]** `orchard_topic.py` already attaches an identity snapshot (`agent`,
+`feature`, `feature_name`, `task`, `task_name`, `parent`) and a status snapshot
+(`model`, `context_tokens`, `spend`) to every post (`_attach_snapshot`).
+
+**[GAP]** Not yet attached: effort, tokens split in/out, timings beyond file
+timestamps. Time aggregates (a feature's age vs time actually worked, a task's
+running time) are computed by deterministic script/renderer code from event
+timestamps — never by an agent reasoning over raw data in its context (operator
+ruling, 2026-07-28).
+
+**[GAP]** The durable feature marker (Decision-099: one file per (project, feature),
+carrying the tasks and their states — what remains when nothing is happening) has a
+correct, tested READER and **no writer anywhere**: the writer was dropped by a
+squash-merge and never restored. Quiet tasks currently vanish on restart.
 
 ---
 
