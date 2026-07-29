@@ -107,9 +107,69 @@ behaviour (Decision-121: several agents share one logical destination) — a
 name-addressed send is delivered to EVERY live holder. A name whose every holder has
 `stopped` is an ERROR back to the sender: undeliverable, nobody live by that name.
 
-**[GAP]** None of the above is built. `tools/courier.py` at this commit has no
-registry, no name resolution, no liveness-driven removal; directed sends accept
-`:session:` forms only.
+**[CODE]** Built in `tools/courier.py` (this commit). One atomic JSON file per
+session under `$XDG_RUNTIME_DIR/orchard/registry/<session-id>.json`
+(`name_registry_dir`/`name_registry_path`), holding `name`, `session_id`,
+`project_slug`, `mailbox_dir`, `started_ts`. Written/refreshed by `register_agent_name`
+— called from `cmd_init`, and refreshed again (mtime bump, `_touch_agent_name`) on
+every `orchard_send()` a session makes, so an active session stays live between
+`init` calls without a full re-register. `name` is this session's agent role
+(`CLAUDE_CODE_AGENT`, i.e. `identity_of()["agent_type"]`) — the only per-agent
+identity fact the codebase already establishes that several concurrent sessions
+legitimately share (Decision-121). **Not itself a separate ruling** — nothing else in
+the tree defines a distinct "name" concept, so this is the implementer's choice for
+this step, flagged for confirmation rather than asserted as settled design.
+
+**[CODE]** Removal on death: `orchard_deliver()` (the single funnel every current
+lifecycle post already uses — both `orchard_send()`'s session/topic delivery and
+`orchard_topic.py`'s `do_post`) calls `_deregister_on_stop()`, which removes the
+**sender's own** entry the moment its `orchard:agent:lifecycle:stopped` envelope
+passes through — never another session's entry (Decision-129, "never delete a live
+peer's entry"). `cmd_signal`'s separate, older lifecycle encoding
+(`orchard:agent:message:content` body `{"kind":"lifecycle",...}`, the 7-state list
+marked `[GAP]` above for deletion) is NOT hooked into this — only the GLOBAL
+`orchard:agent:lifecycle:stopped` subject drives removal, matching "what drives the
+sidebar" elsewhere in this document.
+
+**[CODE]** Stale-guard: `live_name_registry_entries()` treats a registry file's own
+mtime as its liveness marker and excludes anything older than
+`NAME_REGISTRY_STALE_SECONDS` (3600s, matching `sidebar_model.ACTIVE_WINDOW_SECONDS`'s
+"still counts as alive" convention — not imported, so `courier.py` carries no
+dependency on the sidebar layer). This is what catches a session that died without
+ever emitting `lifecycle:stopped` (a crash): its file is left behind, but a `resolve`
+skips it once stale.
+
+**[CODE]** `resolve_name(name)` (`tools/courier.py`) implements nearest-first exactly
+as three tiers, scoped to the sender's OWN REPO only:
+
+1. the sender's exact `project_slug()` (this worktree);
+2. any other worktree of the same repo (same `<owner>.<repo>` prefix, any branch
+   except `main`);
+3. the repo's `main` branch.
+
+Every live holder at the NEAREST non-empty tier is returned (same-level clash
+fan-out, Decision-121) — `send --to <name>` delivers to each of them and reports the
+count. A name held by nobody live, in any tier, is `courier: undeliverable: nobody
+live named '<name>'` (nonzero exit). **Cross-repo name resolution is NOT
+implemented** — `resolve_name` never searches another repo's registry; this stays
+OPEN per the spec above.
+
+**[CODE]** Outside-tree enforcement: when the resolved tier is not the sender's own
+project, `send --to <name>` requires `--subject orchard:agent:message:request`
+(covers both "ask a question" and a status query riding the same request subject);
+any other subject is refused in the send path with an explicit "outside your own
+tree" error (Decision-132), never merely documented.
+
+**[CODE]** `send --to <name>` (no colon prefix) is the name form; `:session:<id>` and
+`:topic:<name>` are unchanged and still route through `orchard_send()` directly. A
+name-resolved delivery bypasses `orchard_send()`'s cross-**repo** allowlist gate
+(`_authorize_cross_project`) on purpose: `resolve_name()` only ever searches the
+sender's own repo, so a resolved candidate is never actually cross-repo — that
+allowlist exists for `ORCHID_PARENT_PROJECT`'s genuinely-different-repo case.
+
+**[GAP, unchanged]** Whether a teammate sharing a topic gains rights across a tree
+boundary that a non-teammate does not (Decision-133's open question) remains
+unimplemented and unassumed by the above.
 
 ---
 

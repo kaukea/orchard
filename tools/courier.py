@@ -29,19 +29,33 @@ Usage:
   courier.py init                                  ensure this session's orchard
                                                 project directory exists; print it
                                                 (also SessionStart's structural
-                                                guarantee — hooks/courier-init.sh)
+                                                guarantee — hooks/courier-init.sh);
+                                                also (re)writes this session's
+                                                name-registry entry
+                                                (register_agent_name — see
+                                                "Addressing by NAME" below)
   courier.py teardown                              no-op (nothing owned to remove)
   courier.py project-dir                           print this session's orchard
                                                 project directory (what a courier's
                                                 Monitor watches, agents/courier.md)
-  courier.py send --to :session:<id>|:topic:<name>|operator --subject S
+  courier.py send --to :session:<id>|:topic:<name>|operator|NAME --subject S
              [--body X] [--notify-user] [--target-project SLUG]
              [--in-reply-to ID]                    `:session:operator` is a
                                                 RESERVED, dot-free target: always
                                                 the SENDER's own project
                                                 (projects/<repo>.<project>/
                                                 operator.<ts>.json), no allowlist
-                                                needed
+                                                needed. `--to NAME` (no colon
+                                                prefix) resolves by NAME against
+                                                the script-owned registry
+                                                (docs/courier-wire.md,
+                                                "Addressing by NAME") —
+                                                nearest-first by tree, fanned out
+                                                to every live holder at the
+                                                nearest tier; outside the
+                                                sender's own tree only
+                                                orchard:agent:message:request is
+                                                accepted, everything else errors
   courier.py broadcast                             RETIRED — errors, pointing at
                                                 orchard_topic.py post (telemetry) or
                                                 send/request (directed). Fan-out is
@@ -460,14 +474,88 @@ def make_envelope(sender: str, to: str, *, body=None, notify_user=False,
 
 def cmd_send(args) -> None:
     enforce_orchid_grammar(args)
-    if not is_orchard_address(args.to):
+    if is_orchard_address(args.to):
+        env = orchard_send(args)
+        print(env["id"])
+        return
+    _send_by_name(args)
+
+
+NAME_CROSS_TREE_SUBJECT = "orchard:agent:message:request"
+
+
+def _deliver_to_registry_entry(sender: str, entry: dict, subject: str, *,
+                                body=None, in_reply_to=None, notify_user=False,
+                                operator_origin=False) -> dict:
+    """Deliver one envelope to a name-resolved recipient's own project
+    directory. Deliberately bypasses orchard_send()'s cross-REPO allowlist
+    gate (_authorize_cross_project): resolve_name() only ever searches this
+    repo's own worktree tree (see resolve_name), so a resolved candidate is
+    never actually cross-repo — that allowlist exists for
+    ORCHID_PARENT_PROJECT's genuinely-different-repo case and does not apply
+    to a same-repo, different-worktree name resolution. The tree-boundary
+    permission a name address enforces instead is the subject check in
+    _send_by_name below (Decision-132)."""
+    sid = entry.get("session_id")
+    target_project = entry.get("project_slug")
+    if not sid or not target_project:
+        sys.exit("courier: malformed name-registry entry — missing session_id/project_slug")
+    _check_path_component(sid, "target session id", dot_free=True)
+    _check_path_component(target_project, "target project slug")
+    reason = _orchard_subject_error(subject)
+    if reason:
+        sys.exit(f"courier: {reason} — allowed subjects: "
+                 f"{', '.join(sorted(ORCHARD_VALID_SUBJECTS))}")
+    reason = _orchard_gardener_only_error(subject)
+    if reason:
+        sys.exit(f"courier: {reason}")
+    env = make_orchard_envelope(
+        f":session:{sender}", f":session:{sid}", subject,
+        body=_parse_orchard_body(body), in_reply_to=in_reply_to,
+        repo=project_slug(), project=target_project,
+        notify_user=notify_user, operator_origin=operator_origin,
+    )
+    violation = _schema_violation(env, _load_envelope_schema())
+    if violation:
+        sys.exit(f"courier: {violation}")
+    orchard_deliver(project_dir(target_project), sid, env)
+    _touch_agent_name(sender)
+    return env
+
+
+def _send_by_name(args) -> None:
+    """`send --to <name>` (no colon prefix): resolve, then fan out to every
+    live holder at the nearest tier (Decision-121 same-level clash — several
+    agents legitimately share one name). A resolved tier other than "this
+    exact project" is OUTSIDE the sender's own tree, so only a question/
+    status-query send may cross it (Decision-132) — everything else is
+    refused here, in the send path, rather than merely documented."""
+    name = args.to
+    subject = getattr(args, "subject", None)
+    if not subject:
+        sys.exit("courier: orchard send requires --subject")
+    candidates = resolve_name(name)
+    if not candidates:
+        sys.exit(f"courier: undeliverable: nobody live named {name!r}")
+    own_slug = project_slug()
+    outside_tree = any(e.get("project_slug") != own_slug for e in candidates)
+    if outside_tree and subject != NAME_CROSS_TREE_SUBJECT:
         sys.exit(
-            f"courier: send --to {args.to!r} is not an orchard address — the "
-            "legacy per-agent mailbox is gone; use :session:<id> or "
-            ":topic:<name>"
+            f"courier: send --to {name!r} resolves outside your own tree "
+            f"({own_slug!r}) — only {NAME_CROSS_TREE_SUBJECT} (questions/status "
+            "queries) may cross a tree boundary (Decision-132)"
         )
-    env = orchard_send(args)
-    print(env["id"])
+    sender = whoami()
+    delivered = 0
+    for entry in candidates:
+        _deliver_to_registry_entry(
+            sender, entry, subject, body=getattr(args, "body", None),
+            in_reply_to=getattr(args, "in_reply_to", None),
+            notify_user=bool(getattr(args, "notify_user", False)),
+            operator_origin=bool(getattr(args, "operator_origin", False)),
+        )
+        delivered += 1
+    print(f"delivered to {delivered} live holder(s) named {name!r}")
 
 
 def cmd_broadcast(args) -> None:
@@ -520,8 +608,14 @@ def cmd_init(args) -> None:
     ownership of (Decision-095/096) is gone — orchard messages are flat
     files under a shared project directory, so there is nothing left here
     for one courier to own against another.
+
+    Also (re)writes this session's name-registry entry (register_agent_name)
+    — the structural half of addressing-by-name, same reasoning: it exists
+    whatever the model does, not only when something is announced.
     """
-    print(_ensure_project_dir())
+    dir_path = _ensure_project_dir()
+    register_agent_name()
+    print(dir_path)
 
 
 def cmd_teardown(args) -> None:
@@ -993,8 +1087,9 @@ def _stamp_filename(sid: str) -> str:
 
 def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
     """Atomically write the message, touch/create the marker heartbeat, bump
-    the parent dir's mtime (nested writes don't bubble automatically), then
-    give the compaction pass a chance to run."""
+    the parent dir's mtime (nested writes don't bubble automatically), give
+    the compaction pass a chance to run, then let the name registry react.
+    """
     dir_path.mkdir(parents=True, exist_ok=True)
     final = dir_path / _stamp_filename(sid)
     tmp = dir_path / f".{final.name}.partial"
@@ -1003,7 +1098,183 @@ def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
     (dir_path / f"{sid}.marker").touch(exist_ok=True)
     os.utime(dir_path, None)
     maybe_compact(dir_path)
+    _deregister_on_stop(envelope)
     return final
+
+
+# ---------------------------------------------------------------------------
+# name registry (docs/courier-wire.md, "Addressing by NAME — ruled 2026-07-29"
+# / Decision-130 / Decision-132): the SCRIPT mints and owns this, never an
+# agent .md. One atomic JSON file per SESSION under
+# $XDG_RUNTIME_DIR/orchard/registry/<session-id>.json, holding {name,
+# session_id, project_slug, mailbox_dir, started_ts}. Deliberately a
+# different tree, and a different name, from ORCHARD_REGISTRY_PATH above
+# (that one is the cross-project send allowlist — an unrelated, pre-existing
+# mechanism this does not touch or reuse).
+#
+# `name` is this session's agent role (CLAUDE_CODE_AGENT, already surfaced as
+# identity_of()["agent_type"]) — the only identity fact this codebase already
+# establishes that several concurrent sessions legitimately share (Decision-
+# 121: a feature's landscapers, several sowers, ... all answer to their
+# role). Nothing else in the tree defines a distinct per-agent "name", so
+# this is the sower's implementation choice for this step, not a separate
+# ruling — flagged for the landscaper, not asserted as settled design.
+# ---------------------------------------------------------------------------
+
+NAME_REGISTRY_STALE_SECONDS = 60 * 60  # same "still counts as alive" window
+                                        # sidebar_model.ACTIVE_WINDOW_SECONDS
+                                        # uses, not imported (courier.py owes
+                                        # the sidebar layer no dependency).
+
+
+def name_registry_dir() -> Path:
+    return orchard_root() / "registry"
+
+
+def name_registry_path(sid: str) -> Path:
+    return name_registry_dir() / f"{sid}.json"
+
+
+def _atomic_write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.parent / f".{path.name}.partial"
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def register_agent_name(name: str | None = None) -> Path | None:
+    """Write/refresh this session's registry entry. A no-op (returns None)
+    when there is no orchard root, or no name to register under (no agent
+    role known) — an unnamed session is simply not addressable by name, not
+    an error. Called from `init` (and, via `_touch_agent_name` below,
+    refreshed on every send this session makes) — never from any agent
+    prose.
+    """
+    if not os.environ.get("XDG_RUNTIME_DIR"):
+        return None
+    sid = whoami()
+    resolved_name = name or identity_of().get("agent_type")
+    if not resolved_name:
+        return None
+    _check_path_component(sid, "session id", dot_free=True)
+    path = name_registry_path(sid)
+    started_ts = datetime.now(timezone.utc).isoformat()
+    if path.is_file():
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+            started_ts = existing.get("started_ts") or started_ts
+        except (OSError, json.JSONDecodeError):
+            pass
+    slug = project_slug()
+    entry = {
+        "name": resolved_name,
+        "session_id": sid,
+        "project_slug": slug,
+        "mailbox_dir": str(project_dir(slug)),
+        "started_ts": started_ts,
+    }
+    _atomic_write_json(path, entry)
+    return path
+
+
+def _touch_agent_name(sid: str) -> None:
+    """Cheap proof-of-life for an existing entry: bump its mtime without a
+    full re-register, so an active session stays live under the stale-guard
+    between explicit `init` calls."""
+    path = name_registry_path(sid)
+    if path.is_file():
+        os.utime(path, None)
+
+
+def deregister_agent_name(sid: str) -> None:
+    name_registry_path(sid).unlink(missing_ok=True)
+
+
+def _deregister_on_stop(envelope: dict) -> None:
+    """The registry entry for a session disappears the moment ITS OWN
+    `orchard:agent:lifecycle:stopped` event passes through this function —
+    the one funnel every current lifecycle post already uses (orchard_send's
+    session/topic delivery below, and orchard_topic.py's do_post, both call
+    orchard_deliver() directly) — and NEVER anyone else's entry, per
+    Decision-129 (the thing that created an entry is what destroys it) and
+    the wire doc's "never delete a live peer's entry"."""
+    if envelope.get("subject") != "orchard:agent:lifecycle:stopped":
+        return
+    frm = envelope.get("from") or ""
+    if frm.startswith(":session:"):
+        deregister_agent_name(frm[len(":session:"):])
+
+
+def _is_name_entry_live(path: Path) -> bool:
+    try:
+        return (time.time() - path.stat().st_mtime) < NAME_REGISTRY_STALE_SECONDS
+    except OSError:
+        return False
+
+
+def live_name_registry_entries() -> list[dict]:
+    """Every registry entry whose backing file passes the stale-guard — a
+    dead marker mtime (no refresh within NAME_REGISTRY_STALE_SECONDS) reads
+    as not-live even if `lifecycle:stopped` never arrived (a crash), so a
+    resolve never targets an agent that silently died."""
+    d = name_registry_dir()
+    if not d.is_dir():
+        return []
+    out = []
+    for f in sorted(d.glob("*.json")):
+        if f.name.startswith(".") or not _is_name_entry_live(f):
+            continue
+        try:
+            entry = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(entry, dict):
+            out.append(entry)
+    return out
+
+
+def _project_repo_prefix(slug: str) -> str:
+    return slug.split(BRANCH_SEPARATOR, 1)[0]
+
+
+def _project_branch(slug: str) -> str:
+    return slug.split(BRANCH_SEPARATOR, 1)[1] if BRANCH_SEPARATOR in slug else ""
+
+
+MAIN_BRANCH_NAME = "main"
+
+
+def _resolution_tier(entry_slug: str, own_slug: str) -> int:
+    """Nearest-first tiers (Decision-132), implemented exactly as: 0 = this
+    exact project (own worktree); 1 = another worktree of the SAME repo;
+    2 = the repo's main. Cross-repo is never a candidate here at all — see
+    resolve_name()."""
+    if entry_slug == own_slug:
+        return 0
+    if _project_branch(entry_slug) == MAIN_BRANCH_NAME:
+        return 2
+    return 1
+
+
+def resolve_name(name: str) -> list[dict]:
+    """Live candidates for `name`, nearest-first (Decision-132), scoped to
+    THIS repo's own worktree tree — cross-repo name resolution is not
+    implemented (docs/courier-wire.md marks it OPEN, not to be assumed).
+    Returns every live holder at the NEAREST tier that has one (same-level
+    clash fan-out, Decision-121), or [] if nobody in this repo holds the
+    name at all."""
+    own_slug = project_slug()
+    repo_prefix = _project_repo_prefix(own_slug)
+    same_repo = [
+        e for e in live_name_registry_entries()
+        if e.get("name") == name
+        and _project_repo_prefix(e.get("project_slug", "")) == repo_prefix
+    ]
+    if not same_repo:
+        return []
+    tiered = sorted(same_repo, key=lambda e: _resolution_tier(e.get("project_slug", ""), own_slug))
+    best = _resolution_tier(tiered[0].get("project_slug", ""), own_slug)
+    return [e for e in tiered if _resolution_tier(e.get("project_slug", ""), own_slug) == best]
 
 
 def make_orchard_envelope(sender: str, to: str, subject: str, *, body=None,
@@ -1151,6 +1422,7 @@ def orchard_send(args) -> dict:
     if violation:
         sys.exit(f"courier: {violation}")
     orchard_deliver(dir_path, file_sid, env)
+    _touch_agent_name(sender)
     return env
 
 
