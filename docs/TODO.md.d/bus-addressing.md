@@ -701,6 +701,10 @@ ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
   unsubscribe pub-sub, and the last unfiltered wake watch is filtered like every
   other. notify_user — written and policed but read by nobody — is deleted in
   favour of ordinary status.
+- ✅ The seam the operator named as the thing that keeps breaking now has its own
+  test: real courier and topic CLI calls drive a fake two-project, four-feature
+  world end to end into the rendered tree — every reachable state, stale as colour,
+  cross-project isolation — plus a frozen-frame companion for human validation.
 
 ### 🐛 Bug fixes
 - 🐛 A truncated header or feature row no longer loses its trailing ellipsis: the
