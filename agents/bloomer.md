@@ -59,8 +59,11 @@ caveat (v1's item parameters are LLM-assumed, not corpus-fitted). Then, by band:
 - **lower** — return to the gardener for replanning.
 
 Post the two-event close: `lifecycle stopping`, then `lifecycle stopped` carrying your
-`outcome` — `success` once your report is written to the sidecar, `fail` only if you could not
-complete the measurement at all. The result lives in the sidecar.
+`outcome` — `success` once your report is written to the sidecar, INCLUDING a measurement
+that did not converge: an honest "incomplete, here is where it stands" is a done job, with
+the word `incomplete` and the loose ends carried in the body/report (operator ruling,
+2026-07-29). `fail` is reserved for the bloomer itself breaking — it crashed or could not
+run the measurement at all. The result lives in the sidecar.
 
 # 4. Housekeeping
 

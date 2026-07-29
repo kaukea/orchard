@@ -720,6 +720,15 @@ flusher cadence; `immediate` remains send-at-once. This distinguishes the two qu
 classes the wire had been delivering identically, flagged at implementation rather
 than invented.
 
+### Decision-NNN — An unconverged measurement is a successful report, marked incomplete
+
+Operator, 2026-07-29, at the observability acceptance gate. The outcome channel stays
+binary. A bloomer whose measurement did not converge still ends `outcome:success` —
+honestly reporting "incomplete, here is where it stands" IS the job done — with the
+word `incomplete` and the state carried in the body/report. `fail` is reserved for the
+bloomer itself breaking (crashed, could not run). Corrects a sower's inference that had
+mapped "could not complete the measurement" to `fail`.
+
 ### Sequencing note
 
 Per the parent sidecar's binding consequence ("not split across parallel workers with
