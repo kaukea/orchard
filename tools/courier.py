@@ -442,8 +442,12 @@ def status_of() -> dict:
 
     occupancy = sum((latest or {}).get(f, 0) or 0 for f in TOKEN_CLASSES
                     if f != "output_tokens")
-    # no reliable reasoning-effort env var is exposed to the CLI today
-    effort = os.environ.get("CLAUDE_CODE_REASONING_EFFORT") or None
+    # CLAUDE_EFFORT is the harness's own launch-time effort flag (verified
+    # present in a live session env, e.g. `CLAUDE_EFFORT=high` — distinct
+    # from the CLAUDE_CODE_* family, alongside CLAUDE_PID). The previous
+    # CLAUDE_CODE_REASONING_EFFORT read here matched nothing any launcher
+    # sets (docs/courier-wire.md §2b [GAP], corrected 2026-07-29).
+    effort = os.environ.get("CLAUDE_EFFORT") or None
     status = {
         "session_id": whoami(),
         "state": "live",

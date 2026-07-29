@@ -55,23 +55,35 @@ SID = "test-sid-0001"
 DEFAULT_AGENT = "landscaper"
 
 
-def _run(cwd, runtime_dir, args, sid=SID, agent=DEFAULT_AGENT, parent=None):
+def _run(cwd, runtime_dir, args, sid=SID, agent=DEFAULT_AGENT, parent=None, home=None,
+         effort=None):
     """Shell out to the script with a deterministic identity environment.
 
     CLAUDE_CODE_AGENT is pinned (default "landscaper", overridable for the
     gardener-only `task` cases) and ORCHID_PARENT_SESSION is pinned to
     `parent` or deleted outright — never left to whatever the real
     environment happens to hold — so `courier.identity_of()` resolves the same
-    way on every run.
+    way on every run. `home`, when given, overrides HOME so
+    `courier.status_of()`'s transcript lookup (`~/.claude/projects/*/<sid>.jsonl`)
+    resolves against a fixture transcript instead of the real one. `effort`
+    is pinned the same deliberate way as `parent` (deleted unless given) so
+    a test never inherits whatever CLAUDE_EFFORT this test process itself
+    happens to be running under.
     """
     env = dict(os.environ)
     env["XDG_RUNTIME_DIR"] = str(runtime_dir)
+    if home is not None:
+        env["HOME"] = str(home)
     env["CLAUDE_CODE_SESSION_ID"] = sid
     env["CLAUDE_CODE_AGENT"] = agent
     if parent is None:
         env.pop("ORCHID_PARENT_SESSION", None)
     else:
         env["ORCHID_PARENT_SESSION"] = parent
+    if effort is None:
+        env.pop("CLAUDE_EFFORT", None)
+    else:
+        env["CLAUDE_EFFORT"] = effort
     return subprocess.run(
         [sys.executable, _SCRIPT, "post", *args],
         cwd=cwd, env=env, capture_output=True, text=True, timeout=15,
@@ -218,6 +230,62 @@ def test_status_three_words_is_rejected(repo, runtime_dir):
     assert len(tfiles) == 1
     envelope = json.loads(tfiles[0].read_text(encoding="utf-8"))
     assert envelope["body"]["attempted"] == ["post", "status", "three", "word", "text"]
+
+
+def test_status_snapshot_promotes_tokens_in_out_and_effort(repo, runtime_dir, tmp_path):
+    """docs/courier-wire.md §2b: tokens in/out are first-class snapshot
+    fields, not only nested under `spend`, and effort rides through when
+    CLAUDE_EFFORT is set — a fabricated transcript is the only way to make
+    courier.status_of() resolve real usage counts (the default env under
+    test has no transcript at all, per this module's own docstring)."""
+    home = tmp_path / "fake-home"
+    project_dir = home / ".claude" / "projects" / "fake-project"
+    project_dir.mkdir(parents=True)
+    (project_dir / f"{SID}.jsonl").write_text(
+        json.dumps({"message": {"model": "claude-opus-5", "usage": {
+            "input_tokens": 11, "output_tokens": 22,
+            "cache_read_input_tokens": 33, "cache_creation_input_tokens": 0,
+        }}}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = _run(repo, runtime_dir, ["status", "reading"], home=home, effort="high")
+    assert result.returncode == 0, result.stderr
+
+    slug = _slug(repo)
+    files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
+    assert len(files) == 1
+    envelope = json.loads(files[0].read_text(encoding="utf-8"))
+
+    status = envelope["status"]
+    assert status["tokens_in"] == 11
+    assert status["tokens_out"] == 22
+    assert status["spend"]["input_tokens"] == 11
+    assert status["spend"]["output_tokens"] == 22
+    assert status["model"] == "claude-opus-5"
+    assert status["effort"] == "high"
+
+
+def test_status_snapshot_has_no_effort_when_claude_effort_unset(repo, runtime_dir, tmp_path):
+    """The companion negative case: no CLAUDE_EFFORT in the environment means
+    no invented value — `effort` is simply absent, never guessed."""
+    home = tmp_path / "fake-home"
+    project_dir = home / ".claude" / "projects" / "fake-project"
+    project_dir.mkdir(parents=True)
+    (project_dir / f"{SID}.jsonl").write_text(
+        json.dumps({"message": {"model": "claude-opus-5", "usage": {
+            "input_tokens": 1, "output_tokens": 1,
+        }}}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = _run(repo, runtime_dir, ["status", "reading"], home=home)
+    assert result.returncode == 0, result.stderr
+
+    slug = _slug(repo)
+    files = list(_project_dir(runtime_dir, slug).glob(f"{SID}.*.json"))
+    envelope = json.loads(files[0].read_text(encoding="utf-8"))
+    assert "effort" not in envelope["status"]
 
 
 # --- delegation ----------------------------------------------------------

@@ -150,15 +150,28 @@ def _identity() -> dict:
 
 def _status() -> dict:
     """Mutable metadata (the courier's status operation) — changes through the session:
-    model, context occupancy, spend. Attached to every event so the latest is truth."""
+    model, context occupancy, spend. Attached to every event so the latest is truth.
+
+    `tokens_in`/`tokens_out` are promoted out of `spend` to first-class fields
+    (docs/courier-wire.md §2b) so the renderer reads them directly rather than
+    reaching into the nested dict for the two classes it actually charts;
+    `spend` itself is kept too, unchanged, since the cache classes still only
+    live there. `effort` rides straight through from courier.status_of() when
+    a source exists (CLAUDE_CODE_REASONING_EFFORT) and is otherwise absent —
+    no value is invented.
+    """
     try:
         st = courier.status_of()
     except Exception:
         return {}
+    spend = st.get("spend") or {}
     keep = {
         "model": st.get("model"),
         "context_tokens": st.get("context_tokens"),
-        "spend": st.get("spend"),
+        "spend": spend,
+        "tokens_in": spend.get("input_tokens"),
+        "tokens_out": spend.get("output_tokens"),
+        "effort": st.get("effort"),
     }
     return {k: v for k, v in keep.items() if v}
 

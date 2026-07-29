@@ -354,20 +354,53 @@ remaining · model and effort**. They are detected and attached by the SCRIPT, w
 model involved and at negligible cost (Decision-130): status, identity and telemetry
 are answered inside the script, never leaving it, at zero tokens.
 
-**[CODE]** `orchard_topic.py` already attaches an identity snapshot (`agent`,
-`feature`, `feature_name`, `task`, `task_name`, `parent`) and a status snapshot
-(`model`, `context_tokens`, `spend`) to every post (`_attach_snapshot`).
+**[CODE, corrected 2026-07-29]** `orchard_topic.py` attaches an identity snapshot
+(`agent`, `feature`, `feature_name`, `task`, `task_name`, `parent`) and a status
+snapshot to every post (`_attach_snapshot`). The status snapshot carries `model`,
+`context_tokens`, `spend` (the full four-class breakdown — `input_tokens`,
+`output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, all
+already computed by `courier.status_of()`) **and now `tokens_in`/`tokens_out`**,
+promoted out of `spend` to first-class fields (`orchard_topic.py:_status()`) — the
+renderer reads these two directly rather than reaching into the nested dict for the
+two classes it actually charts. The earlier wording of this section ("tokens in/out
+not yet attached") was imprecise: `spend` already nested them; only the top-level
+promotion was missing, and is now built.
 
-**[GAP]** Not yet attached: effort, tokens split in/out, timings beyond file
-timestamps. Time aggregates (a feature's age vs time actually worked, a task's
-running time) are computed by deterministic script/renderer code from event
-timestamps — never by an agent reasoning over raw data in its context (operator
-ruling, 2026-07-28).
+**[CODE, corrected 2026-07-29]** `effort` is now attached when a source exists:
+`courier.status_of()` reads `CLAUDE_EFFORT` — the harness's own launch-time effort
+flag, verified present in a live session environment (`CLAUDE_EFFORT=high`,
+un-namespaced like `CLAUDE_PID`, distinct from the `CLAUDE_CODE_*` family) — and
+`_status()` carries it through when set. The previous read
+(`CLAUDE_CODE_REASONING_EFFORT`) matched no variable any launcher actually sets, so
+`effort` was silently always absent; this was a naming bug, not a genuine missing
+source. Absent when `CLAUDE_EFFORT` is unset — no value is invented
+(`test_status_snapshot_has_no_effort_when_claude_effort_unset`).
 
-**[GAP]** The durable feature marker (Decision-099: one file per (project, feature),
-carrying the tasks and their states — what remains when nothing is happening) has a
-correct, tested READER and **no writer anywhere**: the writer was dropped by a
-squash-merge and never restored. Quiet tasks currently vanish on restart.
+**[RESOLVED]** Timings beyond file timestamps are not needed and none are attached:
+every orchard message filename already carries a timestamp (`<sid>.<ts>.json`), and
+every feature-marker task entry carries its own `updated` timestamp (§2b below). Time
+aggregates (a feature's age vs time actually worked, a task's running time) are
+computed from those existing timestamps by deterministic script/renderer code, never
+by an agent reasoning over raw data in its context (operator ruling, 2026-07-28) —
+attaching a separate duration field at write time would only duplicate what the
+timestamps already carry.
+
+**[CODE, resolved 2026-07-29]** The durable feature marker (Decision-099: one file
+per (project, feature), carrying the tasks and their states — what remains when
+nothing is happening) now has a writer: `courier.write_feature_marker()` merges each
+delivered envelope's `identity` block into `<feature-id>.marker` via
+`merge_feature_marker()`, called from `orchard_deliver()` for project-mailbox
+deliveries only (a topic subscriber delivery carries no durable task record).
+Merge-never-truncate: an existing CURRENT-shape (`task`-keyed) entry for a
+DIFFERENT task under the same feature survives untouched; anything not in that
+shape (a schema-1 entry keyed by the retired `feature` field, a bare delegation
+`label`, a `sessions` identity cache) is discarded rather than crashed on
+(`_load_feature_marker()`/`merge_feature_marker()` are FAIL-OPEN throughout — a
+missing, zero-byte, or malformed marker loads as empty, never raises). Task state
+follows the subject: `lifecycle:starting`/`started` → `working`,
+`outcome:success`/`fail` → the terminal `done`/`failed` (sticks — nothing after it
+moves it back), anything else leaves a known state alone and defaults an unseen task
+to `working`. Quiet tasks now survive a restart.
 
 ---
 
