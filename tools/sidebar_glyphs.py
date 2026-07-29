@@ -27,9 +27,13 @@ ROLE_EMOJI: dict[str, str | None] = {
 }
 LOCATION_BADGES = {"local": "💻", "cloud": "☁️"}
 
-# Spinner frames — retained as the source of the single static "working"
-# glyph (index 7 == mock's "⠧"); no longer cycled per-frame for a feature
-# row (superseded by the band sweep, see module docstring).
+# Spinner frames. `STATUS_EMOJI["working"]` below stays pinned to a single
+# frame (index 7 == mock's "⠧") for a status LOOKUP with no tick of its own
+# to advance by; the row painters that DO have a tick (feature/task/step —
+# `_feature_row_glyph`/`_task_row_glyph`/`_step_row_glyph`) instead index
+# this alphabet directly by `tick % len(SPINNER_FRAMES)` for their own
+# "working"/"active" mark, each fixing the same "the spinner doesn't spin"
+# defect for its own row.
 SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 # Seven-state status vocabulary (sidebar-titling item 9, revised again by
