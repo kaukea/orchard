@@ -81,6 +81,33 @@ skill some consumer repos may still need in full. **Tags (operator ruling):** re
 is locatable by its tags alone — specific enough to disambiguate from siblings, short
 enough to stay cheap; drop tags that don't earn a place in that index.
 
+**Duplication-pair resolution — FROZEN (operator ruling, 2026-07-29 plan gate):** the
+skill stays full/authoritative in both pairs; the consuming agent-def is what gets
+thinned to defer to it, never the reverse — regardless of whether orchids is currently
+the sole consumer (no cross-repo manifest exists to check against; this ruling is the
+scope boundary, not a further audit). Additionally: `workflow`/`workflow-complete` are
+NEVER folded into any single role's agent-def, permanently — the role that opens/closes
+a workflow is expected to keep changing over time, so the split must survive who
+currently happens to be the sole consumer. And: a skill's name must describe the
+reusable behaviour it provides, never duplicate an agent/role name — `skills/gardener`
+violates this (named identically to the `gardener` agent) and is renamed to
+`skills/board-walking` (operator's own pick) as part of this pass; this is a rename of a
+managed artifact, so it ships with a `migrations/` entry (see `migrations/2026-07-29-git-commit-split.md`
+for the freshest same-shape precedent).
+
+**Frozen build step list (landscaper plan phase, Decision-025):**
+1. `skills/authoring-skills/SKILL.md` — add the tags-as-discovery-index guidance and the
+   new skill-naming rule (no dep).
+2–5. Per-skill frontmatter/terseness pass over the 15 "plain" skills (everything except
+   `authoring-skills`, `gardener`, `workflow`, `workflow-complete`), batched ~4 per
+   parallel sower (dep: 1).
+6. Rename `skills/gardener` → `skills/board-walking`, sweep cross-references, ship the
+   migration entry, thin `agents/gardener.md` to defer to the renamed skill (dep: 1).
+7. Thin `agents/landscaper.md`'s restatement of `workflow`/`workflow-complete` content to
+   defer to those skills — the skills themselves are left untouched in ownership (dep: 1).
+8. Testing per the agreed method below, plus: zero dangling `gardener`-skill-id
+   references, migration entry present (dep: 2–7).
+
 ## Sizing
 
 Operator ruling, 2026-07-29: sonnet-tier, "lowest acceptable model for each job," same
@@ -96,3 +123,32 @@ the same behaviour as the old — a skill that got terser but stopped firing is 
 regression, not a win. New: pick 5 skills at random, and confirm each is findable from
 its `metadata.tags` alone (no title, no description) by someone who knows what they're
 looking for but not its name.
+
+## Decision entries
+
+## [2026-07-29 02:18 CEST] Decision-NNN: Skill vs consuming agent-def duplication resolves toward the skill
+#skills #agent-defs #duplication #terseness
+
+Where a skill and an agent-def it feeds restate the same content, the skill stays
+full/authoritative and the agent-def is what gets thinned to defer to it — never the
+reverse. Applies even where orchids is currently the sole real consumer of the skill:
+no cross-repo manifest exists to verify other consumers' agent-layer status, so
+"orchids-only today" is not grounds to fold a skill's content into one role's agent-def.
+
+## [2026-07-29 02:18 CEST] Decision-NNN: workflow/workflow-complete never merge into a role
+#skills #workflow #agent-defs
+
+`skills/workflow` and `skills/workflow-complete` stay separate, reusable skills,
+permanently — never folded wholesale into any single role's agent-def (e.g.
+`agents/landscaper.md`), because which role opens vs. closes a workflow is expected to
+keep changing over time. A role's agent-def may defer to these skills and stop
+restating their content inline, but the skills' own content is never merged elsewhere.
+
+## [2026-07-29 02:18 CEST] Decision-NNN: Skills are named for the behaviour, never for an agent
+#skills #naming #authoring-skills
+
+A skill's name must describe the reusable behaviour it provides, never duplicate an
+agent/role name — a skill is meant to be usable by any agent, and naming it after one
+role suggests the opposite. Folded into the `authoring-skills` contract as a naming
+rule. `skills/gardener` was the one violation in the corpus and is renamed to
+`skills/board-walking`.
