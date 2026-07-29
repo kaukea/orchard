@@ -204,8 +204,14 @@ Verified preservation status, 2026-07-29:
 | Artifact | State |
 |---|---|
 | `archive/sidebar-teamwork` → `04aff25` | **intact**, and it CONTAINS the Dracula commits (`0658677`, `e39fed8`, `9a91fd9`) |
-| `stash@{0}` — on `f/sidebar-teamwork`, `sower-b8-check` | **retained, untouched** |
-| `stash@{1}` — on `close/bus-transport-v2`, "The event list is the shipped lifecycle vocabulary" | **retained, untouched** |
+| stash `sower-b8-check` (on `f/sidebar-teamwork`) | **retained, untouched** |
+| stash "The event list is the shipped lifecycle vocabulary" (on `close/bus-transport-v2`) | **retained, untouched** |
+
+The kept stashes are addressed by MESSAGE, never by index: stash numbering shifted on
+2026-07-29 when the crashed build session left its own WIP stash on top of them, and
+the indexes this table previously recorded (`stash@{0}`/`stash@{1}`) silently came to
+point at the wrong entries. Any future reader verifies by `git stash list` message
+match before touching anything.
 
 So both halves he named survive: the **Dracula UX** and the **earlier metrics** are both
 reachable from the archive tag. Nothing is dropped, nothing is applied. **At the end of
