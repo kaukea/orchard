@@ -2419,3 +2419,26 @@ subtree obsession "has been plaguing this project since the beginning, and it re
 continuously as a solution to all problems, isolation, and now identification. It is
 wrong." A subtree cannot address the other-machine case at all and actively breaks the
 cross-subtree team case.
+
+## [2026-07-29 CEST] Decision-131: It is called the COURIER — ruled for the third time
+#naming #courier #bus #vocabulary #rework
+
+Operator ruling, 2026-07-29, given for the THIRD time: *"Courier was the decision,
+implemented, then reverted, then not adopted. It's courier. That is its name. For the
+3rd time."*
+
+The name is **courier**. Not "bus", not "message bus", not "orchard bus". Every remaining
+`bus` in the tree is a leftover to be renamed, not an alternative vocabulary with standing.
+
+**This entry exists because the ruling keeps being lost, not because it is complicated.**
+The rename was decided, implemented at `847e023`/`c0b2d3f`, reverted, and then not
+re-adopted — leaving `bus` in 76 files and `courier` in 81, both live, for long enough
+that a gardener asked the operator to settle it again. Asking a fourth time is a defect.
+
+This is the clearest instance on record of Decision-124 (agents resist change to what they
+use, so constraints must be enforced mechanically rather than by instruction): a rename
+that every agent reads and no agent finished. The corrective is mechanical — the name is
+enforced by the tree containing exactly one of the two words, not by this paragraph.
+
+Standing consequence: any file still saying `bus` is stale by definition, including
+`docs/orchard-bus.md`, whose own filename is now wrong.
