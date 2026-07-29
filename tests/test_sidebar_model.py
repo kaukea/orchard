@@ -640,3 +640,42 @@ class RepoFooterAggregateTests(_ModelTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MarkerAcrossWorktreeVariantsTests(_ModelTestCase):
+    """Feature markers merge across a repo's `@branch` variant directories,
+    exactly as sessions and agent records already do — a marker living in
+    any variant but the group's first must still render (live-fired
+    2026-07-29: the observability feature's fresh marker sat unread in its
+    own worktree's directory while markers were only read from the
+    group's first variant, and the sidebar showed "no activity" over a
+    working feature)."""
+
+    def test_marker_in_a_later_variant_directory_still_renders(self):
+        (self.projects_root / "own.repo@f-alpha").mkdir(parents=True)
+        _write_marker(self.projects_root, "own.repo@f-beta", "feat-b", {
+            "schema": 2, "feature": "feat-b", "name": "Feature B",
+            "tasks": [{"task": "feat-b", "name": "Feature B", "state": "working",
+                       "updated": _now_iso()}],
+            "updated": _now_iso(),
+        })
+        feature = self._sole_feature()
+        self.assertEqual(feature.name, "Feature B")
+        self.assertEqual(feature.tasks[0].status, "working")
+
+    def test_same_feature_in_two_variants_resolves_to_the_newest_updated(self):
+        _write_marker(self.projects_root, "own.repo@f-alpha", "feat-a", {
+            "schema": 2, "feature": "feat-a", "name": "older",
+            "tasks": [{"task": "feat-a", "name": "older", "state": "working",
+                       "updated": "2026-07-29T10:00:00+00:00"}],
+            "updated": "2026-07-29T10:00:00+00:00",
+        })
+        _write_marker(self.projects_root, "own.repo@f-beta", "feat-a", {
+            "schema": 2, "feature": "feat-a", "name": "newer",
+            "tasks": [{"task": "feat-a", "name": "newer", "state": "done",
+                       "updated": "2026-07-29T11:00:00+00:00"}],
+            "updated": "2026-07-29T11:00:00+00:00",
+        })
+        feature = self._sole_feature()
+        self.assertEqual(feature.name, "newer")
+        self.assertEqual(feature.tasks[0].status, "done")

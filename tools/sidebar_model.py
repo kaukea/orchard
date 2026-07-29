@@ -1243,8 +1243,29 @@ def _repo_time_and_tokens(
     return age, worked, tokens, dollars
 
 
+def _merged_feature_markers(project_dirs: list[Path]):
+    """(feature_id, marker) pairs across EVERY `@branch` variant directory
+    of one repo group. Sessions and agent records already merge across the
+    variants (`_merge_sessions`/`_merge_agent_records`); feature markers
+    must too, or a feature whose marker lives in any directory but the
+    group's first is invisible (live-fired 2026-07-29: the observability
+    feature's own fresh marker sat unread in its worktree's directory while
+    markers were only ever read from the group's first variant, and the
+    sidebar showed "no activity" over a working feature). The same feature
+    written by several variants resolves to the newest top-level `updated`
+    — one file per (project, feature) is the ruled granularity
+    (Decision-099), and the variants are ONE project on the board."""
+    best: dict[str, dict] = {}
+    for project_dir in project_dirs:
+        for feature_id, marker in _iter_feature_markers(project_dir):
+            held = best.get(feature_id)
+            if held is None or (marker.get("updated") or "") > (held.get("updated") or ""):
+                best[feature_id] = marker
+    return best.items()
+
+
 def _assemble_repo(
-    dir_name: str, project_dir: Path, sess: dict[str, dict],
+    dir_name: str, project_dirs: list[Path], sess: dict[str, dict],
     agent_records: dict[AgentKey, dict], now: float, role_step_map: dict[str, str],
 ) -> Repo:
     repo = Repo(name=_repo_display_name(dir_name), activity="", status="idle",
@@ -1299,7 +1320,7 @@ def _assemble_repo(
     # ruling, 2026-07-26: the task is the one thing that doesn't
     # disappear). Skipped when a live session already supplied this exact
     # task's row above, so an in-progress task never doubles up.
-    for feature_id, marker in _iter_feature_markers(project_dir):
+    for feature_id, marker in _merged_feature_markers(project_dirs):
         builder = None
         for task in marker.get("tasks") or []:
             task_id = _marker_task_id(task)
@@ -1366,7 +1387,7 @@ def build_model(
         if watched_names is not None and display_name not in watched_names:
             continue
         fleet.repos.append(_assemble_repo(
-            display_name, dirs[0], _merge_sessions(dirs), _merge_agent_records(dirs),
+            display_name, dirs, _merge_sessions(dirs), _merge_agent_records(dirs),
             now, role_step_map,
         ))
     return fleet
