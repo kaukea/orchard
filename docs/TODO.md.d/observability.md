@@ -129,12 +129,41 @@ family so provenance is **structural** rather than a flag someone remembers to s
 **It is the COURIER.** Ruled for the third time. Every remaining `bus` in the tree is a
 leftover, including `docs/orchard-bus.md`'s own filename.
 
+### Teams across worktrees — pub/sub, set up by the supervisor (Decision-133)
+
+A team may have three worktrees with a teammate in each, and they must be able to talk.
+The mechanism is **pub/sub**: subscribe to a topic **for the current feature or task**,
+then talk freely to everyone working on it, **depending on how the SUPERVISOR set it up.**
+
+The topic is the address — which is how the cross-subtree case is served without the
+subtree ever becoming one. Owning which topic exists and who is on it is the supervisor's
+first concrete duty under "supervise and listen".
+
+### Resolution and permissions (Decision-132)
+
+**Nearest-first:** an agent asked for resolves to the one in your own subtree; failing
+that, walk up until only main has one, and deliver there. **Hard rule:** outside your
+tree, an agent may **only ask questions or query status**. Inside, everything is fair
+game. Enforced by the script, not by prose.
+
+Open, and NOT to be assumed by an implementer: whether teammates sharing a topic gain
+rights across a tree boundary that non-teammates do not.
+
 ## Tasks
 
 - `bus-addressing` — the courier implemented to specification
 - `sidebar-teamwork` — the sidebar, folded in per this ruling
 - `no-agent-teardown` — the window closed by its creator on the lifecycle event
 - `question-broker-dead` — the operator-ask path, running rather than merely built
+
+## Readiness — NOT launch-ready
+
+**Operator, 2026-07-29: "each of those axes will probably need an extra round of ripening
+before it goes to development."**
+
+The rulings recorded here settle the WHAT at feature level. They do NOT make any single
+task launch-ready: each axis gets its own ripening round first, and no landscaper is
+spawned on the strength of this sidecar alone.
 
 ## Testing
 
