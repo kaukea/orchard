@@ -32,10 +32,6 @@
       "const": true,
       "description": "Present and true only when the sending agent intends the user to see this."
     },
-    "operator_origin": {
-      "const": true,
-      "description": "Present and true only when the message originates from the operator."
-    },
     "body": {
       "description": "The payload. Optional; any type. A standard request's body is a fixed identifier string (e.g. \"identity\", \"status\") that the recipient's sidecar answers itself."
     },

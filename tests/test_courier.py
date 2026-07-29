@@ -1,5 +1,7 @@
-"""Unit tests for tools/courier.py's operator_origin provenance flag, and the
-`ask`/answer question protocol (sidebar-polish item 12c-f).
+"""Unit tests for tools/courier.py's session-message relaying families
+(docs/courier-wire.md §2 — the operator/agent `orchard:*:message:*` subject
+families, structural provenance, and the agent-family priority classes), and
+the `ask`/answer question protocol (sidebar-polish item 12c-f).
 
 Mirrors the notify_user coverage style used elsewhere in this suite (see
 tests/test_sidebar_model.py, tests/support.py): a real git-init'd temp repo,
@@ -7,6 +9,7 @@ the module under test exercised end to end rather than mocked.
 
 Runs under both `python3 -m unittest discover` and `pytest`.
 """
+import fcntl
 import json
 import os
 import select
@@ -16,6 +19,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 try:
     import jsonschema
@@ -41,28 +45,45 @@ def _schema() -> dict:
         return json.load(f)
 
 
-class MakeEnvelopeTests(unittest.TestCase):
-    """Unit-level: make_envelope() itself, no subprocess involved."""
+class StructuralProvenanceTests(unittest.TestCase):
+    """Unit-level: the operator/agent relaying families carry provenance in
+    the SUBJECT, not an envelope flag — `operator_origin` dissolved into this
+    split (docs/courier-wire.md §2, "ruled 2026-07-29")."""
 
-    def test_operator_origin_true_is_present(self):
-        env = courier.make_envelope("senderX", "recipientA", operator_origin=True)
-        self.assertTrue(env["operator_origin"])
+    def test_operator_message_subjects_are_operator_authority(self):
+        for subject in (
+            "orchard:operator:message:todo", "orchard:operator:message:instructions",
+            "orchard:operator:message:request", "orchard:operator:message:response",
+            "orchard:operator:message:content",
+        ):
+            self.assertTrue(courier.is_operator_authority(subject), subject)
 
-    def test_operator_origin_false_is_absent(self):
+    def test_agent_message_subjects_are_not_operator_authority(self):
+        for subject in (
+            "orchard:agent:message:request", "orchard:agent:message:response",
+            "orchard:agent:message:content", "orchard:agent:status",
+        ):
+            self.assertFalse(courier.is_operator_authority(subject), subject)
+
+    def test_make_envelope_carries_no_operator_origin_field(self):
         env = courier.make_envelope("senderX", "recipientA")
         self.assertNotIn("operator_origin", env)
 
+    def test_make_orchard_envelope_carries_no_operator_origin_field(self):
+        env = courier.make_orchard_envelope(
+            ":session:senderX", ":session:recipientA", "orchard:operator:message:content",
+        )
+        self.assertNotIn("operator_origin", env)
+
     @unittest.skipIf(jsonschema is None, "jsonschema not installed")
-    def test_operator_origin_envelope_validates_against_schema(self):
-        env = courier.make_envelope("senderX", "recipientA", operator_origin=True)
-        jsonschema.validate(instance=env, schema=_schema())
+    def test_schema_no_longer_declares_operator_origin(self):
+        self.assertNotIn("operator_origin", _schema()["properties"])
 
 
-class CliRoundTripTests(unittest.TestCase):
-    """CLI-level: `send --operator-origin` then `receive`, in a real repo,
-    over the orchard `:session:` transport — the legacy per-agent mailbox
-    this used to exercise via `init` + a plain address is gone
-    (operator ruling, 2026-07-27)."""
+class RelayingFamilyCliTests(unittest.TestCase):
+    """CLI-level: the two relaying families over the real orchard `:session:`
+    transport. `--operator-origin` is gone outright — the operator family
+    subject itself is the provenance, so sending on it needs no flag."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -83,18 +104,17 @@ class CliRoundTripTests(unittest.TestCase):
             HOME=str(self.home),
         )
 
-    def _courier(self, session_id, *args):
+    def _courier(self, session_id, *args, check=True):
         return subprocess.run(
             [sys.executable, _COURIER_PY, *args],
-            cwd=self.repo, check=True, capture_output=True, text=True,
+            cwd=self.repo, check=check, capture_output=True, text=True,
             env=self._env(session_id),
         )
 
-    def test_operator_origin_round_trips_through_send_and_receive(self):
+    def test_operator_message_round_trips_with_no_flag_needed(self):
         self._courier(
             "senderX", "send", "--to", ":session:recipientA",
-            "--subject", "orchard:agent:message:content",
-            "--operator-origin", "--body", "hello",
+            "--subject", "orchard:operator:message:content", "--body", "hello",
         )
 
         out = self._courier("recipientA", "receive")
@@ -102,12 +122,157 @@ class CliRoundTripTests(unittest.TestCase):
 
         self.assertEqual(len(messages), 1)
         msg = messages[0]
-        self.assertTrue(msg["operator_origin"])
+        self.assertNotIn("operator_origin", msg)
+        self.assertEqual(msg["subject"], "orchard:operator:message:content")
+        self.assertTrue(courier.is_operator_authority(msg["subject"]))
         self.assertEqual(msg["from"], ":session:senderX")
         self.assertEqual(msg["body"], "hello")
 
         if jsonschema is not None:
             jsonschema.validate(instance=msg, schema=_schema())
+
+    def test_operator_origin_flag_no_longer_recognised(self):
+        proc = self._courier(
+            "senderX", "send", "--to", ":session:recipientA",
+            "--subject", "orchard:operator:message:content",
+            "--operator-origin", "--body", "hello", check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("unrecognized arguments", proc.stderr)
+
+    def test_operator_subject_rejects_non_immediate_priority(self):
+        proc = self._courier(
+            "senderX", "send", "--to", ":session:recipientA",
+            "--subject", "orchard:operator:message:content",
+            "--body", "hello", "--priority", "batch", check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("always immediate", proc.stderr)
+
+    def test_agent_message_default_priority_is_immediate_direct_write(self):
+        self._courier(
+            "senderX", "send", "--to", ":session:recipientA",
+            "--subject", "orchard:agent:message:content", "--body", "hi",
+        )
+        out = json.loads(self._courier("recipientA", "receive").stdout)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["body"], "hi")
+        # immediate never queues: nothing was left in the outbox
+        box = courier.outbox_dir()
+        self.assertEqual(list(box.glob("*.json")) if box.is_dir() else [], [])
+
+
+class PriorityQueueingTests(unittest.TestCase):
+    """Unit-level: batch/wait-a-round priority queues into the outbox
+    instead of writing straight through, and the flusher (`_drain_outbox`)
+    replays it exactly like an immediate send would have."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        base = Path(self._tmp.name)
+        self.runtime_dir = base / "run"
+        self.runtime_dir.mkdir()
+        self._patch_env = mock.patch.dict(
+            os.environ, {"XDG_RUNTIME_DIR": str(self.runtime_dir)},
+        )
+        self._patch_env.start()
+        self.addCleanup(self._patch_env.stop)
+
+    def test_batch_priority_enqueues_rather_than_writes_directly(self):
+        target = self.runtime_dir / "orchard" / "projects" / "own.repo@main"
+        env = courier.make_orchard_envelope(
+            ":session:senderX", ":session:recipientA",
+            "orchard:agent:message:content", body="queued",
+        )
+        courier.deliver_with_priority(target, "recipientA", env, "batch")
+
+        self.assertFalse(target.is_dir() and any(target.glob("recipientA.*.json")),
+                          "batch priority wrote directly instead of queueing")
+        queued = list(courier.outbox_dir().glob("*.json"))
+        self.assertEqual(len(queued), 1)
+
+    def test_drain_outbox_delivers_and_empties_the_queue(self):
+        target = self.runtime_dir / "orchard" / "projects" / "own.repo@main"
+        env = courier.make_orchard_envelope(
+            ":session:senderX", ":session:recipientA",
+            "orchard:agent:message:content", body="queued",
+        )
+        courier.deliver_with_priority(target, "recipientA", env, "batch")
+
+        drained = courier._drain_outbox()
+        self.assertEqual(drained, 1)
+        self.assertEqual(list(courier.outbox_dir().glob("*.json")), [])
+        delivered = list(target.glob("recipientA.*.json"))
+        self.assertEqual(len(delivered), 1)
+        self.assertEqual(json.loads(delivered[0].read_text())["body"], "queued")
+
+    def test_immediate_priority_never_queues(self):
+        target = self.runtime_dir / "orchard" / "projects" / "own.repo@main"
+        env = courier.make_orchard_envelope(
+            ":session:senderX", ":session:recipientA",
+            "orchard:agent:message:content", body="now",
+        )
+        courier.deliver_with_priority(target, "recipientA", env, "immediate")
+
+        self.assertTrue(any(target.glob("recipientA.*.json")))
+        self.assertFalse(courier.outbox_dir().is_dir()
+                          and list(courier.outbox_dir().glob("*.json")))
+
+
+class OutboxFlusherProcessTests(unittest.TestCase):
+    """CLI-level: the real `flush-outbox` subprocess — lockfile-singleton,
+    drains on a cadence, and closes itself once a drain finds nothing left
+    (Decision-129's owner-closes shape)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.runtime_dir = Path(self._tmp.name) / "run"
+        self.runtime_dir.mkdir()
+
+    def _env(self):
+        return dict(os.environ, XDG_RUNTIME_DIR=str(self.runtime_dir))
+
+    def test_flusher_drains_a_queued_entry_then_exits_on_an_empty_drain(self):
+        outbox = self.runtime_dir / "orchard" / "outbox"
+        outbox.mkdir(parents=True)
+        target = self.runtime_dir / "orchard" / "projects" / "own.repo@main"
+        entry = {
+            "dir": str(target), "sid": "recipientA",
+            "envelope": {
+                "id": "e1", "ts": "2026-01-01T00-00-00.000000",
+                "from": ":session:senderX", "to": ":session:recipientA",
+                "subject": "orchard:agent:message:content", "body": "flushed",
+            },
+        }
+        (outbox / "q1.json").write_text(json.dumps(entry), encoding="utf-8")
+
+        proc = subprocess.run(
+            [sys.executable, _COURIER_PY, "flush-outbox", "--interval", "0.2"],
+            env=self._env(), capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(list(outbox.glob("*.json")), [])
+        delivered = list(target.glob("recipientA.*.json"))
+        self.assertEqual(len(delivered), 1)
+        self.assertEqual(json.loads(delivered[0].read_text())["body"], "flushed")
+
+    def test_second_flusher_loses_the_lock_and_exits_immediately(self):
+        lock_path = self.runtime_dir / "orchard" / "outbox.flusher.lock"
+        lock_path.parent.mkdir(parents=True)
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
+        self.addCleanup(os.close, fd)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        start = time.monotonic()
+        proc = subprocess.run(
+            [sys.executable, _COURIER_PY, "flush-outbox", "--interval", "5"],
+            env=self._env(), capture_output=True, text=True, timeout=10,
+        )
+        elapsed = time.monotonic() - start
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertLess(elapsed, 4, "second flusher should lose the lock race instantly")
 
 
 class QuestionEnvelopeUnitTests(unittest.TestCase):

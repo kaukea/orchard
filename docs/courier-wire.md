@@ -278,7 +278,35 @@ mail, with a PRIORITY class as an optimisation: `immediate` (sent at once) ·
 `wait-a-round` · `batch`. Batched traffic is written by ONE outbox-flusher script on
 a 5-second cadence; immediate traffic never queues.
 
-**[GAP]** Neither relaying family is built; no priority classes, no outbox flusher.
+**[CODE, built 2026-07-29]** Both subject families were already members of
+`ORCHARD_VALID_SUBJECTS`; this commit builds the behaviour on top. Provenance:
+`is_operator_authority(subject)` (`tools/courier.py`) is true for the operator family —
+`operator_origin` is deleted outright (envelope field, `make_envelope`/
+`make_orchard_envelope` kwarg, `--operator-origin` CLI flag, schema property); every
+writer and the one flag-shaped reader (`sidebar_model.py`, already retired) are gone or
+migrated to the subject check. `send --to ... --subject orchard:operator:message:*` now
+refuses any `--priority` other than `immediate` outright — the family cannot queue.
+
+Priority: `send --priority immediate|wait-a-round|batch` (default `immediate`), legal
+only on `orchard:agent:message:*` — any other subject rejects a non-immediate value.
+`immediate` writes straight through the unchanged `orchard_deliver()` path.
+`wait-a-round`/`batch` both queue into `$XDG_RUNTIME_DIR/orchard/outbox/` (one JSON
+file per pending delivery: `{dir, sid, envelope}`) and lazily start the flusher
+(`courier.py flush-outbox`, spawned by `_ensure_flusher_running`) — a lockfile-singleton
+(`orchard/outbox.flusher.lock`, `flock` exclusive-non-blocking, no PID/staleness logic:
+a losing duplicate just exits) that drains the outbox every 5 seconds and closes itself
+the first time a drain finds nothing left (Decision-129's owner-closes shape applied to
+a queue rather than a registry entry).
+
+**[GAP, unchanged]** `wait-a-round` and `batch` are not distinguished at delivery —
+both queue through the same outbox/flusher mechanism; the spec gives no delivery-level
+difference between them beyond "immediate traffic never queues," so a second queuing
+mechanism was not invented for `wait-a-round` alone. Flagged for the operator's word,
+not assumed. The "handed up AS the operator speaking" consumption behaviour (relayed
+gate words counting as the operator's own) is a courier-AGENT prompt/consumption
+concern, not a wire-level one — it is not built here; agent charter prose describing it
+is a later step (A1), per this branch's own scoping in the "Agent status tracking"
+section above.
 
 ### The ask — ordinary request/response, defined here (ruled 2026-07-29)
 

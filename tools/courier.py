@@ -40,7 +40,8 @@ Usage:
                                                 Monitor watches, agents/courier.md)
   courier.py send --to :session:<id>|:topic:<name>|operator|NAME --subject S
              [--body X] [--notify-user] [--target-project SLUG]
-             [--in-reply-to ID]                    `:session:operator` is a
+             [--in-reply-to ID] [--priority immediate|wait-a-round|batch]
+                                                `:session:operator` is a
                                                 RESERVED, dot-free target: always
                                                 the SENDER's own project
                                                 (projects/<repo>.<project>/
@@ -55,7 +56,22 @@ Usage:
                                                 nearest tier; outside the
                                                 sender's own tree only
                                                 orchard:agent:message:request is
-                                                accepted, everything else errors
+                                                accepted, everything else errors.
+                                                `--priority` is an
+                                                orchard:agent:message:* -only
+                                                optimisation (default
+                                                immediate, never queues);
+                                                orchard:operator:message:* is
+                                                always immediate — it wakes the
+                                                recipient at once and is handed
+                                                up AS the operator speaking,
+                                                structural provenance
+                                                replacing the old
+                                                --operator-origin flag
+                                                (docs/courier-wire.md §2).
+                                                wait-a-round/batch queue into
+                                                the outbox for a lazily-started,
+                                                5-second-cadence flusher.
   courier.py broadcast                             RETIRED — errors, pointing at
                                                 orchard_topic.py post (telemetry) or
                                                 send/request (directed). Fan-out is
@@ -136,6 +152,7 @@ Usage:
                                                 exit 1 if any violation
 """
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -433,15 +450,20 @@ def status_of() -> dict:
 
 
 def make_envelope(sender: str, to: str, *, body=None, notify_user=False,
-                  operator_origin=False, in_reply_to=None) -> dict:
+                  in_reply_to=None) -> dict:
     """Build a message envelope carrying only the fields that mean something.
 
     id/ts/from/to are always present. `to` is a recipient id or `*` (everyone).
     Everything else appears only when set: no in_reply_to unless it answers a
-    request, no notify_user unless the user should see it, no operator_origin
-    unless the message originates from the operator, no body when there is
-    none. A request is not tagged — its id is its identifier, and a standard
-    request is recognised by its body (see the fixed identifiers).
+    request, no notify_user unless the user should see it, no body when there
+    is none. A request is not tagged — its id is its identifier, and a
+    standard request is recognised by its body (see the fixed identifiers).
+
+    Carries no provenance flag: an operator-authored message is never tagged
+    with one, it is sent on the `orchard:operator:message:*` subject family
+    instead (see `is_operator_authority` / docs/courier-wire.md §2) — the old
+    `operator_origin` flag this replaced was a fact someone had to remember
+    to set; the family makes it structural.
     """
     env = {
         "id": uuid.uuid4().hex[:12],
@@ -451,8 +473,6 @@ def make_envelope(sender: str, to: str, *, body=None, notify_user=False,
     }
     if notify_user:
         env["notify_user"] = True
-    if operator_origin:
-        env["operator_origin"] = True
     if in_reply_to is not None:
         env["in_reply_to"] = in_reply_to
     if body is not None:
@@ -474,7 +494,7 @@ NAME_CROSS_TREE_SUBJECT = "orchard:agent:message:request"
 
 def _deliver_to_registry_entry(sender: str, entry: dict, subject: str, *,
                                 body=None, in_reply_to=None, notify_user=False,
-                                operator_origin=False) -> dict:
+                                priority=None) -> dict:
     """Deliver one envelope to a name-resolved recipient's own project
     directory. Deliberately bypasses orchard_send()'s cross-REPO allowlist
     gate (_authorize_cross_project): resolve_name() only ever searches this
@@ -497,16 +517,20 @@ def _deliver_to_registry_entry(sender: str, entry: dict, subject: str, *,
     reason = _orchard_gardener_only_error(subject)
     if reason:
         sys.exit(f"courier: {reason}")
+    priority = priority or DEFAULT_PRIORITY
+    reason = _priority_error(subject, priority)
+    if reason:
+        sys.exit(f"courier: {reason}")
     env = make_orchard_envelope(
         f":session:{sender}", f":session:{sid}", subject,
         body=_parse_orchard_body(body), in_reply_to=in_reply_to,
         repo=project_slug(), project=target_project,
-        notify_user=notify_user, operator_origin=operator_origin,
+        notify_user=notify_user,
     )
     violation = _schema_violation(env, _load_envelope_schema())
     if violation:
         sys.exit(f"courier: {violation}")
-    orchard_deliver(project_dir(target_project), sid, env)
+    deliver_with_priority(project_dir(target_project), sid, env, priority)
     _touch_agent_name(sender)
     return env
 
@@ -540,7 +564,7 @@ def _send_by_name(args) -> None:
             sender, entry, subject, body=getattr(args, "body", None),
             in_reply_to=getattr(args, "in_reply_to", None),
             notify_user=bool(getattr(args, "notify_user", False)),
-            operator_origin=bool(getattr(args, "operator_origin", False)),
+            priority=getattr(args, "priority", None),
         )
         delivered += 1
     print(f"delivered to {delivered} live holder(s) named {name!r}")
@@ -899,6 +923,42 @@ ORCHARD_REQUEST_TIMEOUT_S = 30.0
 ORCHARD_POLL_INTERVAL_S = 0.5
 MONITOR_POLL_INTERVAL_S = 2.0
 
+# Session-message relaying (docs/courier-wire.md §2, "Session messages" /
+# "ruled 2026-07-29 — consumption on receipt"): the operator family is
+# AUTHORITY + IMMEDIATE, structural provenance replacing the old
+# `operator_origin` flag — see `is_operator_authority`. The agent family is
+# ordinary directed mail with a PRIORITY class as an optimisation only;
+# `immediate` never queues, `wait-a-round`/`batch` queue into the outbox for
+# the lazily-started flusher below (see "outbox flusher").
+OPERATOR_MESSAGE_PREFIX = "orchard:operator:message:"
+AGENT_MESSAGE_PREFIX = "orchard:agent:message:"
+MESSAGE_PRIORITIES = ("immediate", "wait-a-round", "batch")
+DEFAULT_PRIORITY = "immediate"
+OUTBOX_FLUSH_INTERVAL_S = 5.0
+
+
+def is_operator_authority(subject: str) -> bool:
+    """True for the operator relaying family: AUTHORITY + IMMEDIATE, handed
+    up AS the operator speaking (docs/courier-wire.md §2). The reader side
+    of structural provenance — a caller that used to check envelope
+    `operator_origin` now checks the SUBJECT FAMILY instead."""
+    return subject.startswith(OPERATOR_MESSAGE_PREFIX)
+
+
+def _priority_error(subject: str, priority: str) -> str | None:
+    """Priority is an agent-family-only optimisation: the operator family is
+    immediate by definition (never queues), and every other subject
+    (lifecycle/status/outcome/delegation/pubsub) is telemetry that has never
+    had a batching concept — so only `orchard:agent:message:*` may ask for
+    anything other than the default."""
+    if priority not in MESSAGE_PRIORITIES:
+        return (f"unknown --priority {priority!r} — must be one of "
+                f"{', '.join(MESSAGE_PRIORITIES)}")
+    if priority != "immediate" and not subject.startswith(AGENT_MESSAGE_PREFIX):
+        return (f"--priority {priority!r} is only legal on "
+                f"{AGENT_MESSAGE_PREFIX}* subjects — {subject!r} is always immediate")
+    return None
+
 # The orchard subject list is CLOSED and NOT extensible (operator ruling):
 # validation is EXACT MEMBERSHIP against this frozenset — no regex, no
 # startswith, no prefix/split matching, no derivation of any kind. A subject
@@ -1046,6 +1106,116 @@ def orchard_deliver(dir_path: Path, sid: str, envelope: dict) -> Path:
     maybe_compact(dir_path)
     _deregister_on_stop(envelope)
     return final
+
+
+# ---------------------------------------------------------------------------
+# outbox flusher (docs/courier-wire.md §2, "Session messages ... ruled
+# 2026-07-29"): `wait-a-round`/`batch` priority traffic is queued HERE
+# instead of going straight through orchard_deliver(), and is picked up by
+# ONE lockfile-singleton flusher process on a fixed cadence — lazily started
+# by the first batch-class send, and closing itself the first time a drain
+# finds nothing left (Decision-129's owner-closes shape: the thing that
+# created the work is also what ends it, rather than a daemon nothing ever
+# stops). `immediate` priority never touches this — it is the unchanged
+# direct orchard_deliver() call every other subject already used.
+# ---------------------------------------------------------------------------
+
+
+def outbox_dir() -> Path:
+    return orchard_root() / "outbox"
+
+
+def _flusher_lock_path() -> Path:
+    return orchard_root() / "outbox.flusher.lock"
+
+
+def _enqueue_outbox(dir_path: Path, sid: str, envelope: dict) -> Path:
+    """Queue one delivery for the flusher: the destination dir/sid an
+    immediate send would have used, plus the already-built envelope — the
+    flusher replays exactly the same orchard_deliver() an immediate send
+    would have made, just later."""
+    box = outbox_dir()
+    box.mkdir(parents=True, exist_ok=True)
+    final = box / f"{uuid.uuid4().hex[:12]}.json"
+    tmp = box / f".{final.name}.partial"
+    tmp.write_text(
+        json.dumps({"dir": str(dir_path), "sid": sid, "envelope": envelope}, indent=2),
+        encoding="utf-8",
+    )
+    os.replace(tmp, final)
+    return final
+
+
+def _drain_outbox() -> int:
+    """Deliver every queued entry via the SAME orchard_deliver() an
+    immediate send uses, removing each from the outbox as it lands. Returns
+    the count drained, so the flusher knows whether to keep running."""
+    box = outbox_dir()
+    if not box.is_dir():
+        return 0
+    drained = 0
+    for f in sorted(box.glob("*.json")):
+        if f.name.startswith("."):
+            continue
+        try:
+            entry = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            f.unlink(missing_ok=True)
+            continue
+        orchard_deliver(Path(entry["dir"]), entry["sid"], entry["envelope"])
+        f.unlink(missing_ok=True)
+        drained += 1
+    return drained
+
+
+def _ensure_flusher_running() -> None:
+    """Lazily start the singleton flusher. No pre-check for an existing
+    instance: the spawned process claims a non-blocking exclusive flock on
+    the lock file itself (cmd_flush_outbox) and exits at once if it loses
+    that race, so a duplicate spawn here costs a harmless extra process,
+    never a duplicate flusher."""
+    subprocess.Popen(
+        [sys.executable, str(Path(__file__).resolve()), "flush-outbox"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def cmd_flush_outbox(args) -> None:
+    """The outbox flusher itself — never invoked directly by an agent, only
+    lazily spawned by `_ensure_flusher_running`. A lockfile-singleton
+    (`flock`, not a PID check: a losing duplicate races itself out cleanly
+    with no staleness logic needed) that drains the outbox on a fixed
+    cadence and closes itself the first time a drain finds nothing left —
+    Decision-129's owner-closes shape applied to a queue instead of a
+    registry entry."""
+    lock_path = _flusher_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return  # another flusher already owns the lock
+    try:
+        while True:
+            time.sleep(args.interval)
+            if _drain_outbox() == 0:
+                return
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def deliver_with_priority(dir_path: Path, sid: str, envelope: dict, priority: str) -> None:
+    """`immediate` writes straight through orchard_deliver(), unchanged;
+    `wait-a-round`/`batch` queue into the outbox and wake the flusher —
+    'immediate traffic never queues' (docs/courier-wire.md §2)."""
+    if priority == "immediate":
+        orchard_deliver(dir_path, sid, envelope)
+    else:
+        _enqueue_outbox(dir_path, sid, envelope)
+        _ensure_flusher_running()
 
 
 # ---------------------------------------------------------------------------
@@ -1225,7 +1395,12 @@ def resolve_name(name: str) -> list[dict]:
 
 def make_orchard_envelope(sender: str, to: str, subject: str, *, body=None,
                            in_reply_to=None, repo=None, project=None,
-                           notify_user=False, operator_origin=False) -> dict:
+                           notify_user=False) -> dict:
+    """No provenance flag: an operator-authored message carries no marker of
+    its own — the SUBJECT FAMILY (`orchard:operator:message:*` vs
+    `orchard:agent:message:*`) is the provenance now (`is_operator_authority`,
+    docs/courier-wire.md §2). This is what the old `operator_origin` flag
+    dissolved into."""
     env = {
         "id": uuid.uuid4().hex[:12],
         "ts": datetime.now(timezone.utc).isoformat(),
@@ -1241,8 +1416,6 @@ def make_orchard_envelope(sender: str, to: str, subject: str, *, body=None,
         env["project"] = project
     if notify_user:
         env["notify_user"] = True
-    if operator_origin:
-        env["operator_origin"] = True
     if body is not None:
         env["body"] = body
     return env
@@ -1336,6 +1509,10 @@ def orchard_send(args) -> dict:
     reason = _orchard_gardener_only_error(subject)
     if reason:
         sys.exit(f"courier: {reason}")
+    priority = getattr(args, "priority", None) or DEFAULT_PRIORITY
+    reason = _priority_error(subject, priority)
+    if reason:
+        sys.exit(f"courier: {reason}")
 
     kind, value = parse_orchard_address(args.to)
     repo = project_slug()
@@ -1362,12 +1539,11 @@ def orchard_send(args) -> dict:
         in_reply_to=getattr(args, "in_reply_to", None),
         repo=repo, project=project_field,
         notify_user=bool(getattr(args, "notify_user", False)),
-        operator_origin=bool(getattr(args, "operator_origin", False)),
     )
     violation = _schema_violation(env, _load_envelope_schema())
     if violation:
         sys.exit(f"courier: {violation}")
-    orchard_deliver(dir_path, file_sid, env)
+    deliver_with_priority(dir_path, file_sid, env, priority)
     _touch_agent_name(sender)
     return env
 
@@ -1698,8 +1874,6 @@ def main() -> None:
         s.add_argument("--body")
         s.add_argument("--notify-user", dest="notify_user", action="store_true",
                        help="the sending agent intends this for the user to see")
-        s.add_argument("--operator-origin", dest="operator_origin", action="store_true",
-                       help="the message originates from the operator")
         return s
 
     s = msg_args(sub.add_parser("send"))
@@ -1709,6 +1883,10 @@ def main() -> None:
     s.add_argument("--target-project", dest="target_project",
                     help="cross-project slug for a :session: send outside the "
                          "sender's own project")
+    s.add_argument("--priority", choices=MESSAGE_PRIORITIES, default=DEFAULT_PRIORITY,
+                    help="orchard:agent:message:* only: immediate (default, never "
+                         "queues), wait-a-round, or batch (queued for the "
+                         "outbox-flusher's 5-second cadence)")
     s.set_defaults(func=cmd_send, parser=s)
 
     s = msg_args(sub.add_parser("broadcast"))
@@ -1756,6 +1934,15 @@ def main() -> None:
                     help="orchard-root directory to audit recursively; omit to "
                          "read JSON-lines envelopes from stdin")
     s.set_defaults(func=cmd_validate)
+
+    s = sub.add_parser(
+        "flush-outbox",
+        help="internal — never call directly; lazily spawned by a batch/"
+             "wait-a-round send (_ensure_flusher_running)",
+    )
+    s.add_argument("--interval", type=float, default=OUTBOX_FLUSH_INTERVAL_S,
+                    help=f"seconds between drains (default {OUTBOX_FLUSH_INTERVAL_S})")
+    s.set_defaults(func=cmd_flush_outbox)
 
     args = p.parse_args()
     args.func(args)
