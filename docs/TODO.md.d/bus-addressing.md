@@ -609,6 +609,8 @@ Ledger of everything the operator asked for during this feature, as received.
 | # | Request (as received) | State |
 |---|---|---|
 | 1 | 2026-07-29, mid-build (dictated): "Fallback emojis, all things that are not described in existing statistics or specifications and only existing code because an agent decided so is out of scope unless I say so." | **in force.** Relayed as a narrowing constraint to all four live sowers (removes work, adds none); enforced on every later step-spec. Nothing agent-invented is preserved, extended, or built around as if required. |
+| 2 | 2026-07-29, mid-build (dictated): "I asked multiple times for subtasks to be displayed again under the stage… I wondered if that was done." | **in progress.** Not proven done on his screen. Machinery exists at base (model folds delegation schedule/begin/end; `_agent_and_subagent_rows` emits under the identity line). Pinned as a MUST-SHOW acceptance item: subagent rows visible under their stage, placed per Decision-098 (beneath the task, never splitting the step rows). Relayed to sower R3 (owns the area) with a rendered-frame test required. |
+| 3 | 2026-07-29, mid-build (dictated): fleet-wide use of the courier/tmux ask instead of the native Claude Code question popup — "I wouldn't get interrupted while typing, and we could customize it." Was it done? | **answered honestly: NOT done** — broker deployed nowhere, every ask hangs; deployment was gated to sibling `question-broker-dead` at the plan gate (his own Q2 answer). Scope question put back to him: fold deployment into this landing, or keep with the sibling. → see row below once answered. |
 
 ## Decision entries
 
