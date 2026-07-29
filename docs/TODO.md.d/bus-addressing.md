@@ -64,6 +64,105 @@ rules." A resolution rule written into the agent definition is a rule every cour
 re-reads on every session, re-derives, and can get wrong differently each time. In the
 script it is one implementation, testable, and free at read time.
 
+## OPERATOR RULINGS — the design round of 2026-07-29
+
+Taken live, in his words. These supersede the earlier sections of this sidecar where
+they conflict.
+
+### Why the bus exists (his framing, restated for the record)
+
+To send and receive **without necessarily knowing who you are sending to** — to a
+**topic** (a temporary subject you want to share information about with other nodes), to
+a **role** (without knowing exactly which agent that is), or to a specific agent you
+already know.
+
+More importantly: **abstract broadcasts with multiple consumers**. An agent goes through
+a lifecycle; a consumer monitors events about **a specific agent it knows, or any agent
+at all**. That decoupled monitoring is the reason the bus exists — not the directed
+message, which is the exception.
+
+The design's original purpose is **the sidebar**: a completely independent application
+with **no AI in it**, showing a real-time view of every project, feature, task, subtask
+and metric in one pane. Five iterations have not delivered it.
+
+### What the script owns (Decision-130)
+
+Minting **stable identifiers** for recipients, **filesystem location and access**, and
+**dispatch**. Also detected by the script, with no model involved and at negligible cost:
+
+- **Identity** — agent name, session id, how to talk to it. Static.
+- **Telemetry** — when it started, how long it worked, tokens in and out.
+
+**Status, identity and telemetry are answered inside the script, never leaving it, at
+zero tokens.** A sleeping agent costs nothing.
+
+### What the subagent is for — exactly two things
+
+1. **Let an agent update its status** — tell the world. Some occasions could be hooks;
+   not many. A **skill** carries the occasions on which an agent is expected to call it.
+2. **Receive from the script and `SendMessage`** — inject into the context of a *running*
+   agent without waiting for it to be between trains of thought. This is what makes
+   **early correction** possible: catch an agent's mistake before it is too late, spend
+   less money, and stop rewriting the same thing a sixth time.
+
+It is useful *because* it is a Monitor: it is woken when messages arrive, and that is all
+it does.
+
+### What an agent knows — RULED
+
+**Plain language, plus when to speak.** The agent may ask for things in natural language
+and messages arrive on their own. It additionally knows the **occasions** on which it is
+expected to update status or signal a lifecycle change — that is the skill. **It knows
+the occasions, never the mechanism**: no verbs, no subjects, no addresses, no paths, no
+JSON.
+
+Everything else lives in the script. The 4,023-word charter exists because each
+capability was explained to a model instead of being enforced by the script — the cost is
+paid by every agent, every session, before a byte moves.
+
+Supporting note (operator): research shows agents behave better with **natural language**
+than with message/service/specification talk.
+
+### The vocabulary split — his, versus the code's
+
+The operator's concern, confirmed by measurement: the project keeps a different
+vocabulary internally than the one he uses, which is itself a suspected cause of the
+subagent's size, and it means an agent re-reading the specification cannot tell why one
+thing is called one thing rather than another.
+
+| Operator | Code |
+|---|---|
+| `closing` · `closed` | `stopping` · `stopped` (`orchard_topic.py`), plus a parallel set `started`/`building`/`testing`/`done`/`finished`/`blocked`/`abandoned` in `courier.py signal` |
+| **message bus** | **courier** — both live at once: `bus` in 76 files, `courier` in 81 |
+
+`done` and `finished` are both live signal states mapping to his single `closed`, with no
+statable difference — two agents' words for one thing, each kept because neither deleted
+the other's.
+
+### The subtree obsession is rejected at the root
+
+Operator: it "has been plaguing this project since the beginning, and it resurfaces
+continuously as a solution to all problems, isolation, and now identification. It is
+wrong." A subtree cannot address the other-machine case and actively breaks the
+cross-subtree team case.
+
+The three real cases the design must serve:
+
+1. Agents talking to agents on the **same machine, different sessions**
+2. Agents talking to agents on **other machines**
+3. **Teams of agents** talking to one another from **different subtrees**
+
+### Feature verdicts — GARDENER'S READING, presented for correction, not ruled
+
+| Feature | Reading | Basis |
+|---|---|---|
+| One-way broadcast | core, survives | the reason the bus exists |
+| Pub/sub (topics) | survives | a temporary subject shared with other nodes |
+| Request-response | survives, mostly script-side | status/identity/telemetry at zero tokens; agent-to-agent questions are the model-cost case |
+| One-way messaging (directed) | survives as the exception | teammates, agents on a task, an agent by name |
+| Message filtering | survives, invisible to agents | keeps a Monitor from waking on traffic that is not its parent's |
+| Namespacing | killed | the script mints identifiers; nothing composed from location |
+
 ## Questions
 
 - ~~**What is the address?**~~ **RULED: the agent's name**, with `:session:<id>` retained
