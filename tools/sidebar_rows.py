@@ -76,6 +76,11 @@ class Row:
     # (see `task_chain_roles`) — None otherwise (repo scope) and for
     # repo/feature rows (not applicable).
     feature_colour: tuple[int, int, int] | None = field(default=None)
+    # kind == "task" only — the task row's own right-aligned METRICS text,
+    # running time first (operator ruling, 2026-07-29 — see `_task_metrics_
+    # text`). None when nothing is known yet, which is every task today:
+    # `Task` carries no timestamp of its own for this to read.
+    metrics: str | None = field(default=None)
 
 
 def _agent_row(
@@ -136,6 +141,44 @@ def _step_row(
                live=live, task_colour=task_colour, feature_colour=feature_colour)
 
 
+def _task_metrics_text(task: Task) -> str | None:
+    """The task row's own right-aligned METRICS text — running time first,
+    tokens/context/model+effort a later step's own seam to fill (operator
+    ruling, 2026-07-29: a single-task feature's task row shows its
+    METRICS, especially its running time — see `_task_display_label` for
+    the labelling half of the same ruling). Always None today: `Task`
+    (sidebar_model.py) carries no timestamp of any kind — no `_seen_ts`,
+    no `started`/`updated` — for this function to read a running time
+    from. The ruling's own graceful-degradation instruction ("render from
+    what exists today — event timestamps / `_seen_ts` age") names a
+    source that exists only inside `sidebar_model.py`'s per-session `rec`
+    dict, never threaded onto `Task` itself; that threading is a model-
+    layer change outside this file's scope. Nothing is invented here to
+    paper over the gap — the caller renders this row's metrics slot
+    exactly as blank as it always has, until a later step gives `Task` a
+    real field to read."""
+    return None
+
+
+def _task_display_label(task: Task, feature_name: str, single_task: bool) -> str:
+    """The task row's own displayed text — literally "Task" when this is
+    the feature's ONLY task and its name is a plain duplicate of the
+    feature's own already-shown name (operator ruling, 2026-07-29,
+    superseding the 2026-07-28 "show it plainly" call —
+    `test_name_drop_rule_is_retired` in the pre-existing test suite — for
+    this exact case). A solo task with nowhere better to derive its own
+    name from falls back to reusing `feature_name` verbatim
+    (`_identity_task_keys` in sidebar_model.py); showing that borrowed
+    string a second time, right under the feature row that already shows
+    it, repeats information rather than adding any. A second task, or a
+    name that genuinely differs from the feature's, is NOT this case —
+    `task.name` keeps showing plainly, unchanged, same as before this
+    step."""
+    if single_task and task.name == feature_name:
+        return "Task"
+    return task.name
+
+
 def _task_progress_glyph(task: Task) -> str | None:
     """The task row's right-aligned progress cell — completed steps out of
     five, computed client-side from `task.steps` (never a wire/marker
@@ -152,25 +195,31 @@ def _task_rows(
     task: Task, target: str, depth: int,
     task_colour: tuple[int, int, int] | None = None,
     feature_colour: tuple[int, int, int] | None = None,
+    feature_name: str = "",
+    single_task: bool = False,
 ) -> list[Row]:
-    """A task's own row (name left-aligned, its progress circle right-
-    aligned — `_task_progress_glyph`); `task_colour` is
+    """A task's own row (name left-aligned — `_task_display_label`, "Task"
+    literal for the feature's solo duplicate-named task, operator ruling
+    2026-07-29 — its progress circle and METRICS right-aligned,
+    `_task_progress_glyph`/`_task_metrics_text`); `task_colour` is
     this task's own already-allocated Ct, grade 2, computed once per
     feature by `_assign_task_colours` — None for a terminal task, which
     uses a fixed done/failed colour instead, curses-only); `feature_colour`
     is the owning feature's own grade-1 colour, threaded the same way for
     the `SIDEBAR_COLOUR_SCOPE=feature` chain re-rooting (`task_chain_
-    roles`). Plus — while it is still open — its five-line step accordion
-    (`_step_row`, one row per `PHASES` entry, each keeping its own place
-    whether done/active/todo), the active step's agents (and their
-    subagents) nested one level deeper than that step's own row, and any
-    role-unmapped agent (fails open, rendered directly under the task, no
-    step to nest it in). A terminal task (`TERMINAL_TASK_STATUSES`) folds:
-    its own row is all that shows."""
-    name = task.name
+    roles`). `feature_name`/`single_task` are `_feature_rows`'s own already-
+    known values, threaded down purely for `_task_display_label`'s
+    duplicate check. Plus — while it is still open — its five-line step
+    accordion (`_step_row`, one row per `PHASES` entry, each keeping its
+    own place whether done/active/todo), the active step's agents (and
+    their subagents) nested one level deeper than that step's own row, and
+    any role-unmapped agent (fails open, rendered directly under the task,
+    no step to nest it in). A terminal task (`TERMINAL_TASK_STATUSES`)
+    folds: its own row is all that shows."""
+    name = _task_display_label(task, feature_name, single_task)
     rows = [Row(depth=depth, kind="task", target=target, label=name, status=task.status,
                  progress_glyph=_task_progress_glyph(task), task_colour=task_colour,
-                 feature_colour=feature_colour)]
+                 feature_colour=feature_colour, metrics=_task_metrics_text(task))]
     if task.status in TERMINAL_TASK_STATUSES:
         return rows
     for step in task.steps:
@@ -254,10 +303,12 @@ def _feature_rows(feature: Feature, repo_name: str, depth: int) -> list[Row]:
     # adoption, 2026-07-28: THIRD/FOURTH are fixed designed tones now, not
     # a computed chain), but the field is harmless to keep threading.
     feature_colour = feature_colour_base(hue, feature.feature_id)
+    single_task = len(feature.tasks) == 1
     for task in feature.tasks:
         rows.extend(_task_rows(task, target, depth + 1,
                                 task_colour=task_colours.get(task.task_id),
-                                feature_colour=feature_colour))
+                                feature_colour=feature_colour,
+                                feature_name=feature.name, single_task=single_task))
     return rows
 
 

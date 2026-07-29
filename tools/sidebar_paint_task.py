@@ -33,14 +33,20 @@ def _task_row_glyph(status: str | None, tick: int) -> str:
     drawing a fixed `STATUS_EMOJI["working"]` frame with no `tick` ever
     threaded into `_draw_task_row` to recompute it against, so it could
     never advance regardless of how long the frame loop ran). Every other
-    status keeps its existing static glyph unchanged. This is curses-only,
-    same as every other per-frame motion in this file — the plain-text
-    path (`compose_task_row_text`/`_row_text`) still uses the static
-    `STATUS_EMOJI["working"]` frame, since a repeated `render_lines` call
-    must stay byte-identical."""
+    status is Decision-058's own six static states, read straight off
+    `STATUS_EMOJI` — unchanged. No "○" bubble fallback for anything
+    unrecognized (operator ruling, 2026-07-29: bubble glyphs belong to
+    subagents alone — see `_draw_subagent_row` in sidebar_paint_identity.
+    py — a task row is never a subagent, so it never borrows that
+    vocabulary as a stand-in for "nothing matched"; an unmapped status
+    renders no glyph at all rather than one that lies about being idle).
+    This is curses-only, same as every other per-frame motion in this
+    file — the plain-text path (`compose_task_row_text`/`_row_text`) still
+    uses the static `STATUS_EMOJI["working"]` frame, since a repeated
+    `render_lines` call must stay byte-identical."""
     if status == "working":
         return SPINNER_FRAMES[tick % len(SPINNER_FRAMES)]
-    return STATUS_EMOJI.get(status, "○")
+    return STATUS_EMOJI.get(status, "")
 
 
 def _draw_task_row(
@@ -82,9 +88,22 @@ def _draw_task_row(
     simply remove the green from that" — the same colour-as-status-carrier
     drop `_draw_subagent_row` already made): the row's own `✓` mark already
     carries done-ness, so its name reads in plain TEXT, same as any other
-    status except "failed", which still keeps MUTED. The
-    status glyph itself is `_task_row_glyph` (operator ruling, 2026-07-27)
-    — cycling while working, static otherwise. `selected` swaps in
+    status except "failed" and "stale", which keep MUTED — "failed"
+    because its own ❌ mark already carries the badness (no reason to
+    double-encode it in colour, same rationale `_draw_subagent_row`'s own
+    single-foreground rule uses); "stale" because Decision-094 promises
+    exactly this ("staleness is a colour, not a removal" — a session with
+    no event in the last hour renders gray, never vanishes). Before this
+    step `row.status == "stale"` reached this row's glyph
+    (`_task_row_glyph` already resolves `STATUS_EMOJI["stale"]`) but never
+    its own colour choice — `text_fg` only ever checked "failed", so a
+    stale row rendered in full brightness, indistinguishable from a
+    genuinely idle one; DIAGNOSIS: DISCARDED, not missing — `row.status`
+    already carries "stale" faithfully by the time it reaches this
+    function (sidebar_rows.py passes `task.status` through unchanged), the
+    gray treatment Decision-094 promises was simply never applied here.
+    The status glyph itself is `_task_row_glyph` (operator ruling, 2026-07-
+    27) — cycling while working, static otherwise. `selected` swaps in
     `_selection_highlight` for the row's own background (sidebar-teamwork
     defect 4) rather than `curses.A_REVERSE` — every foreground below is
     already run through `ensure_contrast` against `bg`, so substituting the
@@ -112,8 +131,13 @@ def _draw_task_row(
     # already make — `_safe_addch` blanks whatever lands on the true last
     # column, so it is filled separately below rather than by `_safe_addstr`.
     text_width = max(width - 1, 0)
-    body = _truncate(compose_task_row_text(glyph, row.label, None, text_width), text_width)
-    text_fg = MUTED if row.status == "failed" else TEXT
+    # `row.metrics` (running time first, tokens/context/model+effort a
+    # later step's seam — `_task_metrics_text` in sidebar_rows.py, operator
+    # ruling 2026-07-29) rides the same right-aligned slot the removed
+    # progress-circle bubble used to occupy; always None today, so this is
+    # a no-op until that seam has something real to show.
+    body = _truncate(compose_task_row_text(glyph, row.label, row.metrics, text_width), text_width)
+    text_fg = MUTED if row.status in ("failed", "stale") else TEXT
     text_fg = ensure_contrast(text_fg, bg, _CONTRAST_MIN_TEXT)
     attr = colours.pair(text_fg, bg) | attr_extra
     _safe_addstr(stdscr, y, 0, body, attr)

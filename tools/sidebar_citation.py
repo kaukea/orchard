@@ -77,10 +77,15 @@ def identity_line_text(doing: str, role: str | None, model: str | None, width: i
 #         role · model                      (full, then short, then no
 #                                            model — same ladder, NO dash:
 #                                            "no ash obviuouys" once the
-#                                            citation is its own line —
-#                                            indented a few blanks, chosen
-#                                            over right-aligned because the
-#                                            indent already existed here)
+#                                            citation is its own line — EITHER
+#                                            indented a few blanks OR flush
+#                                            right (`identity_block`'s own
+#                                            `align` parameter): BOTH rungs
+#                                            are built for a real A/B
+#                                            comparison (operator ruling,
+#                                            2026-07-29), superseding an
+#                                            earlier step's unilateral pick
+#                                            of indented-only.
 #
 # The quote itself never drops in either layout. Which LAYOUT applies
 # (tight vs expand) is HEIGHT-driven and untouched by this step; which RUNG
@@ -159,6 +164,30 @@ def _citation_line(role: str | None, model: str | None, width: int) -> str:
     role_text, model_text = attribution_text(role, model, width)
     text = f"{role_text} · {model_text}" if model_text else role_text
     return _truncate(text, width)
+
+
+def _citation_line_indented(role: str | None, model: str | None, width: int) -> str:
+    """Rung A of the NORMAL (below-quote) citation layout — indented a few
+    blanks (`_ATTRIBUTION_INDENT`), operator ruling 2026-07-28: "the
+    citation is just below the text itself either right alined or indented
+    by a few blans". `width` is the room for the indent PLUS the citation
+    text (mirrors `_draw_identity_block`'s own `attribution_width` calc)."""
+    text_width = max(width - len(_ATTRIBUTION_INDENT), 0)
+    return _ATTRIBUTION_INDENT + _citation_line(role, model, text_width)
+
+
+def _citation_line_right_aligned(role: str | None, model: str | None, width: int) -> str:
+    """Rung B of the NORMAL (below-quote) citation layout — flush against
+    the row's right edge instead of indented from its left (operator
+    ruling, 2026-07-28, the other half of the same "right alined or
+    indented" choice — built here alongside the indented rung so both are
+    on hand for an A/B comparison, operator ruling 2026-07-29, rather than
+    the indented rung being the only one ever built). Left-padded with
+    spaces to `width` so the text itself ends flush right; the padding
+    shrinks to 0, never negative, once the citation alone fills `width`."""
+    text = _citation_line(role, model, width)
+    pad = max(width - _cell_width(text), 0)
+    return " " * pad + text
 
 
 def _quoted_activity(activity: str) -> str:
@@ -250,20 +279,26 @@ def tight_line(activity: str, role: str | None, width: int, model: str | None = 
 
 
 def identity_block(activity: str, role: str | None, model: str | None,
-                    width: int, expand: bool) -> list[str]:
+                    width: int, expand: bool, align: str = "indent") -> list[str]:
     """[quote] or [quote, citation] — see the module section docstring
     above for the exact two-layout, per-layout-ladder degradation.
     `expand` is the caller's real-height decision (`_agent_expansion_
-    fits`); `width` is this row's own column budget. Lines are returned
-    WITHOUT the row's own depth indent — callers prepend that uniformly;
-    the citation line's extra `_ATTRIBUTION_INDENT` beneath the quote is
-    already baked in."""
+    fits`); `width` is this row's own column budget. `align` picks which
+    of the two NORMAL-layout rungs the citation line uses — "indent"
+    (`_citation_line_indented`, the default, unchanged from before this
+    parameter existed) or "right" (`_citation_line_right_aligned`) — both
+    built side by side for an A/B comparison (operator ruling, 2026-07-29);
+    no effect on the tight (non-`expand`) rung, which has never carried a
+    dash-vs-indent choice to make. Lines are returned WITHOUT the row's own
+    depth indent — callers prepend that uniformly; the indented rung's
+    extra `_ATTRIBUTION_INDENT` beneath the quote is already baked in."""
     if not role:
         return [_quoted_activity(activity)]
     if expand:
         quote = _quoted_activity(activity)
-        attribution_width = max(width - len(_ATTRIBUTION_INDENT), 0)
-        return [quote, _ATTRIBUTION_INDENT + _citation_line(role, model, attribution_width)]
+        citation = (_citation_line_right_aligned(role, model, width) if align == "right"
+                    else _citation_line_indented(role, model, width))
+        return [quote, citation]
     return [tight_line(activity, role, width, model)]
 
 

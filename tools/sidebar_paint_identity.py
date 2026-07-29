@@ -32,12 +32,10 @@ from sidebar_colour import (  # noqa: E402
 )
 from sidebar_curses_colour import _ColourCache, _safe_addstr  # noqa: E402
 from sidebar_glyphs import (  # noqa: E402
-    STATUS_EMOJI,
     SUBAGENT_GLYPH,
     _INDENT_WIDTH,
     _SUBAGENT_LIVE_GLYPH,
 )
-from sidebar_model import TERMINAL_TASK_STATUSES  # noqa: E402
 from sidebar_paint_shared import (  # noqa: E402
     _draw_indent_cell,
     _fill_row_bg,
@@ -50,7 +48,7 @@ from sidebar_text import _cell_width, _truncate  # noqa: E402
 
 def _draw_identity_block(
     stdscr, y: int, width: int, row: Row, selected: bool, expand: bool, colours: _ColourCache,
-    hue: dict[str, tuple[int, int, int]],
+    hue: dict[str, tuple[int, int, int]], align: str = "indent",
 ) -> int:
     """Draws the agent's quote + subordinate attribution (see
     `identity_block`'s docstring for the exact ladder) — 1 or 2 curses rows
@@ -82,7 +80,25 @@ def _draw_identity_block(
     its own, so the pick is unmistakable whatever row kind it lands on.
     The one-column indent glyph (the task's own gutter colour on FOURTH,
     `_draw_indent_cell`) marks this row as belonging to its task; content
-    starts one column in."""
+    starts one column in.
+
+    The quote drops its accent for MUTED when `row.status == "stale"`
+    (operator ruling, 2026-07-29, Decision-094 — "staleness is a colour,
+    not a removal"): DIAGNOSIS, same shape as `_draw_task_row`'s own —
+    DISCARDED, not missing. `row.status` already carries "stale" all the
+    way from `Agent.status` (sidebar_model.py's `_status_for`) through
+    `Row.status` (sidebar_rows.py's `_agent_row` passes it through
+    unchanged); this function simply never consulted it for colour before
+    this step, so a stale agent's activity line read exactly as vivid as
+    a live one. `role_fg` needs no equivalent change — it is already
+    MUTED for every status.
+
+    `align` ("indent", the default, or "right") picks which of `identity_
+    block`'s two NORMAL-layout citation rungs this curses draw mirrors
+    (operator ruling, 2026-07-29: both built for a real A/B, not just the
+    indented rung a prior step settled on unilaterally) — affects only the
+    `expand` branch's second line; the tight (non-`expand`) rung is
+    unaffected, same as the plain-text `identity_block`."""
     bg = _open_block_bg(row, hue)
     if selected:
         bg = _selection_highlight(bg)
@@ -96,7 +112,8 @@ def _draw_identity_block(
     # TEXT` (4.5, left untouched — operator ruling, 2026-07-28, "the title
     # is absolutely fine for contrast... the content of step" is what is
     # not): this is a step's own CONTENT.
-    quote_fg = ensure_contrast(ACTIVITY_ACCENT, block_bg, _CONTRAST_MIN_CONTENT)
+    quote_source = MUTED if row.status == "stale" else ACTIVITY_ACCENT
+    quote_fg = ensure_contrast(quote_source, block_bg, _CONTRAST_MIN_CONTENT)
     role_fg = ensure_contrast(MUTED, block_bg, _CONTRAST_MIN_CONTENT)
 
     if bg is not None:
@@ -139,12 +156,35 @@ def _draw_identity_block(
         _safe_addstr(stdscr, y, x, model_text, colours.pair(model_fg, bg) | attr_extra)
     return y + 1
 
+def _subagent_glyph(status: str | None, tick: int) -> str:
+    """The subagent's own THREE-state presence glyph (operator ruling,
+    2026-07-29: bubble glyphs belong to subagents ALONE — this is the one
+    row kind that legitimately carries one): empty (`_SUBAGENT_LIVE_GLYPH
+    ["scheduled"]`, "○") for "scheduled", BLINKING for "doing" (running),
+    full (`SUBAGENT_GLYPH`, "●") for "done" (closed) — Decision-109's own
+    exactly-scheduled/doing/done vocabulary, nothing borrowed from the
+    task row's six-state `STATUS_EMOJI` (a subagent never carries "failed"
+    at all). Blinking rides the SAME `tick` the spinner already advances
+    on (operator: "the blink can ride the same tick the spinner uses") —
+    alternating full/blank on tick parity, never full/empty, so a running
+    subagent's blink is never momentarily confusable with a DIFFERENT
+    subagent's still "scheduled" (empty) row. An unrecognized status
+    (defensive only — Decision-109 leaves no fourth value) falls to the
+    same "full" rung "done" uses, never back to a bubble borrowed from
+    elsewhere."""
+    if status == "scheduled":
+        return _SUBAGENT_LIVE_GLYPH.get("scheduled", "○")
+    if status == "doing":
+        return SUBAGENT_GLYPH if tick % 2 == 0 else " "
+    return SUBAGENT_GLYPH
+
+
 def _draw_subagent_row(
     stdscr, y: int, width: int, row: Row, selected: bool, colours: _ColourCache,
-    hue: dict[str, tuple[int, int, int]],
+    hue: dict[str, tuple[int, int, int]], tick: int = 0,
 ) -> int:
-    """A subagent's own line — presence glyph (`_row_text`'s existing
-    scheduled/doing/done/failed vocabulary) + label, on the owning step's
+    """A subagent's own line — presence glyph (`_subagent_glyph`'s own
+    empty/blinking/full three states) + label, on the owning step's
     open-block background (see `_draw_identity_block`'s docstring for why),
     full width, contrast-checked at `_CONTRAST_MIN_CONTENT` (this is a
     step's own content, same as the identity block above it). `selected`
@@ -153,14 +193,31 @@ def _draw_subagent_row(
     same one-column indent glyph (the task's own gutter colour on FOURTH)
     as every other row related to this task.
 
+    PLACEMENT (operator, 2026-07-29): this row sits beneath its owning
+    agent's own identity-line row, which itself sits beneath its task —
+    never injected between the five step rows. That nesting is
+    `sidebar_rows.py`'s own job (`_agent_and_subagent_rows`/`_task_rows`),
+    not this function's — this painter only ever draws whatever Row it is
+    handed, at the y its caller (`sidebar_paint.py`'s dispatch loop)
+    already placed it at. Verified empirically for this step (see
+    `tests/test_sidebar_area_cd.py`'s `SubagentPlacementTests`): a fleet
+    built directly from `Agent(subagents=[...])` flattens the subagent row
+    immediately after its agent's row, both one depth below their step's
+    own accordion row.
+
+    `tick` (default 0, so an existing caller that has not been updated to
+    thread a real one still renders — it simply never blinks) is
+    `_subagent_glyph`'s own animation clock, threaded the same way
+    `_draw_task_row`/`_draw_feature_row` already thread it for their own
+    cycling spinners.
+
     ONE foreground colour regardless of `row.status` (operator ruling,
     2026-07-28: "because there's already a checkbox or checkmark, there is
     no reason to have a blue and a green... to avoid colours just bleeding
     everywhere" — restated 2026-07-28 as "the difference between a green
     and a white, even on an OLED screen at very high brightness, I can
     barely tell"). This row used to swap to GREEN for `done` and MUTED for
-    `failed`, a distinction its own glyph already carries in full (✓ / ❌ /
-    the scheduled ○, via `STATUS_EMOJI`/`_SUBAGENT_LIVE_GLYPH` below) — the
+    `failed`, a distinction its own glyph already carries in full — the
     colour swap was pure redundant encoding of a state the glyph already
     names, and green-vs-white was precisely the pair he could not
     distinguish. No information is lost: status still reads off the glyph,
@@ -177,8 +234,7 @@ def _draw_subagent_row(
     if bg is not None:
         _fill_row_bg(stdscr, y, width, bg, colours)
     _draw_indent_cell(stdscr, y, colours, gutter, fourth)
-    glyph = (STATUS_EMOJI[row.status] if row.status in TERMINAL_TASK_STATUSES
-             else _SUBAGENT_LIVE_GLYPH.get(row.status, SUBAGENT_GLYPH))
+    glyph = _subagent_glyph(row.status, tick)
     text = _truncate(f"{glyph} {row.label}", max(width - _INDENT_WIDTH, 0))
     _safe_addstr(stdscr, y, _INDENT_WIDTH, text, colours.pair(fg, bg) | attr_extra)
     return y + 1
