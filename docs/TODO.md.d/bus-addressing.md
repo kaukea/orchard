@@ -694,6 +694,13 @@ ROLLING — grows as build steps land; placed verbatim by the gardener at ingest
   deterministically from event timestamps; the task row's metrics slot shows it.
   A quiet feature rehydrates from the durable marker, live events always winning;
   the fold is proven across two projects and two features at once.
+- 📡 Session-message relaying is built: operator content carries its authority
+  structurally in its own subject family (no flag to remember), agent mail takes an
+  immediate/batch priority with a self-closing outbox flusher, the topic publish
+  path that silently crashed on every post now works and drives real subscribe/
+  unsubscribe pub-sub, and the last unfiltered wake watch is filtered like every
+  other. notify_user — written and policed but read by nobody — is deleted in
+  favour of ordinary status.
 
 ### 🐛 Bug fixes
 - 🐛 A truncated header or feature row no longer loses its trailing ellipsis: the
