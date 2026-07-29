@@ -91,6 +91,90 @@ script it is one implementation, testable, and free at read time.
 
 ## Findings
 
+### THE SPEC ALREADY EXISTS: `docs/orchard-bus.md`, on main, unread since 2026-07-27
+
+Recovered 2026-07-29 while ingesting the `close-family-fakes` closed stream. The thing
+this sidecar said had never existed — "a settled statement of WHAT an agent needs to say
+and to whom" — **was written two days ago and is sitting on `main` right now**, 15KB,
+`docs/orchard-bus.md`.
+
+It records the operator's spoken specification of 2026-07-27 and tags every single claim:
+
+- **[SPEC]** — the operator's stated design
+- **[CODE]** — verified by reading `tools/courier.py` / `tools/orchard_topic.py`
+- **[GAP]** — spec and code disagree, or the design is stated but unbuilt
+
+Its own preamble states why it was written: *"the messaging design existed only as
+fragments across agent charters, `docs/decisions.md` and the code, so every session
+re-derived it and several built against the wrong half."* That is the five-rebuild
+disease named by the session that finally wrote the cure.
+
+Sections: addresses · the fixed message list · storage layout · who writes and who wakes ·
+the removed second channel · what is actually expensive · the rules that fall out.
+
+**Status: `DRAFT for operator correction`.** It has never had the operator's pass, because
+the session that wrote it closed as blocked and its stream sat unread. Attempt six starts
+by walking this document with the operator and resolving its [GAP] rows — not by
+re-deriving the design for a sixth time.
+
+**The bitter part: it arrived in `dd9586a`** — the same stale-base squash that destroyed
+the round-4 courier work. The commit treated as the villain also carried the cure, and
+nobody read it because everybody was looking at what it broke.
+
+### The operator's verbatim subject grammar (2026-07-27), recovered from the stream
+
+Recorded here because charters were mid-migration and cannot be trusted as the spec.
+This is the authority on the SUBJECT GRAMMAR — the fixed message list, address forms,
+and scopes. It is **not** authoritative on path layout or pubsub mechanics; the operator
+caveated immediately after giving it: *"Some paths have changed, and pubsub, but they are
+mostly accurate."*
+
+    ## Addresses
+    From: :session:<session-id>
+    To:
+      :session:<session-id>   (requires manual auth)
+      :topic:<topic-name>     (fixed list, need daemon sig)
+
+    ## Fixed list of messages   (Subject:<type>)
+
+    Agent status tracking (PROJECT scope)
+    - orchard:agent:status                     (freetext, one word, the activity)
+    - orchard:agent:outcome:success|fail
+
+    Agent lifecycle tracking (sidebar etc) (GLOBAL)
+    - orchard:agent:lifecycle:starting|started|stopping|stopped
+
+    Subagents broadcast (GLOBAL)
+    - orchard:agent:delegation:begin:<subagentName|session-id>
+    - orchard:agent:delegation:end:<subagent|session-id>
+
+    PubSub (GLOBAL)
+    - orchard:bus:subscribe:<topic-name>    (script creates the agent's folder + monitor)
+    - orchard:bus:unsubscribe:<topic-name>  (script deletes it and discards remaining content)
+
+    Session message (content in body)
+    Relaying OPERATOR instructions
+    - orchard:operator:message:todo|instructions|request|response|content
+    Relaying AGENT instructions
+    - orchard:agent:message:request|response|content
+
+What it settles:
+
+- **`finished` does not exist.** No such subject — it is early-draft residue. The close is
+  `lifecycle:stopping` → cleanup → `lifecycle:stopped` (global) plus `outcome:success|fail`
+  (project).
+- **Relaying operator instructions is FIRST-CLASS and typed**
+  (`orchard:operator:message:*`), distinct from `orchard:agent:message:*`. This does not
+  contradict "you are responsible for the language used with you": that rule governs who
+  DECIDES; relayed operator content travels as its own typed subject.
+- **PubSub is a supported scripted mechanism**, so subscription is not exclusive — side
+  components may attach for telemetry, cleanup or issue-pushing.
+
+This is **eleven subject families**, matching the operator's own count ("there are only 12
+or so messages that can be sent through courier") — against 17 invented CLI verbs and a
+22-string "closed corpus" in the README. Both of those are accretion measured against the
+real spec.
+
 ### THE COURIER HAS BEEN REBUILT FIVE TIMES. That is the finding.
 
 Operator, 2026-07-29: *"then we courier AGAIN (5th freakin time)."*

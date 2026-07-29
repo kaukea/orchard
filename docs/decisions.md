@@ -2327,33 +2327,6 @@ may still need the full skill". No such repo exists on this disk; all of them ha
 the agent layer. The hedge was written by an agent reasoning about a population it
 had never looked at.
 
-## [2026-07-29 02:38 CEST] Decision-125: Where a skill and its consuming agent-def restate content, the skill stays full and the agent-def thins
-#skills #agent-defs #duplication #terseness
-
-Where a skill and an agent-def it feeds restate the same content, the skill stays
-full/authoritative and the agent-def is what gets thinned to defer to it — never the
-reverse. Applies even where orchids is currently the sole real consumer of the skill:
-no cross-repo manifest exists to verify other consumers' agent-layer status, so
-"orchids-only today" is not grounds to fold a skill's content into one role's agent-def.
-
-## [2026-07-29 02:38 CEST] Decision-126: workflow and workflow-complete stay permanently separate, reusable skills
-#skills #workflow #agent-defs
-
-`skills/workflow` and `skills/workflow-complete` stay separate, reusable skills,
-permanently — never folded wholesale into any single role's agent-def (e.g.
-`agents/landscaper.md`), because which role opens vs. closes a workflow is expected to
-keep changing over time. A role's agent-def may defer to these skills and stop
-restating their content inline, but the skills' own content is never merged elsewhere.
-
-## [2026-07-29 02:38 CEST] Decision-127: A skill must never be named after an agent or role
-#skills #naming #authoring-skills
-
-A skill's name must describe the reusable behaviour it provides, never duplicate an
-agent/role name — a skill is meant to be usable by any agent, and naming it after one
-role suggests the opposite. This is folded into the `authoring-skills` contract as a
-naming rule. `skills/gardener` was the one violation in the corpus and is renamed to
-`skills/board-walking`.
-
 ## [2026-07-29 02:38 CEST] Decision-128: metadata.tags must be a working discovery index, not a dead placeholder
 #skills #tags #metadata #authoring-skills
 
