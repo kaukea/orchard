@@ -1,8 +1,58 @@
 - created: 2026-07-27
 - created_by: fable-5
 - created_during: main
+- parent: observability
 
 # Sidebar redone fresh: pruned and rewritten, with the standing rulings as its specification
+
+## RECONCILIATION — 2026-07-29 bloom round, folded into `observability`
+
+Everything below this section predates the operator's 2026-07-29 `observability` feature
+ruling (`docs/TODO.md.d/observability.md`, authoritative — read it first). That ruling folds
+this task in as one of four axes and is explicit that **none of the four is launch-ready on
+the strength of the feature-level sidecar alone**: *"each of those axes will probably need an
+extra round of ripening before it goes to development."* This round is that ripening pass for
+this axis. Nothing below in this section is a ruling unless quoted — mark my own reasoning
+GROOMER'S READING, not ruled.
+
+**What changed at feature level and binds this task directly:**
+
+- **The producer and the sidebar are ONE change, never split.** Operator, verbatim, in
+  `observability.md`: *"every time someone tries to change one without taking into account
+  the other, you ruin a day of my work."* This sidecar's own history (below) is the worked
+  example of that failure — repeated claims that a field was "not on the wire" when it was
+  present and discarded at fold time. Any plan for this task must ship together with whatever
+  producer-side change it depends on, in the same branch, never sequenced.
+- **The lifecycle vocabulary is now fixed at four states** — `starting · started · stopping ·
+  stopped` — with **status** (freetext, one word, includes `blocked`/`waiting`), **outcome**
+  (`success|fail`), and **requests** (questions) kept as three separate, non-lifecycle
+  channels (`docs/orchard-bus.md` §2, confirmed in code). This directly resolves this
+  sidecar's own long-open Decision-058/`STATUS_EMOJI["waiting"]` question below: waiting is
+  STATUS, never a sixth lifecycle state, and an agent "started and not stopping" while it
+  waits on a question is normal, not exceptional.
+- **It is the courier, never "bus"** (Decision-131) — every remaining "bus" in this sidecar's
+  own prose (including the file `docs/orchard-bus.md` itself, still unrenamed) is a leftover
+  the operator has already flagged, not a naming choice for this task to make.
+- **No git-history mining.** Nothing in this reconciliation, and nothing in the questions
+  below, was derived by reading commits — only the sidecar's own recorded operator quotes and
+  the feature-level sidecar.
+
+### Where the OLD material below still applies, and where it does not
+
+The bulk of this file (`## BUILD SPECIFICATION`, `## Proposal`, `## The tree, as ruled by the
+operator 2026-07-27`, `## Operator requests`, `## Decision entries`) is a dense, verbatim
+record of real operator rulings from the 2026-07-27/28 rounds — display taxonomy (project /
+feature / task / stage / agent / subagent), colour-chain rules, the tree-assembly rule
+(events, not session-id folding), the marker-as-cache ruling, etc. **GROOMER'S READING: none
+of that is superseded by the 2026-07-29 ruling** — the new ruling adds the lifecycle/status/
+outcome vocabulary and the courier/producer-unity rule on top, it does not touch colour,
+layout, or the tree model. It is kept, not rewritten, because rewriting 1,100 lines of
+quoted operator rulings from memory risks losing exact wording — but it is **stale as a
+build plan**: it describes a branch (`f/sidebar-teamwork`) that was abandoned mid-flight with
+nine files of uncommitted WIP on two refs (`wip/dracula-stop`, `wip/stopped-work`), never
+merged, and it predates the 2026-07-29 producer-unity ruling entirely. A landscaper picking
+this up must NOT treat the old "Result: done" / "Tested" blocks under `## Findings` as current
+state — they describe a branch that no longer exists as a plan-ready starting point.
 
 ## Blockers
 
@@ -1189,3 +1239,55 @@ is in scope.
   changes it. The screenshot method used in this round (capture the live pane, read it,
   and enumerate defects against the rulings) worked and should be repeated at the build's
   acceptance rather than reserved for intake.
+- **2026-07-29, restated at feature level (`observability.md`, authoritative):** *"an
+  agent emits, and the operator's sidebar shows it — across more than one feature and
+  more than one project at once."* This is END TO END, not a rendered-fixture test alone
+  — the accepted method above (fake project on the real bus) already satisfies the
+  "emits → shows" shape, but the acceptance run itself must show at least two projects
+  and two features live at once, since that is the stated purpose of the pane, not an
+  incidental capability.
+
+## Questions — 2026-07-29 ripening round
+
+Closing the WHAT before a landscaper is spawned, per Decision-050. None of these is
+answered by mining git history (explicitly forbidden this round) or by this groomer's own
+inference — each carries a recommendation, marked as such, for the operator to confirm or
+override.
+
+1. **What concretely is a "metric"** in the operator's five nouns (project / feature /
+   task / subtask / metric)? GROOMER'S READING: the old sidecar's own `## Prior state`
+   section lists fields already on the wire and discarded at fold time —
+   `status.context_tokens`, `status.spend`, `status.effort`, `status.estimates` — which
+   reads as the natural candidate set (started/duration is derivable from `lifecycle`
+   timestamps, not a separate field). Not ruled. Recommend confirming the field list
+   explicitly before build, since "metric" appears nowhere in `docs/orchard-bus.md`'s
+   fixed subject vocabulary and any renderer work against it is otherwise guessing at a
+   producer contract that does not yet exist as a named thing.
+2. **How are multiple PROJECTS shown at once**, not just multiple features within one?
+   The existing display taxonomy (Decision-098, `## The tree, as ruled by the operator
+   2026-07-27` below) nests feature/task/agent under a project header, and the old
+   sidecar records the CURRENT bug as one project rendering three times split by branch.
+   Unclear whether "manage multiple projects at once" means several project headers
+   stacked in one pane (which the taxonomy already supports once the branch-splitting bug
+   is fixed) or something further — cross-project rollup, filtering, a different layout
+   unit. Not ruled; needs the operator's shape for it.
+3. **Waiting-on-a-question is STATUS, not lifecycle** — this is now settled at feature
+   level (`observability.md`, this reconciliation above) and closes what was previously
+   an open item in this sidecar (the `STATUS_EMOJI["waiting"]`/Decision-058 six-states
+   question). Recorded here as CLOSED by the feature ruling, not reopened.
+4. **Renderer: kept, extended, or replaced?** The 2026-07-27 ruling in this sidecar
+   (`## Proposal`, "Shape: extract in place, module by module") chose incremental
+   extraction over a clean-room rewrite — but that choice predates the abandoned branch,
+   the nine files of uncommitted WIP, and the 2026-07-29 producer-unity ruling. GROOMER'S
+   READING: nothing in the 2026-07-29 rulings revisits this, so the 2026-07-27 answer
+   ("extract in place, prune as you go, tests green between steps") still stands as the
+   most recent instruction on record — but given the branch was abandoned mid-extraction
+   with WIP on two refs, worth an explicit operator confirmation on whether to resume
+   that work, discard it, or restart clean, rather than assuming continuity.
+5. **What proves it works, end to end** — recorded above under `## Testing`: an agent
+   emits, the sidebar shows it, across ≥2 projects and ≥2 features live at once. This
+   question is CLOSED by the feature-level ruling; kept here only to record that the
+   closing was checked against this task specifically, not merely inherited.
+
+**Open and blocking plan-ready:** questions 1 and 2 above (metric field list, multi-project
+layout shape) and the resume/discard/restart call in question 4.
