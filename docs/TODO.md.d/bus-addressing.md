@@ -2,7 +2,76 @@
 - created_by: gardener
 - created_during: main
 
-# Bus addressing: agents address each other BY NAME; "parent" stops being an address once supervisors and parallel workers exist
+# The message bus, implemented to its specification — with the sidebar that consumes it
+
+## SCOPE — OPERATOR RULING 2026-07-29: everything, and this is the last attempt
+
+Operator, verbatim: *"everything, this is the last go before i go to chatgpt. Spec
+implemented, testable and tested, token efficient, base for communication, and systematic
+displaying of sidebar using the this information so i can manage multiple features and
+multiple projects at the same time"*.
+
+Five attempts have not delivered it. The deliverable is all five of these together — not
+a transport with the sidebar deferred again:
+
+1. **The specification implemented** — `docs/orchard-bus.md` and the rulings recorded in
+   this sidecar, built as stated rather than re-derived.
+2. **Testable and tested** — the testing gate is met with real runs, not a green build.
+3. **Token efficient** — measured, not asserted. The current cost is ~3,000 tokens per
+   message delivered; the charter is 4,023 words re-read by every agent every session.
+4. **A base for communication** — something the rest of the fleet builds on, rather than
+   a fifth thing that gets rewritten.
+5. **The sidebar, systematically displaying this information**, so the operator can manage
+   **multiple features and multiple projects at the same time**. This is the application
+   the whole design exists to serve: a completely independent program with **no AI in it**,
+   showing every project, feature, task, subtask and metric in one pane, in real time.
+
+### The governing principle (operator, same round)
+
+**Delegate the maximum of the functionality to the SCRIPT — to reduce both token cost and
+the "creativity" of the models.**
+
+The script was already modified to enforce every rule: **no message that does not respect
+the format, or whose subject is unknown, was ever accepted.** Enforcement exists; the
+charter then re-explains it in prose to a model, which is the waste.
+
+**Freedom lives in the BODY.** There is a body in messages — that is where an agent
+expresses whatever it wants to express. The envelope is closed and enforced; the body is
+open. An agent needing to say something unusual says it in the body, and never by
+inventing a subject, a verb, or a state.
+
+### THE PRODUCER AND ITS CONSUMERS MOVE TOGETHER — always, no exceptions
+
+Operator, verbatim: *"every time someone tries to change one without taking into account
+the other, you ruin a day of my work"*.
+
+The transport and the things that read it are **one change**. A round that alters the
+script's output without altering the sidebar that renders it — or alters the sidebar to
+expect a shape the script does not emit — costs the operator a day. This has happened
+repeatedly and is the most expensive recurring failure on this feature.
+
+Binding consequences for the build:
+
+- **No partial landing.** The script, the agent-def, the skill, the tests and the sidebar
+  land together or not at all. There is no "transport first, sidebar next round" — that
+  sequencing is precisely what produced five rewrites.
+- **This feature is NOT split across parallel workers with separate footprints.** The
+  footprints are the same footprint. One coherent change.
+- **A change to an emitted shape is a change to every reader of that shape**, and the
+  reader is found and updated in the same commit — never left to be discovered by the
+  operator when his sidebar goes blank.
+- **The test that matters is end to end**: an agent emits, and the sidebar shows it. A
+  passing unit test on either side alone does not demonstrate the seam that keeps
+  breaking.
+
+### Relaying — wanted, never implemented
+
+Operator: *"We didn't implement relaying but this is also a powerful tool."* The
+specification carries it as its own subject families —
+`orchard:operator:message:todo|instructions|request|response|content` and
+`orchard:agent:message:request|response|content` — with operator content deliberately kept
+as a distinct family so provenance is structural rather than a flag someone remembers to
+set. It is in scope here.
 
 ## Proposal
 
