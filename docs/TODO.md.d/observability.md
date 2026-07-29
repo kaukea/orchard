@@ -156,6 +156,80 @@ rights across a tree boundary that non-teammates do not.
 - `no-agent-teardown` — the window closed by its creator on the lifecycle event
 - `question-broker-dead` — the operator-ask path, running rather than merely built
 
+## OPERATOR ANSWERS — ripening round, 2026-07-29
+
+### Token efficiency: A/B passes today, but the FEATURE is regression alerting
+
+Operator, verbatim: *"A/B is a good test to pass today, the feature we need is token
+regression: Same scenario implementation, collect telemetry from messaging and from claude
+and timings and alert when there is regression"*.
+
+So an A/B measurement satisfies the testing gate for this feature, but the thing he
+actually wants built is a **token-regression harness**: a fixed scenario, run repeatedly,
+collecting telemetry from **the messaging layer**, from **Claude itself**, and **timings**,
+that **alerts on regression**. Tracked as its own task (`token-regression`) because it
+outlives this feature — it is how every later change is kept honest.
+
+### The metrics — ALL FOUR, and the specification already exists
+
+Ruled: **time · tokens in and out · context remaining · model and effort**.
+
+Operator, with emphasis: *"All this has been specified to DEATH including the behaviour of
+the 5 steps, the $ cost per feature, the floor time and active time for a feature, the
+running time for a task, it's all in there."*
+
+So the sidebar specification is NOT to be re-elicited. It already covers, at minimum:
+
+- the behaviour of the **5 steps**
+- **$ cost per feature**
+- **floor time** and **active time** for a feature
+- **running time** for a task
+
+**FINDING (gardener, this round): it is real, but it is SCATTERED.** The material lives
+across at least `sidebar-teamwork.md`, `sidebar-empty-rows.md`, `sidebar-titling.md`,
+`features-first-class.md` and `bus-message-specifying.md`. That dispersal is why rounds
+keep asking him again for things he has already specified. **Consolidating it into one
+place is part of this feature's work, and no round may ask the operator to restate any of
+it.**
+
+### The abandoned work is KEPT, and compared at the end
+
+Operator: *"If it has dracula in it its the latest. The previous one has the metrics I
+want, the dracula one has more or less the UX I want, but I don't know that either is
+connected to courier correctly."* And: *"keep the branch, we'll compare at the end, it did
+have a lot of good things but may not be the right implementation, let's not lose it."*
+
+Verified preservation status, 2026-07-29:
+
+| Artifact | State |
+|---|---|
+| `archive/sidebar-teamwork` → `04aff25` | **intact**, and it CONTAINS the Dracula commits (`0658677`, `e39fed8`, `9a91fd9`) |
+| `stash@{0}` — on `f/sidebar-teamwork`, `sower-b8-check` | **retained, untouched** |
+| `stash@{1}` — on `close/bus-transport-v2`, "The event list is the shipped lifecycle vocabulary" | **retained, untouched** |
+
+So both halves he named survive: the **Dracula UX** and the **earlier metrics** are both
+reachable from the archive tag. Nothing is dropped, nothing is applied. **At the end of
+this feature, both are compared against what was built** — his stated intent, not an
+optional nicety. His open doubt stands and must be answered by that comparison rather than
+assumed away: *neither may be connected to the courier correctly.*
+
+### Close-on-event needs a WINDOWING MANAGER, and it is pluggable
+
+Operator, verbatim: *"It needs synchronisation between the supervisor, and a windowing
+manager (currently tmux) that gets the delegations, so other window managers can be
+implemented (it was a feature i was to be working on today)"*.
+
+This is Decision-114's placement component made concrete:
+
+- A **windowing manager** component **receives the delegations** — it is told what to place,
+  not how to place it.
+- **tmux is the current implementation, not the interface.** Other window managers must be
+  implementable against the same surface.
+- It **synchronises with the SUPERVISOR** — which is what "the supervisor supervises and
+  listens" means in practice on this axis.
+- Per Decision-129 it also **closes what it opened**, by listening for the lifecycle event
+  rather than being called back.
+
 ## Readiness — NOT launch-ready
 
 **Operator, 2026-07-29: "each of those axes will probably need an extra round of ripening
