@@ -203,3 +203,10 @@ Out of scope: any new transport capability.
 - `python3 -m pytest tests -q` on the branch: **0 failed**, with the 36 restored tests passing unmodified — they are the specification, not the thing being fixed.
 - Producer/consumer seam covered by a new test that writes through `courier` and reads through `sidebar.build_model` (the seam no existing test crosses, per the report).
 - Live check on the real fleet before close: a task row persists after its agent exits, and a `finished` signal addressed `--to :session:<id>` reaches the parent.
+
+## Stopped by the operator (2026-07-30)
+
+The operator halted this run: the model changed and the agents deviated too
+much to continue as-is. The worktree is removed; branch `f/transport-test-reconciling`
+(tip add50a8) is KEPT for archive and consultation — a relaunch does not
+start fresh, it has *some* reference material there. The branch carries no commits beyond its base — the reference material is this sidecar's plan state.

@@ -194,3 +194,10 @@ lints unaffected). Round-trip check: script every pre-migration task id against
 post-migration ids — same set, each exactly once (scripted count, not
 eyeballed). Manual spot-check: the `orchard` feature (largest candidate, 20+
 descendants) renders with correct derived progress and touched-components list.
+
+## Stopped by the operator (2026-07-30)
+
+The operator halted this run: the model changed and the agents deviated too
+much to continue as-is. The worktree is removed; branch `f/board-grammar`
+(tip 9e12b0a) is KEPT for archive and consultation — a relaunch does not
+start fresh, it has *some* reference material there. The branch carries no commits beyond its base — the reference material is this sidecar's plan state.
