@@ -245,3 +245,10 @@ End to end, and agreed at plan: an agent emits, and the operator's sidebar shows
 across more than one feature and more than one project at once, which is the stated
 purpose. Token cost per message is **measured before and after**, not asserted. A close
 runs to completion driven by the `stopped` event with no agent calling a teardown.
+
+## Stopped by the operator (2026-07-30)
+
+The operator halted this run: the model changed and the agents deviated too
+much to continue as-is. The worktree is removed; branch `f/observability`
+(tip 9a3f914) is KEPT for archive and consultation — a relaunch does not
+start fresh, it has *some* reference material there. The branch carries 58 commits of real work on top of main — substantial reference material, consult before redesigning.
