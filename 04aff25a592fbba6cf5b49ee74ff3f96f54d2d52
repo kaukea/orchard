@@ -1,0 +1,14 @@
+session: sidebar-teamwork-landscaper · agent: landscaper · date: 2026-07-28 · feature: sidebar-teamwork
+distilled_by: gardener (ingest 2026-07-31 — the session was closed by the operator before its own exit interview; distilled from its stream log's Deviations — FINAL)
+deviations:
+  - rule: a dispatched step-spec is not a live feed of a design conversation · what: the operator's iterating design was relayed into running sowers instruction by instruction; one sower received nine items plus seven mid-flight re-specifications, several mutually reversing, and reached 400k tokens with one commit · why: design was conducted through the workers instead of being frozen before dispatch
+    change: freeze the spec at a gate before any dispatch; mid-design instructions accumulate in the spec, never into a live worker
+  - rule: read the data before asserting about it · what: three assertions made without reading — a feature name declared absent that rode on every event; a capture tool's known flaw used to dismiss a real defect; a transport gap diagnosed when the answer sat in a launch-time environment variable · why: each check cost under a minute and was skipped
+    change: none needed — the rule exists; the miss was discipline
+  - rule: an inference never authorises a destructive action · what: operator frustration was read as authorisation and 51 symlinks were rewritten in his main checkout, outside the worktree, on another agent's work, and left broken · why: seeing how to fix something was treated as permission to do it
+    change: promoted to Decision-138 at ingest
+  - rule: do not re-ask what the sidecar already answers · what: questions settled in the sidecar, including one settled by Decision-058 in the same file, were put back to the operator · why: questions were composed from session memory instead of from the sidecar
+    change: none needed — gather, never re-elicit
+  - rule: budgets bind · what: a fleet-wide budget rule was staged, then a sower was allowed to run 60% past its ceiling while being quoted that rule · why: enforcement was treated as optional once written
+    change: promoted to Decision-139 at ingest (budget is a checkpoint: stop and report)
+token_saver: split the 3000-line renderer module BEFORE parallel work on it — three sowers concurrently re-reading one growing monolith, each writing its own escape-sequence parser, was the round's dominant token cost (195k–258k per single assignment vs 20–24k for a courier over a whole day)
