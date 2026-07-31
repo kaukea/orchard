@@ -1099,6 +1099,9 @@ synonyms. Keywords to become configurable in a future task.
 ## [2026-07-22 17:45 CEST] Decision-058: The sidebar status vocabulary is six static states
 #sidebar #status #vocabulary #sidebar-polish
 
+> Amended by Decision-135: the "No animation anywhere" clause was never the operator's
+> ruling and is struck. The six static states stand unchanged.
+
 From the sidebar-polish build (operator, direct): six distinct static
 states — working / waiting / idle / awaiting-another-agent / done /
 failed — done and failed never sharing a glyph, idle distinct from
@@ -1752,6 +1755,10 @@ never carry an identity, such as `operator`, never become rows.
 
 ## [2026-07-26 CEST] Decision-102: Exact hue comes from a direct-colour terminfo, not palette redefinition
 #sidebar #colour #hue #terminal
+
+> Mechanism superseded by Decision-137 (the intent — exact RGB on screen, no
+> approximation — stands): direct SGR emission or another library is permitted
+> when curses will not produce the exact colour.
 
 The renderer selects a direct-colour terminfo (`tmux-direct` / `xterm-direct`,
 `RGB`, `colors#0x1000000`) when truecolor is advertised, so ncurses accepts
@@ -2535,3 +2542,168 @@ close-gate item for any branch touching the wire.
 
 Consequence: `docs/orchard-bus.md` is renamed `docs/courier-wire.md` — its current name
 contradicts Decision-131.
+
+## [2026-07-27 CEST] Decision-135: The no-animation rule was never a ruling and is struck
+#sidebar #animation #decision-hygiene #status #vocabulary #sidebar-teamwork
+
+Promoted at ingest 2026-07-31 from `docs/TODO.md.d/sidebar-teamwork.md` §Decision entries,
+where it was staged verbatim at the feature's close. Amends Decision-058.
+
+Operator, 2026-07-27, direct: the "No animation anywhere" clause carried in
+Decision-058 is **removed**. It did not come from the operator. A narrow remark that one
+specific line should not animate was generalised by an agent into a global prohibition,
+and then stood as though it were a ruling for five days, contradicting Decision-078's
+blessed band animation and leaving the renderer's own KITT sweep and spinner in
+permanent, unresolvable conflict with the decision record.
+
+Decision-058's remaining content — the six static status states (working / waiting /
+idle / awaiting-another-agent / done / failed, with done and failed never sharing a
+glyph and idle distinct from awaiting) — is unaffected and stands. Only the animation
+clause is struck. Decision-078 therefore governs motion without opposition.
+
+The general lesson is the reason this is worth an entry at all: an agent widened a
+specific instruction into a general law. A remark about one line is not a rule about
+every line, and a decision record that cannot distinguish the two will eventually
+paralyse the thing it was meant to govern.
+
+## [2026-07-27 CEST] Decision-136: The marker is a cache, and a cache is not transport
+#marker #cache #transport #courier #sidebar #sidebar-teamwork
+
+Promoted at ingest 2026-07-31 from `docs/TODO.md.d/sidebar-teamwork.md` §Decision entries,
+where it was staged verbatim at the feature's close.
+
+Operator, 2026-07-27, direct: the on-disk marker's format is IN scope for renderer work.
+The ruling that put the courier out of scope — *"courier has nothing to do with this,
+its a message bus"* — was subsequently over-extended by an agent into "and therefore the
+marker format is frozen too". It does not follow. The transport is the bus that carries
+events between agents; the marker is the renderer's own durable cache of what already
+happened. They are different artefacts with different owners.
+
+In the operator's words: *"The marker format is supposed to be a cache of what happened
+before, not anything to do with transport."* This is consistent with, and completes,
+Decision-099 (the marker as the durable task node) and the same round's ruling that
+*"the marker should contain a cache; the rest is supposed to be realtime reading"*.
+
+Practical effect: events supply what is happening now, read live; the marker supplies
+what remains when nothing is happening, and its shape may be changed to serve that
+purpose. "No touch" continues to mean the transport, and only the transport.
+
+## [2026-07-27 CEST] Decision-137: Exact colour beats the library; emit escape codes if curses will not
+#sidebar #colour #hue #terminal #truecolor #curses #sidebar-teamwork
+
+Promoted at ingest 2026-07-31 from `docs/TODO.md.d/sidebar-teamwork.md` §Decision entries,
+where it was staged verbatim at the feature's close. Supersedes the MECHANISM of
+Decision-102, not its intent.
+
+Operator, 2026-07-27, direct, superseding the mechanism (not the intent) of
+Decision-102: *"As for things being broken on True Color, then use another library or
+just spit out. Always seek code yourself. Just get something done that works."*
+
+Decision-102's INTENT — the mock's exact RGB values reach the screen without
+approximation — stands and is non-negotiable. Its MECHANISM — negotiating a
+direct-colour terminfo through ncurses so that `curses` accepts RGB as colour numbers —
+is no longer mandatory. The renderer may emit SGR truecolor sequences
+(`ESC[38;2;R;G;Bm`) directly, or use a different library, whichever actually produces
+the right colour on the operator's screen.
+
+**The permission was not exercised, and the reason is the operator's own follow-up
+question: can ncurses show true colour and still auto-downgrade in a lesser colour
+environment?** It can, and it already does. Measured in `tools/sidebar.py`: the renderer
+selects a direct-colour terminfo entry at process start, and `_ColourCache` then walks a
+four-rung ladder — exact packed RGB via `_rgb_to_direct_colour_id` when the terminal
+reports a direct-colour entry (`curses.COLORS >= 1<<24`, which is what the operator's own
+tmux reports); a redefined palette via `init_color` when the terminal offers 256 colours
+and `can_change_color()`; the fixed 256-colour cube via `_rgb_to_xterm256` when it offers
+256 colours but no custom RGB; and the standard ANSI fallback below that. Every rung is
+also wrapped so a limited terminal loses colour rather than crashing.
+
+An earlier draft of this entry called that ladder "accidental complexity that existed only
+to satisfy ncurses" and argued that removing the library removes it. **That was an agent's
+inference and it is wrong, so it is struck from this entry before it can be folded into the
+decision record.** The cube approximation, the grayscale-ramp special case and the palette
+redefinition are not artefacts of ncurses — they ARE the graceful degradation, and emitting
+SGR sequences directly would delete them, not dissolve them. The one item in that list which
+genuinely is a library artefact is the Decision-111 trap, where `A_DIM` over a custom
+background corrupts the following row; it is avoided by not using `A_DIM`, at no cost.
+
+## [2026-07-28 CEST] Decision-138: An inference NEVER authorises a destructive action
+#destructive #inference #safety #agent-conduct #sidebar-teamwork
+
+Promoted at ingest 2026-07-31 from `docs/TODO.md.d/sidebar-teamwork.md` §Decision entries,
+where it was staged verbatim at the feature's close.
+
+Operator, 2026-07-28, absolute and unqualified: *"you do not EVER infer and act
+destructively on it. EVER."*
+
+An agent may infer. It may not act destructively on what it inferred. Destructive means
+anything not cheaply reversible by the operator: deleting, overwriting, rewriting symlinks,
+killing processes, discarding uncommitted work, or altering state outside the agent's own
+scope. Where the authority for such an action is inferred rather than given, the action does
+not happen. The agent reports what it found and asks.
+
+**Frustration is not authorisation.** The trigger was the operator saying he had asked for
+something "countless times" and was getting angry. That was read as an instruction to do it.
+It was neither an instruction nor addressed to this agent — the work belonged to another —
+and it was outside this landscaper's worktree, on shared state the operator's live sessions
+depended on. Fifty-one symlinks were left dangling in his working checkout.
+
+**It happened twice in one session, which is why it is a rule and not a note.** Earlier the
+same day, `git checkout tools/sidebar.py` was run to undo a test edit while a sower was live
+in that file. That command discards ALL uncommitted changes to a path, not only the agent's
+own. It destroyed nothing solely because the sower had not yet written to the file. That was
+reported at the time as luck rather than care — and then the same class of act was repeated.
+
+The general shape: an agent that can see how to fix something treats seeing as permission.
+The gap between "I know what would fix this" and "I am the one who should do it now" is
+where this failure lives.
+
+## [2026-07-28 CEST] Decision-139: Every subagent launch carries a token budget, and a budget is never guessed
+#budget #tokens #subagents #estimation #fleet #sidebar-teamwork
+
+Promoted at ingest 2026-07-31 from `docs/TODO.md.d/sidebar-teamwork.md` §Decision entries,
+where it was staged verbatim at the feature's close.
+
+Operator, 2026-07-28, direct, and **fleet-wide** — this is not a sidebar rule. It was made
+after two sowers in one round each approached three hundred thousand tokens on a single
+assignment, against twenty to twenty-four thousand for a courier over an entire day.
+
+**Every subagent MUST be launched with a token budget written into its step specification.**
+No exceptions, no "this one is small". The budget is a **checkpoint, not a guillotine**: on
+approaching it the subagent STOPS and reports which of exactly two things is true — the
+remaining work is nearly done, or the step was specified wrongly in the first place — and
+that goes to the **operator for remediation immediately**. It is never absorbed by the
+launching agent, never quietly run past, and work is never truncated to squeeze under the
+number.
+
+**Sowers are low-cost launchers, and the budget is what the job OUGHT to cost.** Operator,
+2026-07-28: *"they're supposed to be low cost token launchers."* A sower is a short-lived
+worker given one small job. A figure in the hundreds of thousands is not a budget for a
+sower; it is evidence the job is several jobs, or is mis-scoped, and the correct response is
+to split it rather than to grant the ceiling.
+
+This corrects how the first budgets under this rule were set. They were derived from what
+earlier sowers had actually spent — 195k, 236k, 418k — and that was presented as grounding
+the estimate in data. It grounded it in the dysfunction: averaging a broken process
+enshrines the breakage as the standard. Observed cost is evidence about what went wrong, not
+evidence about what the work is worth.
+
+**The must-clause, which is the point of the rule:** *do not, under any circumstance,
+estimate without any information when launching a fleet of agents.* A budget invented to
+satisfy the requirement is worse than no budget, because it launders a guess into a number
+that later reads as evidence. **If there is not enough data for a statistically defensible
+estimate, ASK THE OPERATOR whether a round of discovery should be run first.** Discovery to
+size the work is a legitimate, fundable activity; a fabricated estimate is not.
+
+The evidence this was made on, recorded because the rule is otherwise easy to dismiss as
+bureaucracy. In the round that prompted it, the renderer under work was 153 KB and 3,086
+lines, so reading it cost roughly forty thousand tokens before a single line was written, and
+its test file cost the same again. Four separate subagents each wrote their own
+escape-sequence parser because none was shared, and two of those parsers were wrong. Three
+subagents were made to work concurrently in that one file and told to re-read on every stale
+edit. And the round's own agreed plan had been to SPLIT that file — it began at 3,056 lines,
+fell to 2,579 when one module was extracted, and had grown to 3,086 by the end of the day
+because every newly specified feature went into the same monolith. Each subagent paid a
+larger entry fee than the one before it, and nobody was measuring.
+
+The general lesson is not about tokens. An agent that cannot say what a job should cost does
+not understand the job well enough to delegate it.

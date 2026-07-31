@@ -1051,8 +1051,11 @@ requiring every dispatch to carry a budget.
 
 ## Decision entries
 
-Staged for the groundskeeper's mechanical fold into `docs/decisions.md` at close.
-UNNUMBERED by design — the number is assigned at fold time.
+FOLDED into `docs/decisions.md` at ingest, 2026-07-31, as Decision-135 (no-animation
+struck), Decision-136 (marker is a cache), Decision-137 (exact colour beats the library),
+Decision-138 (inference never authorises destruction), Decision-139 (token budgets,
+never guessed). The blocks below are the staging record; the numbered entries in
+`docs/decisions.md` are authoritative.
 
 ### Decision-NNN — An inference NEVER authorises a destructive action
 
