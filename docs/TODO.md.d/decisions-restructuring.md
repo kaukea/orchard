@@ -35,7 +35,7 @@
    cancel-to-gate. Those overlap closely enough that the operator should rule
    whether they are one agent or two before either is built. Note also that
    `agents/supervisor.md` already exists and explicitly disclaims judgement —
-   *"it never judges it (that is Valve)"* — so the boundary is drawn between three
+   *"it never checks it (that is Valve)"* — so the boundary is drawn between three
    things today, not two.
 
 4. **What is the vocabulary, and what is the split?** He is explicitly *"not set on

@@ -78,7 +78,7 @@ SUPERVISING CONTROLLER, started immediately when [[bus-finishing]] lands:
   agent's ACTIVITY, enforces recorded decisions, yes/no at each relevant
   phase, a no forces rework at the moment of deviation — is NAMED Valve 💧
   and is a SEPARATE agent from the supervisor (operator, 2026-07-26): the
-  supervisor routes and never judges, Valve judges and never routes. Valve
+  beekeeper routes and never checks, Valve checks and never routes. Valve
   is designed in its own round immediately after this design ([[valve]]).
 - The close moves out of the landscaper: the supervisor's groundskeeper
   fires on the landscaper's directed `orchard:agent:lifecycle:stopped`
@@ -380,7 +380,7 @@ they were requested but **the tmux part must be EXTRACTED into its own task**.
    operator's call and this is a file rename plus every reference. My read: it fits,
    and for reasons beyond vocabulary — a beekeeper tends many hives at once (the
    concurrency correction), the bees do the work so the keeper never makes honey
-   (choreographs, never authors), it does not judge the honey either (that is
+   (choreographs, never authors), it does not check the honey either (that is
    Valve), and the craft is smoke and calm rather than killing (Decision-081).
    Weak point: our workers are garden-side (sower, landscaper), so "the bees" maps
    onto nobody — cosmetic.
