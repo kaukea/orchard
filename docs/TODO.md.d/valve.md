@@ -10,7 +10,7 @@
   apply, and at each relevant phase gives a yes/no — a no FORCES REWORK at
   the moment of deviation, not at review. Two different agents by ruling:
   Valve is not the supervisor ([[close-family-fakes]]) — the supervisor
-  routes flow and never judges; Valve judges and never routes.
+  routes flow and never checks; Valve checks and never routes.
 - Composition over the bus: Valve's phase verdicts ride as outcome events
   the supervisor consumes at phase boundaries — a no becomes a rework loop
   in the flow. Valve enforces only RECORDED state (docs/decisions.md, the
@@ -81,7 +81,7 @@ plan-ready.
 ## Testing
 
 Method agreed at the plan gate together with the confidence criteria (the
-deferral above); known acceptance shape — a live piece of work judged by an
+deferral above); known acceptance shape — a live piece of work checked by an
 ephemeral Valve: a compliant change passes, a planted out-of-spec change
 draws a no with reasons and forces the retry, a second no fails the task
 to the operator.
