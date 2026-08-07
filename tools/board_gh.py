@@ -286,6 +286,12 @@ def issue_node_id(repo: str, number: int) -> str:
 
 # ---------- Issue Types (org-level) ----------
 
+def owner_is_organization(owner: str) -> bool:
+    data = gql("""query($login:String!){repositoryOwner(login:$login){
+        __typename}}""", login=owner)["data"]["repositoryOwner"]
+    return data is not None and data["__typename"] == "Organization"
+
+
 def ensure_issue_types(org: str) -> dict:
     data = gql("""query($login:String!){organization(login:$login){id
         issueTypes(first:50){nodes{id name}}}}""", login=org)["data"]["organization"]
@@ -308,6 +314,8 @@ def set_issue_type(issue_id: str, issue_type_id: str):
 
 def sync_issue_types(board: Board):
     org = board.repo.split("/")[0]
+    if not owner_is_organization(org):
+        return
     issue_types = ensure_issue_types(org)
     for t in board.tasks():
         if t.gh is None or t.status not in ACTIVE or t.type not in TYPE_ISSUE_TYPES:
@@ -340,6 +348,8 @@ def set_priority(issue_id: str, field_id: str, option_id: str):
 
 def sync_priority(board: Board):
     org = board.repo.split("/")[0]
+    if not owner_is_organization(org):
+        return
     field = priority_field(org)
     options = {o["name"]: o["id"] for o in field["options"]}
     for t in board.tasks():
@@ -632,7 +642,7 @@ def list_decision_issues(repo: str) -> dict:
 
 def sync_decisions(board: Board) -> dict:
     org = board.repo.split("/")[0]
-    issue_types = ensure_issue_types(org)
+    issue_types = ensure_issue_types(org) if owner_is_organization(org) else {}
     decision_type_id = issue_types.get("Decision")
     entries = parse_decisions(board.root / "docs" / "decisions.md")
     existing = list_decision_issues(board.repo)
