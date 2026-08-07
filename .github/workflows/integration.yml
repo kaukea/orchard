@@ -1,0 +1,30 @@
+# Delivery integration test — a brand-new project pulls in this package via
+# kauk and every file must land in the right position. Red here means
+# consumers are broken; nothing ships until this is green.
+name: delivery-integration
+
+on:
+  push:
+    branches: [main, 'f/**']
+  pull_request: {}
+  workflow_dispatch: {}
+
+jobs:
+  install-into-fresh-project:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch kauk (private — scoped read-only deploy key)
+        env:
+          KAUK_DEPLOY_KEY: ${{ secrets.KAUK_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KAUK_DEPLOY_KEY" > ~/.ssh/kauk_deploy
+          chmod 600 ~/.ssh/kauk_deploy
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/kauk_deploy -o IdentitiesOnly=yes" \
+            git clone --quiet --depth 1 git@github.com:serialseb/kauk.git "$RUNNER_TEMP/kauk"
+
+      - name: Run delivery integration test
+        run: KAUK_DIR="$RUNNER_TEMP/kauk" bash tools/delivery-integration-test.sh
