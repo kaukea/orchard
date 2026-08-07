@@ -29,6 +29,13 @@ None. Every surface it would check exists today and is readable.
    — because nothing runs it automatically. A checker nothing invokes is the very defect
    class this task is about. *Recommendation: decide this before building, not after.*
 
+   **Partially settled by the operator, 2026-08-07.** Verbatim: *"detecting divergence
+   like this should be the first phase of boardwalk"* — said during a branch audit that
+   found the divergences now appended to finding 2. Agent reading (marked, not his
+   words): the git-vs-board desync family runs as phase one of every board walk, before
+   triage; the `board-walking` skill is the surface that change lands on. The other
+   check families remain governed by the open question.
+
 4. **This repository only, or the fleet?** He said *"globally on the whole repository"*,
    which reads as this repo entire rather than across repos. The sidebar already reads a
    cross-repo registry at `~/.config/orchids/sidebar-registry.json`, so the fleet-wide
@@ -55,6 +62,11 @@ is the argument for the task — not that defects exist, but that nothing finds 
 2. **Board disagreeing with git.** `close-family-fakes` was merged at `dd9586a` and
    tagged `archive/close-family-fakes` on 2026-07-27; its board badge still reads
    `todo · critical · plan-ready`. Nothing reconciles the board against the refs.
+   Further instances, branch audit of 2026-08-07: `f/decision-making` carried 93 commits
+   of built, strike-tested valve work while the board showed the valve (gh#273) as
+   `plan-ready · todo` and listed no decision-making task on any index; `f/board-grammar`
+   and `f/transport-test-reconciling` sat as refs fully contained in main, deletable,
+   deleted by nothing.
 
 3. **Un-ingested closed streams.** `.git/the-works/close-family-fakes_closed/` has been
    sitting since 2026-07-27 with decisions pending promotion. The hook announces closed
