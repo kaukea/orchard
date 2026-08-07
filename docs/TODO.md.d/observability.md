@@ -6,6 +6,14 @@
 
 ## Proposal
 
+**Operator ruling, 2026-08-07 — the branch is not accepted; the work restarts from the
+top.** Verbatim: *"you failed at implementing it five times now. So we will redo this
+work from the top one tiny bit at a time so you can manage to actually implement it."*
+Agent reading (marked, not his words): branch `f/observability` — built and parked at
+the on-screen acceptance gate since 2026-07-29 — is not taken through that gate; the
+feature is redone from the beginning in small operator-gated increments. The branch's
+disposition (kept as reference or deleted) is not ruled.
+
 **Operator ruling, 2026-07-29. The feature is OBSERVABILITY, with the tasks that go with
 it.** It is the last attempt: *"everything, this is the last go before i go to chatgpt."*
 
