@@ -142,7 +142,19 @@ on this board runs kauk against orchids, and no task's Testing may require it.
   - `bug · done · critical · complete/interactive · process · gh#212` [Courier singleton: exactly one courier sidecar per agent, as designed](TODO.md.d/bus-singleton.md) ~message-bus ~sidebar-polish ~agent-closing
 - `feature · todo · critical · working · process · gh#276` [Courier delegating: subagents ride the parent's sidecar by reference — no courier, no identity, no direct writes (Decision-096)](TODO.md.d/courier-delegating.md) ~message-bus ~bus-singleton ~close-family-fakes ~psychometric-discovery
 - `feature · todo · · queued · process · gh#277` [Message delivering: priorities, inbox/outbox, scheduled delivery — operator want, unshaped](TODO.md.d/message-delivering.md) ~message-bus ~bus-transport-v2 ~courier-delegating
-- `feature · todo · critical · working · process ·` [Courier and messaging: exclusive scope, harvesting the good from the retired observability branch](TODO.md.d/courier-messaging.md) ~bus-addressing ~message-bus ~courier-delegating ~message-delivering ~transport-test-reconciling
+- `feature · todo · critical · working · ·` [Courier and messaging: exclusive scope, harvesting the good from the retired observability branch](TODO.md.d/courier-messaging.md) ~bus-addressing ~message-bus ~courier-delegating ~message-delivering ~transport-test-reconciling
+  - `feature · todo · critical · plan-ready · process ·` [Inbox, outbox, delivery dispatch: the courier's two boxes](TODO.md.d/inbox-outbox.md) ~message-delivering
+  - `feature · todo · · queued · process ·` [Agent-to-agent: session-based directed messaging only](TODO.md.d/session-messaging.md) ⊘inbox-outbox
+  - `feature · todo · · queued · process ·` [Tree messaging: inherited parent identity, names resolved within the tree](TODO.md.d/tree-messaging.md) ~courier-delegating
+  - `feature · todo · · queued · process ·` [Project-level broadcast](TODO.md.d/project-broadcast.md)
+  - `feature · todo · · queued · process ·` [Pub/sub, including NAME addressing](TODO.md.d/pubsub.md) ~bus-addressing
+  - `feature · todo · · queued · process ·` [Token sacrifice](TODO.md.d/token-sacrifice.md)
+  - `feature · todo · · queued · process ·` [Documentation for other components: decoupling through events](TODO.md.d/decoupling-documentation.md)
+  - `feature · todo · · queued · process ·` [Pure technical messages handled directly by the monitor](TODO.md.d/technical-messages.md)
+  - `feature · todo · · queued · process ·` [Fixed schema for messages, no exception](TODO.md.d/message-schema.md)
+  - `feature · todo · · queued · process ·` [Fixed list of subjects any agent may send, no exception](TODO.md.d/fixed-subjects.md)
+  - `feature · todo · · queued · process ·` [Defensive practices by the script against any deviation](TODO.md.d/script-defenses.md)
+  - `feature · todo · · queued · process ·` [Project inbox](TODO.md.d/project-inbox.md) ~inbox-outbox
 - `feature · todo · nice-to-have · queued · process · gh#213` [Courier recycling: a deep courier warns its host and hands over to a fresh one](TODO.md.d/bus-recycling.md) ~bus-singleton ~message-bus
 - `housekeeping · todo · idea · queued · process · gh#214` [Fleet documenting: agent wiki pages; channels with JSON Schemas](TODO.md.d/fleet-documenting.md) ~message-bus ~operator-interacting ~digest-identity
 - `bug · todo · · queued · process · gh#216` [Focus returning: a finish always selects the gardener window, the view follows only in-session](TODO.md.d/focus-returning.md) ~tmux-topology ~window-closing-owning

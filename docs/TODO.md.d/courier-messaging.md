@@ -60,33 +60,21 @@ probably be the working base for this"* — `docs/courier-wire.md` under
 ### The scenario list — operator, dictated 2026-08-08
 
 *"This should cover the current feature set."* Worked one by one, in the
-operator's order, as we get through it:
+operator's order; each scenario is its own board task and sidecar (the sole
+home of its rulings and detail):
 
-1. Inbox, outbox — *added first by the operator, 2026-08-08: "I forgot inbox,
-   outbox. This needs to be the first one"*
-   - **Ruled, 2026-08-08 (operator, confirmed reformulation):** the INBOX is the
-     sole location in which a courier receives ALL message types; the OUTBOX is
-     the location a courier puts ALL outgoing message types — a courier never
-     writes into another courier's storage. The DELIVERY DISPATCH is a new
-     component (exists nowhere yet) that pushes messages from the sender's
-     outbox to the recipient inbox(es) — one-to-one, one-to-many, routed,
-     broadcast: every delivery shape is the dispatch's, never the courier's.
-     Scheduled delivery and the priority classes stay in gh#277
-     (message-delivering), a later follow-up — operator, 2026-08-08: one thing
-     at a time; multiple features in one go is how the last five attempts died.
-2. Agent-to-agent communication — *scoped by the operator, 2026-08-08:
-   session-based directed messaging ONLY (send/request/reply); NAME addressing
-   is folded into the pub/sub scenario; priorities are not in this scenario*
-3. Agent-to-parent communication
-4. Project-level broadcast
-5. Pub/sub — *includes NAME addressing (operator, 2026-08-08)*
-6. Token sacrifice *(operator-confirmed verbatim, 2026-08-08: "I meant every
-   word of it"; its content arrives when the scenario is reached)*
-7. Documentation for other components to understand decoupling through events
-8. Pure technical messages handled directly by the monitor
-9. Fixed schema for messages, no exception
-10. Fixed list of subjects able to be sent by any agent, no exception
-11. Defensive practices by the script to prevent any deviation from the rules
+1. [inbox-outbox](inbox-outbox.md) — ruled first
+2. [session-messaging](session-messaging.md)
+3. [tree-messaging](tree-messaging.md)
+4. [project-broadcast](project-broadcast.md)
+5. [pubsub](pubsub.md) — NAME addressing folded in
+6. [token-sacrifice](token-sacrifice.md)
+7. [decoupling-documentation](decoupling-documentation.md)
+8. [technical-messages](technical-messages.md)
+9. [message-schema](message-schema.md)
+10. [fixed-subjects](fixed-subjects.md)
+11. [script-defenses](script-defenses.md)
+12. [project-inbox](project-inbox.md) — added 2026-08-08, build position unassigned
 
 **Per-scenario method (operator, same dictation):** compare the code in the
 dead branch (`archive/observability`) against the code in main, and the
