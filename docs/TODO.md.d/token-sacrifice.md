@@ -10,8 +10,9 @@ None.
 
 ## Questions
 
-- The SIZE at which the courier recycles — the maximum token count that
-  triggers the successor request (operator, 2026-08-08: open, to be sized).
+- ~~The SIZE at which the courier recycles~~ RESOLVED 2026-08-08: **25k
+  tokens** — "let's be pushy and see how it works." At 25k the courier
+  tells its parent to launch a new iteration, then exits.
 
 ## Findings
 
