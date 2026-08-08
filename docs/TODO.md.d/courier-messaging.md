@@ -71,6 +71,9 @@ operator's order, as we get through it:
      component (exists nowhere yet) that pushes messages from the sender's
      outbox to the recipient inbox(es) — one-to-one, one-to-many, routed,
      broadcast: every delivery shape is the dispatch's, never the courier's.
+     Scheduled delivery and the priority classes stay in gh#277
+     (message-delivering), a later follow-up — operator, 2026-08-08: one thing
+     at a time; multiple features in one go is how the last five attempts died.
 2. Agent-to-agent communication — *scoped by the operator, 2026-08-08:
    session-based directed messaging ONLY (send/request/reply); NAME addressing
    is folded into the pub/sub scenario; priorities are not in this scenario*
