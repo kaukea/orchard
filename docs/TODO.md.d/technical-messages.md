@@ -20,9 +20,13 @@ None open.
 
 ## Proposal
 
-Scenario as dictated 2026-08-08: purely technical messages are handled
-directly by the monitor, never waking the agent. Detail specified when
-reached.
+**Ruled, 2026-08-08 (operator):** purely technical messages are the ones
+that do not require the agent to be talked to — the script receives and
+responds immediately without ever breaching the AI boundary. Two examples
+are already documented in the branch spec and are not restated here:
+IDENTITY and STATUS (`docs/courier-wire.md` §2b under `archive/observability`
+— answered inside the script, zero tokens, Decision-130). The same class:
+uptime, request counts, ping-pong — script to script, so it is free.
 
 ## Testing
 
