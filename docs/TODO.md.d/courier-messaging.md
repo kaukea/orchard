@@ -76,6 +76,11 @@ home of its rulings and detail):
 11. [script-defenses](script-defenses.md)
 12. [project-inbox](project-inbox.md) — added 2026-08-08, build position unassigned
 
+**Operator, 2026-08-08:** *"I do not mind losing messages in the meantime
+while we rebuild."* No transition compatibility is owed during this feature:
+scenarios may break live delivery until their successors land; no bridging
+machinery is built for the interim.
+
 **Per-scenario method (operator, same dictation):** compare the code in the
 dead branch (`archive/observability`) against the code in main, and the
 specification in both branches; extend the specification if needed; possibly
