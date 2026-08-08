@@ -145,9 +145,9 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 - `feature · todo · critical · working · ·` [Courier and messaging: exclusive scope, harvesting the good from the retired observability branch](TODO.md.d/courier-messaging.md) ~bus-addressing ~message-bus ~courier-delegating ~message-delivering ~transport-test-reconciling
   - `feature · todo · critical · plan-ready · process ·` [Inbox, outbox, delivery dispatch: the courier's two boxes](TODO.md.d/inbox-outbox.md) ~message-delivering
   - `feature · todo · · plan-ready · process ·` [Agent-to-agent: session-based directed messaging only](TODO.md.d/session-messaging.md) ⊘inbox-outbox
-  - `feature · todo · · queued · process ·` [Tree messaging: inherited parent identity, names resolved within the tree](TODO.md.d/tree-messaging.md) ~courier-delegating
+  - `feature · todo · · plan-ready · process ·` [Tree messaging: inherited parent identity, agent names resolved within the tree](TODO.md.d/tree-messaging.md) ~courier-delegating
   - `feature · todo · · queued · process ·` [Project-level broadcast](TODO.md.d/project-broadcast.md)
-  - `feature · todo · · queued · process ·` [Pub/sub, including NAME addressing](TODO.md.d/pubsub.md) ~bus-addressing
+  - `feature · todo · · queued · process ·` [Pub/sub: publish and subscribe over named topics](TODO.md.d/pubsub.md) ~bus-addressing
   - `feature · todo · · queued · process ·` [Token sacrifice](TODO.md.d/token-sacrifice.md)
   - `feature · todo · · queued · process ·` [Documentation for other components: decoupling through events](TODO.md.d/decoupling-documentation.md)
   - `feature · todo · · queued · process ·` [Pure technical messages handled directly by the monitor](TODO.md.d/technical-messages.md)

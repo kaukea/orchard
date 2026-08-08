@@ -36,6 +36,12 @@ never handles a session id to reach an ancestor. Siblings, subtrees and any
 other lateral messaging: NO decision taken — out of scope, parked, never to
 be assumed by an implementer.
 
+**Clarified, 2026-08-08 (operator):** the name in this task is the AGENT
+name. Sending by agent name, resolved against only the names in your own
+tree, belongs HERE. The pub/sub scenario's names are TOPIC names — nothing
+to do with these. The branch's name-registry code is this task's reference
+material.
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.

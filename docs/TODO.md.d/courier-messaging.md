@@ -67,7 +67,7 @@ home of its rulings and detail):
 2. [session-messaging](session-messaging.md)
 3. [tree-messaging](tree-messaging.md)
 4. [project-broadcast](project-broadcast.md)
-5. [pubsub](pubsub.md) — NAME addressing folded in
+5. [pubsub](pubsub.md)
 6. [token-sacrifice](token-sacrifice.md)
 7. [decoupling-documentation](decoupling-documentation.md)
 8. [technical-messages](technical-messages.md)

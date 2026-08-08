@@ -23,8 +23,9 @@ None open.
 ## Proposal
 
 Scoped by the operator, 2026-08-08: session-based directed messaging ONLY —
-send/request/reply over `:session:` addresses. NAME addressing is folded into
-the pubsub scenario; priorities are not in this scenario.
+send/request/reply over `:session:` addresses. Agent-NAME addressing lives
+in `tree-messaging.md` (clarified 2026-08-08); priorities are not in this
+scenario.
 
 **Ruled, 2026-08-08 (operator):** everything goes through the same path. The
 message goes to the sender's OUTBOX; a dispatch courier picks it up from the
