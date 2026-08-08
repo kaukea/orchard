@@ -10,8 +10,8 @@ None.
 
 ## Questions
 
-None recorded yet — the task is unbloomed; the pre-launch bloom round closes the
-WHAT before any landscaper is spawned (Decision-050).
+- Scenario 5 was dictated as "Token sacrifice" — transcription uncertain; the
+  operator's intended wording is awaited before that scenario is specified.
 
 ## Findings
 
@@ -53,6 +53,29 @@ choreography, no windowing manager, no question broker (those remain their own
 board tasks). First act of the build: harvest from `archive/observability` the
 pieces worth keeping, as the operator gates them — not a wholesale merge of the
 branch.
+
+### The scenario list — operator, dictated 2026-08-08
+
+*"This should cover the current feature set."* Worked one by one, in the
+operator's order, as we get through it:
+
+1. Agent-to-agent communication
+2. Agent-to-parent communication
+3. Project-level broadcast
+4. Pub/sub
+5. *[dictated "Token sacrifice" — wording unresolved, see Questions]*
+6. Documentation for other components to understand decoupling through events
+7. Pure technical messages handled directly by the monitor
+8. Fixed schema for messages, no exception
+9. Fixed list of subjects able to be sent by any agent, no exception
+10. Defensive practices by the script to prevent any deviation from the rules
+
+**Per-scenario method (operator, same dictation):** compare the code in the
+dead branch (`archive/observability`) against the code in main, and the
+specification in both branches; extend the specification if needed; possibly
+one document per feature, written for TESTING consumption, not agent
+consumption. Tests for every single one of these features, per the Testing
+section below.
 
 ## Testing
 
