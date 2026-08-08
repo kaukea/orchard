@@ -6,7 +6,14 @@
 
 ## Blockers
 
-None. P0 by operator order — everything else queues behind it.
+- EXTERNAL: the CI leg of the Testing gate needs kauk installable on a fresh
+  runner. Ruled 2026-08-08: kauk is consumed as its published Debian package
+  only — its own repository builds and ships it; orchids never reaches into
+  kauk's repository for any purpose. No such package is published yet (the
+  packages.serialseb.net pool is empty; kauk's own board carries the apt-host
+  task as its gh#13). Until upstream ships, the workflow's install step is
+  deliberately, honestly red. The local leg is green with the machine's
+  installed kauk.
 
 ## Questions
 
@@ -32,10 +39,14 @@ Judgement calls taken under that order are recorded in Findings and reversible.
   fails if the committed manifest differs from a regeneration. This kills the
   recorded silent-drift failure mode (2026-07-19: four committed files
   distributed to nobody for four missing manifest lines).
-- **CI credential** (call taken): serialseb/kauk is a private repository; the
-  workflow needs read access to it. A read-only deploy key scoped to that single
-  repository is minted and stored as an Actions secret (`KAUK_DEPLOY_KEY`) on
-  kaukea/orchids — least privilege; no broad personal token is stored.
+- **Component boundary** (operator ruling, 2026-08-08, superseding the CI
+  credential plans tried first): orchids never accesses the kauk repository —
+  not by deploy key, not by app token. kauk builds and publishes its own
+  Debian package; orchids consumes the installed binary (`kauk` on PATH),
+  which is also exactly what the test now uses locally. The earlier
+  credential attempts (deploy key — blocked by the harness; callabloom token
+  — app not installed on serialseb/kauk, run 31222381352) are dead ends,
+  recorded so they are not repeated.
 
 ## Proposal
 

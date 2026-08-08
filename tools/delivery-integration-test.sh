@@ -6,8 +6,9 @@
 #   1. Snapshots this repository's committed HEAD as the package origin
 #      (uncommitted noise never ships, so the test judges what a consumer
 #      would actually receive).
-#   2. Snapshots the kauk repository's committed HEAD (KAUK_DIR, default
-#      ~/src/serialseb/kauk) the same way.
+#   2. Uses the INSTALLED kauk — the binary on PATH (or $KAUK_BIN), exactly
+#      as any consumer machine has it. This test never reaches into kauk's
+#      repository: kauk builds and ships kauk; orchids only consumes it.
 #   3. Creates a fresh consumer project and runs the real `kauk install`.
 #   4. Verifies every manifest entry landed: each skill and link resolves at
 #      its destination, the AGENTS.md template was substituted, the CLAUDE.md
@@ -23,8 +24,9 @@ say()  { printf '%s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-KAUK_DIR="${KAUK_DIR:-$HOME/src/serialseb/kauk}"
-[ -d "$KAUK_DIR/.git" ] || fail "kauk repository not found at $KAUK_DIR (set KAUK_DIR)"
+KAUK_BIN="${KAUK_BIN:-$(command -v kauk || true)}"
+[ -n "$KAUK_BIN" ] && [ -x "$KAUK_BIN" ] \
+  || fail "kauk is not installed on this machine (no 'kauk' on PATH; set KAUK_BIN)"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -40,11 +42,7 @@ pkg="$work/orchids-origin"
 snapshot "$SRC" "$pkg"
 [ -f "$pkg/manifest.conf" ] || fail "manifest.conf is not committed at the package root"
 
-say "== snapshot kauk ($(git -C "$KAUK_DIR" rev-parse --short HEAD))"
-kauk="$work/kauk"
-snapshot "$KAUK_DIR" "$kauk"
-KAUK_BIN="$kauk/bin/kauk"
-[ -x "$KAUK_BIN" ] || fail "kauk stopgap not executable at $KAUK_BIN"
+say "== using installed kauk: $KAUK_BIN"
 
 say "== create fresh consumer project"
 consumer="$work/fresh-project"

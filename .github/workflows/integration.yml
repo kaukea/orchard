@@ -15,20 +15,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Mint kauk read token (callabloom app)
-        id: kauk-token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.CALLABLOOM_APP_ID }}
-          private-key: ${{ secrets.CALLABLOOM_PRIVATE_KEY }}
-          owner: serialseb
-          repositories: kauk
-
-      - name: Fetch kauk (private)
+      - name: Install kauk (its published package)
         run: |
-          git clone --quiet --depth 1 \
-            "https://x-access-token:${{ steps.kauk-token.outputs.token }}@github.com/serialseb/kauk.git" \
-            "$RUNNER_TEMP/kauk"
+          # kauk is consumed as an installed artifact only — this repository
+          # never reaches into kauk's repository (component boundary, operator
+          # ruling 2026-08-08). kauk's own repo builds and publishes its
+          # Debian package; until that package is installable, this gate is
+          # honestly red.
+          sudo apt-get install -y kauk 2>/dev/null || {
+            echo "kauk's Debian package is not installable on this runner yet."
+            echo "Upstream owns it: serialseb/kauk builds and ships its own package."
+            exit 1
+          }
 
       - name: Run delivery integration test
-        run: KAUK_DIR="$RUNNER_TEMP/kauk" bash tools/delivery-integration-test.sh
+        run: bash tools/delivery-integration-test.sh
