@@ -149,14 +149,14 @@ on this board runs kauk against orchids, and no task's Testing may require it.
   - `feature · todo · · plan-ready · process ·` [Project-level broadcast: project-level pub/sub, topic bound to the project's life](TODO.md.d/project-broadcast.md) ⊘pubsub ⊘subscription-filtering
   - `feature · todo · · queued · process ·` [Subscription filtering: filter messages when subscribing to pub/sub](TODO.md.d/subscription-filtering.md) ⊘pubsub
   - `feature · todo · · plan-ready · process ·` [Pub/sub: publish and subscribe over named topics](TODO.md.d/pubsub.md) ~bus-addressing
-  - `feature · todo · · queued · process ·` [Token sacrifice](TODO.md.d/token-sacrifice.md)
+  - `feature · todo · · blocked-on-answers · process ·` [Token sacrifice: the capped courier and its graceful successor](TODO.md.d/token-sacrifice.md) ~bus-recycling ~bus-singleton
   - `feature · todo · · queued · process ·` [Documentation for other components: decoupling through events](TODO.md.d/decoupling-documentation.md)
   - `feature · todo · · queued · process ·` [Pure technical messages handled directly by the monitor](TODO.md.d/technical-messages.md)
   - `feature · todo · · queued · process ·` [Fixed schema for messages, no exception](TODO.md.d/message-schema.md)
   - `feature · todo · · queued · process ·` [Fixed list of subjects any agent may send, no exception](TODO.md.d/fixed-subjects.md)
   - `feature · todo · · queued · process ·` [Defensive practices by the script against any deviation](TODO.md.d/script-defenses.md)
   - `feature · todo · · queued · process ·` [Project inbox](TODO.md.d/project-inbox.md) ~inbox-outbox
-- `feature · todo · nice-to-have · queued · process · gh#213` [Courier recycling: a deep courier warns its host and hands over to a fresh one](TODO.md.d/bus-recycling.md) ~bus-singleton ~message-bus
+- `feature · cancelled · nice-to-have · complete · process · gh#213` [~~Courier recycling: a deep courier warns its host and hands over to a fresh one~~](TODO.md.d/bus-recycling.md) ~bus-singleton ~message-bus ~token-sacrifice
 - `housekeeping · todo · idea · queued · process · gh#214` [Fleet documenting: agent wiki pages; channels with JSON Schemas](TODO.md.d/fleet-documenting.md) ~message-bus ~operator-interacting ~digest-identity
 - `bug · todo · · queued · process · gh#216` [Focus returning: a finish always selects the gardener window, the view follows only in-session](TODO.md.d/focus-returning.md) ~tmux-topology ~window-closing-owning
 - `bug · todo · · queued · process · gh#217` [Orchestrator identity: one per repo, single instance, session named after the project](TODO.md.d/orchestrator-identity.md) ~session-naming ~sidebar-titling

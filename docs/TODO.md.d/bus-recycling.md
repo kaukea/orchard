@@ -2,6 +2,16 @@
 
 - created: 2026-07-22
 - created_by: Sebastien Lambla
+- completed: 2026-08-08
+- completed_during: f/courier-messaging
+
+### Why cancelled
+
+Folded into `token-sacrifice.md` (operator, 2026-08-08: "bus recycling and
+token sacrifice are the same ones") — the same mechanics written twice; the
+token-sacrifice writing is the fuller one, adding the graceful-drain and
+declared-grace shutdown rulings. This sidecar's findings and questions moved
+there.
 
 ## Blockers
 

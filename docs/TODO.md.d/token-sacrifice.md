@@ -10,11 +10,22 @@ None.
 
 ## Questions
 
-None open — content deliberately deferred to the scenario's turn.
+- The SIZE at which the courier recycles — the maximum token count that
+  triggers the successor request (operator, 2026-08-08: open, to be sized).
 
 ## Findings
 
-(none yet)
+Folded from `bus-recycling.md` (gh#213), 2026-08-08:
+
+- Measured 2026-07-22: a gardener courier grew ~23k → ~53k tokens across 44
+  wakes, each late wake replaying the whole transcript to emit one line.
+  Rotation is cheap BECAUSE state is on disk: nothing to transfer. (Matches
+  the 2026-08-08 measurement: ~19k → ~24.8k over ~15 idle wakes.)
+- The harness does not expose token counts to the agent — how the courier
+  measures its own depth (wake-count proxy, transcript-size stat, host-side
+  counter) is the build's to pick and state.
+- The one-per-agent invariant (bus-singleton, Decision-051) holds through
+  succession: never two live couriers beyond the crossover instant.
 
 ## Proposal
 
