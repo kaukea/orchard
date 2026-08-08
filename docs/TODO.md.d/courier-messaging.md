@@ -62,10 +62,12 @@ probably be the working base for this"* — `docs/courier-wire.md` under
 *"This should cover the current feature set."* Worked one by one, in the
 operator's order, as we get through it:
 
-1. Agent-to-agent communication
+1. Agent-to-agent communication — *scoped by the operator, 2026-08-08: session-based
+   directed messaging ONLY (send/request/reply); NAME addressing is folded into
+   scenario 4; priorities are not in this scenario*
 2. Agent-to-parent communication
 3. Project-level broadcast
-4. Pub/sub
+4. Pub/sub — *includes NAME addressing (operator, 2026-08-08)*
 5. Token sacrifice *(operator-confirmed verbatim, 2026-08-08: "I meant every
    word of it"; its content arrives when the scenario is reached)*
 6. Documentation for other components to understand decoupling through events
