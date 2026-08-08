@@ -104,6 +104,16 @@ immediately, whole — its envelope is the message. Never the full text
 content. Enforcement of actual reading is a future task
 (`read-enforcing.md`).
 
+**Work item, ruled 2026-08-08 (operator) — the invented-language review:**
+as part of this feature, review the hallucination that led the courier agent
+definition to invent its own language — getting agents to talk to it in
+terms completely different from the standardized, originally-requested ones.
+Every term in the charter is checked against the ruled vocabulary; invented
+terms are removed, which also shrinks the agent file. Prior evidence: the
+`signal` verb's seven-state list that appeared in no specification (deleted
+on the branch), the invented-verb finding (branch commit 48d6ac5), and
+Decision-124 (agents resist change to what they use; enforce mechanically).
+
 **Per-scenario method (operator, same dictation):** compare the code in the
 dead branch (`archive/observability`) against the code in main, and the
 specification in both branches; extend the specification if needed; possibly
