@@ -155,6 +155,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
   - `feature · todo · · plan-ready · process ·` [Fixed schema for messages: strict both ways, zero compatibility](TODO.md.d/message-schema.md)
   - `feature · todo · · plan-ready · process ·` [Fixed list of subjects any agent may send, no exception](TODO.md.d/fixed-subjects.md)
   - `feature · todo · · plan-ready · process ·` [Script defenses: vetted senders only, structural and logical validation](TODO.md.d/script-defenses.md) ~message-schema
+  - `feature · todo · · queued · process ·` [Read enforcing: a must-read that goes unread is pushed back](TODO.md.d/read-enforcing.md) ~token-sacrifice
   - `feature · todo · · blocked-on-answers · process ·` [Project inbox: tasks, files and messages posted to a project, gardener-ingested](TODO.md.d/project-inbox.md) ~inbox-outbox ~cross-repo-inbox ~intake-enforcing ~external-blockers
 - `feature · cancelled · nice-to-have · complete · process · gh#213` [~~Courier recycling: a deep courier warns its host and hands over to a fresh one~~](TODO.md.d/bus-recycling.md) ~bus-singleton ~message-bus ~token-sacrifice
 - `housekeeping · todo · idea · queued · process · gh#214` [Fleet documenting: agent wiki pages; channels with JSON Schemas](TODO.md.d/fleet-documenting.md) ~message-bus ~operator-interacting ~digest-identity

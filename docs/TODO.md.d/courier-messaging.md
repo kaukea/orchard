@@ -95,6 +95,15 @@ tokens, and the 2026-08-08 measurements back it). Interplay: the courier
 still reads what it must validate (script-defenses) — it just never
 re-speaks it.
 
+**Ruled, 2026-08-08 (operator) — the hand-up envelope:** the courier hands
+up TITLE, IMPORTANCE/PRIORITY, ORIGINATOR and the FILE PATH — the agent is
+capable of reading the file itself. The read directive is a CLOSED
+vocabulary: `must read` or `should read` — nothing else is accepted. A
+message with NO BODY [reading of dictated "contain nobody"] is handed up
+immediately, whole — its envelope is the message. Never the full text
+content. Enforcement of actual reading is a future task
+(`read-enforcing.md`).
+
 **Per-scenario method (operator, same dictation):** compare the code in the
 dead branch (`archive/observability`) against the code in main, and the
 specification in both branches; extend the specification if needed; possibly
