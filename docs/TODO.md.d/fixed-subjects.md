@@ -38,6 +38,11 @@ SYSTEM MESSAGES — their own family in the tree, alongside agent and operator
 messages; answered by the script without breaching the AI boundary
 (`technical-messages.md`).
 
+**Ruled, 2026-08-08 (operator):** the subject list gets a REVIEW at build
+time — very likely it stays the same. The existing 22-subject corpus
+(Decision-092) is the base under review; the `bus` literals are reviewed
+with it.
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.

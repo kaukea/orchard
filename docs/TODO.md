@@ -153,7 +153,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
   - `feature · todo · · plan-ready · process ·` [Decoupling documentation: tell-don't-ask for agentic code, in docs/patterns/](TODO.md.d/decoupling-documentation.md)
   - `feature · todo · · plan-ready · process ·` [System messages: answered by the script, never breaching the AI boundary](TODO.md.d/technical-messages.md)
   - `feature · todo · · blocked-on-answers · process ·` [Fixed schema for messages: strict both ways, zero compatibility](TODO.md.d/message-schema.md)
-  - `feature · todo · · queued · process ·` [Fixed list of subjects any agent may send, no exception](TODO.md.d/fixed-subjects.md)
+  - `feature · todo · · plan-ready · process ·` [Fixed list of subjects any agent may send, no exception](TODO.md.d/fixed-subjects.md)
   - `feature · todo · · queued · process ·` [Defensive practices by the script against any deviation](TODO.md.d/script-defenses.md)
   - `feature · todo · · queued · process ·` [Project inbox](TODO.md.d/project-inbox.md) ~inbox-outbox
 - `feature · cancelled · nice-to-have · complete · process · gh#213` [~~Courier recycling: a deep courier warns its host and hands over to a fresh one~~](TODO.md.d/bus-recycling.md) ~bus-singleton ~message-bus ~token-sacrifice
