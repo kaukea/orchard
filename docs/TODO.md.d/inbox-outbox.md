@@ -50,6 +50,12 @@ supersedes archived courier-wire.md §6's "one watcher per
 (directory, pattern) pair — extra processes cost nothing": they cost
 instances, and instances are the scarce resource.
 
+**Ruled, 2026-08-08 (operator) — transport:** keep it simple, use the
+FILESYSTEM. A binary object sent from A to B could take many transports
+depending on the platform — noted, and deliberately not worried about now:
+the filesystem is the implementation, not a commitment, and no abstraction
+is built for it in this feature.
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.
