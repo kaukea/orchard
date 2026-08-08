@@ -41,6 +41,12 @@ continuing — no action until the response comes back. Questions to the
 operator block for the same reason. Under the boxes model the wait watches
 the requester's own inbox for the matching reply.
 
+**Ruled, 2026-08-08 (operator):** an ASK is simply a request/response with a
+specific format, defined by SPECIFICATION and never by the agent. This
+scenario delivers only that unspecialized blocking transport; the ask's
+design (format, presentation, broker behaviour) is folded into
+`operator-interacting.md` (gh#219).
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.

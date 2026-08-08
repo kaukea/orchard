@@ -65,6 +65,15 @@
 
 ## Proposal
 
+**Folded in 2026-08-08, from the courier-messaging questioning:** the design
+of the operator ASK lands here. Operator ruling, same day: an ask is simply a
+request/response with a SPECIFIC FORMAT that is defined by specification and
+not by the agent. `session-messaging` delivers only the blocking
+request/response transport the ask rides; this task owns the ask's format,
+presentation, and broker behaviour (deployment bug stays in
+`question-broker-dead.md`).
+
+
 One typed operator-interaction envelope on the courier: kind (question | gate |
 summary), payload, numbered options where applicable. Agents SEND the
 envelope instead of inventing presentation; the gardener renders all

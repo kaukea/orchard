@@ -162,7 +162,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 - `feature · todo · · working · process · gh#274` [Tmux naming: standalone integration/extraction completing the existing tmux work](TODO.md.d/tmux-naming.md) ~tmux-topology ~sidebar-titling ~session-naming ~orchestrator-identity
 - `feature · todo · · blocked-on-answers · process · gh#259` [Summon restart: summon and window naming automated once the courier lands — manual by choice until then](TODO.md.d/summon-restarting.md) ~bus-relay ~orchestrator-identity ~session-naming ~sidebar-titling ~fanout-cutover
 - `feature · todo · critical · plan-ready · process · gh#218` [Intake enforcing: typed requests in, board writes denied](TODO.md.d/intake-enforcing.md) ~message-bus ~bus-singleton ~fleet-documenting
-- `feature · todo · · blocked-on-answers · process · gh#219` [Operator interacting: questions, gates and summaries as one typed exchange](TODO.md.d/operator-interacting.md) ~message-bus ~sidebar-polish ~hook-choreography
+- `feature · todo · · blocked-on-answers · process · gh#219` [Operator interacting: questions, gates and summaries as one typed exchange](TODO.md.d/operator-interacting.md) ~message-bus ~sidebar-polish ~hook-choreography ~session-messaging
 - `feature · todo · critical · working · process · gh#220` [Capture now: transcripts and logs preserved before the ledger exists](TODO.md.d/capture-now.md)
 - `feature · todo · · working · process · gh#221` [Corpus indexing: inventory-first index of all fleet history](TODO.md.d/corpus-indexing.md) ~capture-now
 - `bug · done · · complete · process ·` [Bloomer forensics: why the built shape diverged from its charter](TODO.md.d/bloomer-forensics.md) ~injection-integrity ~psychometric-discovery
