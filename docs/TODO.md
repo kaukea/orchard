@@ -151,7 +151,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
   - `feature · todo · · plan-ready · process ·` [Pub/sub: publish and subscribe over named topics](TODO.md.d/pubsub.md) ~bus-addressing
   - `feature · todo · · blocked-on-answers · process ·` [Token sacrifice: the capped courier and its graceful successor](TODO.md.d/token-sacrifice.md) ~bus-recycling ~bus-singleton
   - `feature · todo · · plan-ready · process ·` [Decoupling documentation: tell-don't-ask for agentic code, in docs/patterns/](TODO.md.d/decoupling-documentation.md)
-  - `feature · todo · · plan-ready · process ·` [Technical messages: answered by the script, never breaching the AI boundary](TODO.md.d/technical-messages.md)
+  - `feature · todo · · plan-ready · process ·` [System messages: answered by the script, never breaching the AI boundary](TODO.md.d/technical-messages.md)
   - `feature · todo · · queued · process ·` [Fixed schema for messages, no exception](TODO.md.d/message-schema.md)
   - `feature · todo · · queued · process ·` [Fixed list of subjects any agent may send, no exception](TODO.md.d/fixed-subjects.md)
   - `feature · todo · · queued · process ·` [Defensive practices by the script against any deviation](TODO.md.d/script-defenses.md)

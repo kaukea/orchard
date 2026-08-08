@@ -20,7 +20,9 @@ None open.
 
 ## Proposal
 
-**Ruled, 2026-08-08 (operator):** purely technical messages are the ones
+**Ruled, 2026-08-08 (operator):** these are called SYSTEM MESSAGES — that
+is the family they live in within the subject tree (`fixed-subjects.md`).
+They are the ones
 that do not require the agent to be talked to — the script receives and
 responds immediately without ever breaching the AI boundary. Two examples
 are already documented in the branch spec and are not restated here:

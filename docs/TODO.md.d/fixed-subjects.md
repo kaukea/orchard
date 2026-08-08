@@ -33,6 +33,11 @@ understand how to interact with the prompt of its owner agent, and they also
 impact routing. One family, specialized within: a TREE where each leaf has
 specific properties but shares the properties of the root.
 
+**Ruled, 2026-08-08 (operator):** the purely technical messages are named
+SYSTEM MESSAGES — their own family in the tree, alongside agent and operator
+messages; answered by the script without breaching the AI boundary
+(`technical-messages.md`).
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.
