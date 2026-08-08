@@ -79,7 +79,9 @@ home of its rulings and detail):
 **Operator, 2026-08-08:** *"I do not mind losing messages in the meantime
 while we rebuild."* No transition compatibility is owed during this feature:
 scenarios may break live delivery until their successors land; no bridging
-machinery is built for the interim.
+machinery is built for the interim. Strengthened same day: all new messages,
+all new formats, all new enforcement — NO compatibility with previous
+attempts anywhere, under any circumstance (`message-schema.md`).
 
 **Per-scenario method (operator, same dictation):** compare the code in the
 dead branch (`archive/observability`) against the code in main, and the

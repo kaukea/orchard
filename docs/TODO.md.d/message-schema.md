@@ -20,8 +20,15 @@ None open.
 
 ## Proposal
 
-Scenario as dictated 2026-08-08: a fixed schema for messages, no exception.
-Detail specified when reached.
+**Ruled, 2026-08-08 (operator, verbatim intent):** *"I'm going to tolerate
+absolutely nothing... it's all new messages, all new formats, all new
+enforcements, and I don't want to hear about compatibility at all anywhere
+under any circumstance."* The previous attempts bought nothing worth
+honouring: the schema is strict in BOTH directions — an off-schema message
+is rejected on send and on read, no tolerance, no legacy fields, no
+transition shims. `tools/message.schema.json` is the single schema
+definition and evolves with the wire in the same commit (Decision-134
+discipline).
 
 ## Testing
 
