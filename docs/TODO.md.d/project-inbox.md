@@ -53,8 +53,9 @@ gardener; a foreign agent never writes the target board.
 
 Build-order position: not yet assigned.
 
-**Ruled, 2026-08-08 (operator):** we do not store anything in git [reading
-of dictated "Target"] any more — that has been removed and should never
+**Ruled, 2026-08-08 (operator):** we do not store anything in `.git/` any
+more (operator-confirmed: "Target" = .git — the removed the-works message
+channel, archived wire spec §5) — that has been removed and should never
 have been done. Sensitive content lives in TEMPORARY messaging. Should a
 message require permanence — don't make it a message; a message is not
 permanent by default. The one permanent-natured case is the PROJECT INBOX:
