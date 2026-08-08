@@ -28,6 +28,14 @@ think you know. It lowers coupling, increases reliability, and is what makes
 the system function. The cautionary example: the old caretaker killing files
 before agents could clean themselves up.
 
+**Ruled, 2026-08-08 (operator) — location:** a new `docs/patterns/`
+subfolder: `docs/` today holds the WHAT IS; patterns holds the WHAT SHOULD
+BE, the guides to development. This document lands there, and `AGENTS.md`
+gains a pointer naming it the way one writes code — agentic code — in this
+project. Deliberately NOT added to `AGENTS.files.md`: it is specific to this
+project and the operator's way of coding. (Folder and pointer are created
+when this scenario is built, not at task creation.)
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.

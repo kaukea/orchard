@@ -150,7 +150,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
   - `feature · todo · · queued · process ·` [Subscription filtering: filter messages when subscribing to pub/sub](TODO.md.d/subscription-filtering.md) ⊘pubsub
   - `feature · todo · · plan-ready · process ·` [Pub/sub: publish and subscribe over named topics](TODO.md.d/pubsub.md) ~bus-addressing
   - `feature · todo · · blocked-on-answers · process ·` [Token sacrifice: the capped courier and its graceful successor](TODO.md.d/token-sacrifice.md) ~bus-recycling ~bus-singleton
-  - `feature · todo · · queued · process ·` [Documentation for other components: decoupling through events](TODO.md.d/decoupling-documentation.md)
+  - `feature · todo · · plan-ready · process ·` [Decoupling documentation: tell-don't-ask for agentic code, in docs/patterns/](TODO.md.d/decoupling-documentation.md)
   - `feature · todo · · queued · process ·` [Pure technical messages handled directly by the monitor](TODO.md.d/technical-messages.md)
   - `feature · todo · · queued · process ·` [Fixed schema for messages, no exception](TODO.md.d/message-schema.md)
   - `feature · todo · · queued · process ·` [Fixed list of subjects any agent may send, no exception](TODO.md.d/fixed-subjects.md)
