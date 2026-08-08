@@ -144,7 +144,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 - `feature · todo · · queued · process · gh#277` [Message delivering: priorities, inbox/outbox, scheduled delivery — operator want, unshaped](TODO.md.d/message-delivering.md) ~message-bus ~bus-transport-v2 ~courier-delegating
 - `feature · todo · critical · working · ·` [Courier and messaging: exclusive scope, harvesting the good from the retired observability branch](TODO.md.d/courier-messaging.md) ~bus-addressing ~message-bus ~courier-delegating ~message-delivering ~transport-test-reconciling
   - `feature · todo · critical · plan-ready · process ·` [Inbox, outbox, delivery dispatch: the courier's two boxes](TODO.md.d/inbox-outbox.md) ~message-delivering
-  - `feature · todo · · queued · process ·` [Agent-to-agent: session-based directed messaging only](TODO.md.d/session-messaging.md) ⊘inbox-outbox
+  - `feature · todo · · plan-ready · process ·` [Agent-to-agent: session-based directed messaging only](TODO.md.d/session-messaging.md) ⊘inbox-outbox
   - `feature · todo · · queued · process ·` [Tree messaging: inherited parent identity, names resolved within the tree](TODO.md.d/tree-messaging.md) ~courier-delegating
   - `feature · todo · · queued · process ·` [Project-level broadcast](TODO.md.d/project-broadcast.md)
   - `feature · todo · · queued · process ·` [Pub/sub, including NAME addressing](TODO.md.d/pubsub.md) ~bus-addressing

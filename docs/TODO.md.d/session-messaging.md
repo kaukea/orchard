@@ -47,11 +47,13 @@ scenario delivers only that unspecialized blocking transport; the ask's
 design (format, presentation, broker behaviour) is folded into
 `operator-interacting.md` (gh#219).
 
-**Subject families (agent reading of the operator's 2026-08-08 taxonomy
-ruling, recorded in `fixed-subjects.md`):** agent:message and operator:message
-are one tree with specialized leaves, so BOTH families ride this scenario's
-directed-messaging rebuild — flagged as a reading, awaiting the operator's
-confirmation.
+**Ruled, 2026-08-08 (operator):** subjects are DECOUPLED from addressing —
+the subject names the kind of content (variable detail, e.g. a topic name,
+rides in the body); the address (a session, a pubsub topic, your parent) is
+where it goes; any subject can travel to any address. The subject families
+therefore belong to ALL message-sending scenarios — the whole bus — not to
+this one. This scenario builds only the `:session:` address path, carrying
+whatever subject rides it. Family definitions live in `fixed-subjects.md`.
 
 ## Testing
 
