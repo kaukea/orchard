@@ -47,6 +47,12 @@ scenario delivers only that unspecialized blocking transport; the ask's
 design (format, presentation, broker behaviour) is folded into
 `operator-interacting.md` (gh#219).
 
+**Subject families (agent reading of the operator's 2026-08-08 taxonomy
+ruling, recorded in `fixed-subjects.md`):** agent:message and operator:message
+are one tree with specialized leaves, so BOTH families ride this scenario's
+directed-messaging rebuild — flagged as a reading, awaiting the operator's
+confirmation.
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.
