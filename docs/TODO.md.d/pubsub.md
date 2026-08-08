@@ -46,12 +46,16 @@ one another.
   082/092) — matching the operator's 2026-08-08 subject/address orthogonality
   ruling. Identity and status are supplied by the SCRIPT, never authored by
   agents (Decision-082).
-- **Derived, AWAITING the operator's word:** under the 2026-08-08 inbox ruling
-  (the inbox is the sole receiving location for ALL message types), a topic
-  publish goes to the publisher's OUTBOX and the dispatch fans copies into each
-  subscriber's ordinary INBOX — which supersedes the branch's per-topic
-  subscriber folders (`orchard/topics/<name>/<sid>/`); the topic then exists as
-  a subscription REGISTRY the dispatch reads, not as a delivery location.
+- **Ruled, 2026-08-08 (operator):** messages are SELF-DESCRIPTIVE, which is
+  what lets one outbox serve everything: the sender drops the message in its
+  outbox and it goes to the right place. For pub/sub that place is the TOPIC,
+  where the message STAYS while a crawler component copies it into the inbox
+  of every component subscribed to the topic. The message is cleared from the
+  topic once ALL CURRENT subscribers have received it — so nobody can receive
+  messages from before their subscription; no replay. The topic itself is
+  cleared once it holds no messages and has seen no activity for an amount of
+  time — a garbage collector, like everyone else ends up with. This supersedes
+  the branch's per-topic per-subscriber folders.
 
 ## Testing
 
