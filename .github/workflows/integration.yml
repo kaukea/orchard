@@ -15,16 +15,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install kauk (its published package)
+      - name: Install kauk (Debian package from the custom apt repository)
+        env:
+          # These values are owned by the kauk successor's documentation —
+          # its repo builds, renames and publishes the package (operator,
+          # 2026-08-08). Update them from that documentation when it ships;
+          # nothing here ever reaches into kauk's repository.
+          APT_REPO_URL: https://packages.serialseb.net/deb
+          PACKAGE: kauk
         run: |
-          # kauk is consumed as an installed artifact only — this repository
-          # never reaches into kauk's repository (component boundary, operator
-          # ruling 2026-08-08). kauk's own repo builds and publishes its
-          # Debian package; until that package is installable, this gate is
-          # honestly red.
-          sudo apt-get install -y kauk 2>/dev/null || {
-            echo "kauk's Debian package is not installable on this runner yet."
-            echo "Upstream owns it: serialseb/kauk builds and ships its own package."
+          echo "deb [trusted=yes] $APT_REPO_URL stable main" \
+            | sudo tee /etc/apt/sources.list.d/serialseb.list
+          sudo apt-get update -qq || true
+          sudo apt-get install -y "$PACKAGE" || {
+            echo "The custom apt repository does not serve '$PACKAGE' yet."
+            echo "Upstream owns publishing; this gate stays red until it ships."
             exit 1
           }
 
