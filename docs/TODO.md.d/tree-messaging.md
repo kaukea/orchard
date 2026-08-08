@@ -28,6 +28,14 @@ launch [reading: replaces the current passing of parent identity to each
 launched agent, which is brittle]. If a use is found, sending a message by
 name then resolves against only the names relevant to YOUR tree.
 
+**Ruled, 2026-08-08 (operator):** an agent can send a message to its parent —
+and to ANY agent on its PATH TO THE ROOT (the root today is the
+orchestrator, where parent-addressing is of little use). Ancestor addressing
+is a first-class address form resolved from the inherited linkage; the agent
+never handles a session id to reach an ancestor. Siblings, subtrees and any
+other lateral messaging: NO decision taken — out of scope, parked, never to
+be assumed by an implementer.
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.
