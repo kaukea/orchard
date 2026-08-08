@@ -14,6 +14,10 @@ None open.
 
 ## Findings
 
+- Operator, 2026-08-08: we are knowingly building a CLASSIFIER in multiple
+  places (the courier's logical validation, the breach triage) — accepted;
+  there is no way around doing it ourselves.
+
 - The governing principle stands in the retired experiment's record: the
   script already enforced format and subject absolutely; enforcement lives in
   code, never prose.
