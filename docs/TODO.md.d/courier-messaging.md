@@ -137,3 +137,8 @@ Binding on every scenario of this feature: unit tests are part of the
 scenario's specification — including a unit-test seam for an agent
 communicating with its counterparty. No scenario closes without its tests
 written and run green.
+
+**Ruled at build start, 2026-08-08 (operator):** ONE HUNDRED PERCENT test
+coverage for each scenario, unless absolutely impossible — this is the
+point of the exercise and of revisiting everything built so far. Coverage
+is MEASURED, not asserted.
