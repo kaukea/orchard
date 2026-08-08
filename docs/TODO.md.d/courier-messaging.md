@@ -99,7 +99,7 @@ re-speaks it.
 up TITLE, IMPORTANCE/PRIORITY, ORIGINATOR and the FILE PATH — the agent is
 capable of reading the file itself. The read directive is a CLOSED
 vocabulary: `must read` or `should read` — nothing else is accepted. A
-message with NO BODY [reading of dictated "contain nobody"] is handed up
+message with NO BODY (operator-confirmed reading) is handed up
 immediately, whole — its envelope is the message. Never the full text
 content. Enforcement of actual reading is a future task
 (`read-enforcing.md`).
