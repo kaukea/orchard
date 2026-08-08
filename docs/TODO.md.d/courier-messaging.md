@@ -64,6 +64,13 @@ operator's order, as we get through it:
 
 1. Inbox, outbox — *added first by the operator, 2026-08-08: "I forgot inbox,
    outbox. This needs to be the first one"*
+   - **Ruled, 2026-08-08 (operator, confirmed reformulation):** the INBOX is the
+     sole location in which a courier receives ALL message types; the OUTBOX is
+     the location a courier puts ALL outgoing message types — a courier never
+     writes into another courier's storage. The DELIVERY DISPATCH is a new
+     component (exists nowhere yet) that pushes messages from the sender's
+     outbox to the recipient inbox(es) — one-to-one, one-to-many, routed,
+     broadcast: every delivery shape is the dispatch's, never the courier's.
 2. Agent-to-agent communication — *scoped by the operator, 2026-08-08:
    session-based directed messaging ONLY (send/request/reply); NAME addressing
    is folded into the pub/sub scenario; priorities are not in this scenario*
