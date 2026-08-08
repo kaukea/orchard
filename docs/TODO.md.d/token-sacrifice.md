@@ -26,6 +26,20 @@ Folded from `bus-recycling.md` (gh#213), 2026-08-08:
   counter) is the build's to pick and state.
 - The one-per-agent invariant (bus-singleton, Decision-051) holds through
   succession: never two live couriers beyond the crossover instant.
+- **Measured 2026-08-08: the launch floor is the HARNESS, not the charter.**
+  A do-nothing subagent with a one-line prompt cost 18,285 tokens; the
+  courier costs 19,080 — its whole charter is ~800 tokens. System boilerplate,
+  tool schemas and injected project files dominate; no charter diet can cut
+  the launch cost while the courier is a harness subagent.
+- **PROPOSAL (agent, 2026-08-08 — awaiting the operator's word):** implement
+  the courier's thinking as a SCRIPT-ISSUED stateless API call to Haiku
+  (~600-token prompt: translation table + occasions + validation seed
+  examples; ~$0.001/message, ~$0.45/day/agent at 500 msgs/day vs $2.10 for
+  the leanest subagent). Nothing accumulates, so the recycle threshold, the
+  succession handover and the declared-grace protocol all become moot for
+  the thinking layer; only the wake-the-parent hand-up stays harness-side.
+  Fits the operator's dumb-courier direction (translation table only, script
+  returns the reply) and kills the bypass incentive.
 
 ## Proposal
 
