@@ -9,3 +9,4 @@ __pycache__/
 # cloud work-log relay dir — never committed (cloud path)
 .cloud-works/
 .venv/
+.coverage
