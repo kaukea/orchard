@@ -56,4 +56,12 @@ branch.
 
 ## Testing
 
-Not yet agreed — set with the operator at the pre-launch bloom.
+**Operator ruling, 2026-08-08 (verbatim):** *"We're going to take it from the
+top, and I want everything unit tested to death. including finding a way to
+unit test an agent communicating with whatever it is communicating with. Those
+will be part of every single scenario I'm going to give you now."*
+
+Binding on every scenario of this feature: unit tests are part of the
+scenario's specification — including a unit-test seam for an agent
+communicating with its counterparty. No scenario closes without its tests
+written and run green.
