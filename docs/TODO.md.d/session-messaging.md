@@ -26,6 +26,15 @@ Scoped by the operator, 2026-08-08: session-based directed messaging ONLY —
 send/request/reply over `:session:` addresses. NAME addressing is folded into
 the pubsub scenario; priorities are not in this scenario.
 
+**Ruled, 2026-08-08 (operator):** everything goes through the same path. The
+message goes to the sender's OUTBOX; a dispatch courier picks it up from the
+outbox and dispatches it to the correct location — the INBOX of the
+destination session ID. The sender does not need to know how to route; it
+needs only the session ID it is sending to. That is the point of the design.
+This CHANGES the branch spec: its directed-delivery sections (sender writes
+straight into the recipient's mailbox, `orchard_send` §1/§3) are rewritten
+onto the boxes model in this scenario.
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.
