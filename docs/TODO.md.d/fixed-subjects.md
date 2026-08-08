@@ -22,7 +22,16 @@ None open.
 ## Proposal
 
 Scenario as dictated 2026-08-08: a fixed list of subjects able to be sent by
-any agent, no exception. Detail specified when reached.
+any agent, no exception.
+
+**Ruled, 2026-08-08 (operator, dictated during session-messaging
+questioning):** subjects are a series of NOUNS identifying the kind of
+message. An agent message is a message from an agent; an operator message is
+an operator's message relayed by an agent. The specializations
+(todo|instructions|request|response|content) are used by the SCRIPT to
+understand how to interact with the prompt of its owner agent, and they also
+impact routing. One family, specialized within: a TREE where each leaf has
+specific properties but shares the properties of the root.
 
 ## Testing
 
