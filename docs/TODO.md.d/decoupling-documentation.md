@@ -20,8 +20,13 @@ None open.
 
 ## Proposal
 
-Scenario as dictated 2026-08-08: documentation for other components to
-understand decoupling through events. Detail specified when reached.
+**Ruled, 2026-08-08 (operator):** the readers are AGENTS THAT WRITE AGENTS,
+and humans who want to understand how decoupled, asynchronous agents
+function. The subject is TELL, DON'T ASK: react to the events and messages
+you receive to make decisions, instead of going to probe some agent you
+think you know. It lowers coupling, increases reliability, and is what makes
+the system function. The cautionary example: the old caretaker killing files
+before agents could clean themselves up.
 
 ## Testing
 
