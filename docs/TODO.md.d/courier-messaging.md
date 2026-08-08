@@ -62,19 +62,21 @@ probably be the working base for this"* — `docs/courier-wire.md` under
 *"This should cover the current feature set."* Worked one by one, in the
 operator's order, as we get through it:
 
-1. Agent-to-agent communication — *scoped by the operator, 2026-08-08: session-based
-   directed messaging ONLY (send/request/reply); NAME addressing is folded into
-   scenario 4; priorities are not in this scenario*
-2. Agent-to-parent communication
-3. Project-level broadcast
-4. Pub/sub — *includes NAME addressing (operator, 2026-08-08)*
-5. Token sacrifice *(operator-confirmed verbatim, 2026-08-08: "I meant every
+1. Inbox, outbox — *added first by the operator, 2026-08-08: "I forgot inbox,
+   outbox. This needs to be the first one"*
+2. Agent-to-agent communication — *scoped by the operator, 2026-08-08:
+   session-based directed messaging ONLY (send/request/reply); NAME addressing
+   is folded into the pub/sub scenario; priorities are not in this scenario*
+3. Agent-to-parent communication
+4. Project-level broadcast
+5. Pub/sub — *includes NAME addressing (operator, 2026-08-08)*
+6. Token sacrifice *(operator-confirmed verbatim, 2026-08-08: "I meant every
    word of it"; its content arrives when the scenario is reached)*
-6. Documentation for other components to understand decoupling through events
-7. Pure technical messages handled directly by the monitor
-8. Fixed schema for messages, no exception
-9. Fixed list of subjects able to be sent by any agent, no exception
-10. Defensive practices by the script to prevent any deviation from the rules
+7. Documentation for other components to understand decoupling through events
+8. Pure technical messages handled directly by the monitor
+9. Fixed schema for messages, no exception
+10. Fixed list of subjects able to be sent by any agent, no exception
+11. Defensive practices by the script to prevent any deviation from the rules
 
 **Per-scenario method (operator, same dictation):** compare the code in the
 dead branch (`archive/observability`) against the code in main, and the
