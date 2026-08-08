@@ -10,11 +10,36 @@ None.
 
 ## Questions
 
-None open.
+- Where the project inbox PERSISTS: the orchard runtime tree is volatile
+  (tmpfs), but offline delivery must survive until the project next starts.
+- The sensitive-content conflict needs a ruling before build (carried from
+  the fold): committing ciphertext honours the AGENTS.shared.md rule's
+  intent but breaks its letter; refs/sensitive answers it structurally —
+  which does the operator rule?
+- Who fires the sensitive-content deletion at end-of-value, and is it
+  operator-gated (2026-07-17 thought was cut off mid-sentence)?
 
 ## Findings
 
-(none yet)
+Carried from `cross-repo-inbox.md` (gh#5, folded 2026-08-08 — read it for
+the full record):
+
+- Origin: 2026-07-17 boundary violation — with no channel, a gardener wrote
+  a task directly into kauk's tree. Board edges are single-board by
+  construction, so cross-repo dependencies survive only as prose.
+- HANDOVER is NOT the precedent (operator, 2026-07-17): different lifecycle
+  — the inbox is peer-to-peer, durable, and exists to CREATE work.
+- FIXED rulings (2026-07-17): sensitive content is ENCRYPTED AND KEPT, never
+  delete-and-sanitized — it is the input to the work. Storage direction: a
+  dedicated ref namespace `refs/sensitive/<id>` (never notes, never a
+  number); DELETION IS THE POINT — `update-ref -d` + reflog expire + gc
+  --prune=now, verified to truly remove objects.
+- MEASURED LEAK (2026-07-17): a plain local-path `git clone` copies the
+  whole object store — refs/sensitive objects LEAK, recoverable via fsck.
+  kauk clones local paths today (`bin/kauk:237`): kauk must clone
+  `--no-local`/`file://` before refs/sensitive is safe — a kauk-board item
+  when this design lands.
+- Message kinds worth distinguishing early: requirement · knowledge · ack.
 
 ## Proposal
 

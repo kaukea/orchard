@@ -39,7 +39,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 - `housekeeping · done · · complete · process ·` [Registry file set for orchids itself](TODO.md.d/registry-file-set.md)
 - `bug · cancelled · nice-to-have · complete · process ·` [~~Self-install: root link entries collide (src == dst)~~](TODO.md.d/self-install-link-collision.md)
 - `bug · done · · complete/interactive · process · gh#4` [ARCHITECTURE.md has no Taxonomy table — board lint fails 13/13](TODO.md.d/architecture-taxonomy-missing.md)
-- `feature · todo · · blocked-on-answers · process · gh#5` [Cross-repo inbox: agents deliver requirements and knowledge between projects](TODO.md.d/cross-repo-inbox.md) ~role-delivery ~external-blockers
+- `feature · cancelled · · complete · process · gh#5` [~~Cross-repo inbox: agents deliver requirements and knowledge between projects~~](TODO.md.d/cross-repo-inbox.md) ~role-delivery ~external-blockers ~project-inbox
 - `feature · todo · · blocked-on-answers · process · gh#6` [Gardener resolves external blockers when loading its tasks](TODO.md.d/external-blockers.md) ~cross-repo-inbox
 - `housekeeping · todo · nice-to-have · plan-ready · process · gh#7` [Kauk skill: symlink-write guidance is unexecutable under the harness](TODO.md.d/kauk-skill-symlink-write.md)
 - `feature · done · · complete/interactive · process ·` [The works: .git/the-works/ transients, dated migrations, write gates, micro-tasks](TODO.md.d/the-works-channel.md) ~kauk-skill-symlink-write
@@ -155,7 +155,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
   - `feature · todo · · plan-ready · process ·` [Fixed schema for messages: strict both ways, zero compatibility](TODO.md.d/message-schema.md)
   - `feature · todo · · plan-ready · process ·` [Fixed list of subjects any agent may send, no exception](TODO.md.d/fixed-subjects.md)
   - `feature · todo · · plan-ready · process ·` [Script defenses: vetted senders only, structural and logical validation](TODO.md.d/script-defenses.md) ~message-schema
-  - `feature · todo · · plan-ready · process ·` [Project inbox: tasks, files and messages posted to a project, gardener-ingested](TODO.md.d/project-inbox.md) ~inbox-outbox ~cross-repo-inbox ~intake-enforcing
+  - `feature · todo · · blocked-on-answers · process ·` [Project inbox: tasks, files and messages posted to a project, gardener-ingested](TODO.md.d/project-inbox.md) ~inbox-outbox ~cross-repo-inbox ~intake-enforcing ~external-blockers
 - `feature · cancelled · nice-to-have · complete · process · gh#213` [~~Courier recycling: a deep courier warns its host and hands over to a fresh one~~](TODO.md.d/bus-recycling.md) ~bus-singleton ~message-bus ~token-sacrifice
 - `housekeeping · todo · idea · queued · process · gh#214` [Fleet documenting: agent wiki pages; channels with JSON Schemas](TODO.md.d/fleet-documenting.md) ~message-bus ~operator-interacting ~digest-identity
 - `bug · todo · · queued · process · gh#216` [Focus returning: a finish always selects the gardener window, the view follows only in-session](TODO.md.d/focus-returning.md) ~tmux-topology ~window-closing-owning

@@ -1,5 +1,15 @@
 - created: 2026-07-17
 - created_by: opus-4.8
+- completed: 2026-08-08
+- completed_during: f/courier-messaging
+
+### Why cancelled
+
+Folded into `project-inbox.md` (operator, 2026-08-08) — the same idea, now
+WITH a design it never had: messages, files and tasks posted to a project's
+inbox, gardener-ingested live or at next start. This sidecar remains the
+archive of the 2026-07-17 rulings and the refs/sensitive leak measurements;
+the load-bearing parts are carried into the successor's Findings.
 
 ## Blockers
 - None technically. But the sensitive-content rule (`AGENTS.shared.md`) constrains the
