@@ -1,8 +1,29 @@
 - created: 2026-07-29
 - created_by: gardener
 - created_during: main
+- completed: 2026-08-08
+- completed_during: main
 
 # Observability: a distributed, loosely coupled fleet you can actually watch
+
+## Why cancelled
+
+**Operator ruling, 2026-08-08 — the experiment FAILED to reach its goals and is
+retired.** The failure, in his words: it *"had proven impossible for the agent to
+push data live to another window based on a currently executing workflow, which was
+either a flawed workflow or a flawed implementation of courier"*. After five
+implementation attempts by the agent, he *"decided to declare the work didnt meet its
+goal"* and suppressed it.
+
+Closed through the failed-feature flow (`workflow-complete` §Abandoned closes): the
+branch's 60 commits stay reachable under `archive/observability` (tip `9a3f914`); an
+empty 💩 close commit lands on `main`; the `f/observability` ref is deleted.
+
+Successor: `courier-messaging.md` — scoped exclusively to the courier and messaging,
+and its first act is harvesting the good from the archived branch (operator: *"we
+will be taking the good from the abandoned branch"*). The other axes (sidebar,
+lifecycle close, windowing manager, question broker) remain their own board tasks,
+un-ruled today.
 
 ## Proposal
 
