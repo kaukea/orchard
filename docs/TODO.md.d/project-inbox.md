@@ -10,14 +10,11 @@ None.
 
 ## Questions
 
-- Where the project inbox PERSISTS: the orchard runtime tree is volatile
-  (tmpfs), but offline delivery must survive until the project next starts.
-- The sensitive-content conflict needs a ruling before build (carried from
-  the fold): committing ciphertext honours the AGENTS.shared.md rule's
-  intent but breaks its letter; refs/sensitive answers it structurally —
-  which does the operator rule?
-- Who fires the sensitive-content deletion at end-of-value, and is it
-  operator-gated (2026-07-17 thought was cut off mid-sentence)?
+All three RESOLVED by the operator's 2026-08-08 messaging-is-not-storage
+ruling (Proposal below): persistence — a message never persists; the project
+inbox's permanent nature is handled by waking the gardener on receipt for
+immediate ingestion; sensitive content is safe because messages are
+temporary and deleted on receipt; there is no deletion trigger to define.
 
 ## Findings
 
@@ -55,6 +52,24 @@ a new Claude instance. Arriving items are cleaned up and sorted by the
 gardener; a foreign agent never writes the target board.
 
 Build-order position: not yet assigned.
+
+**Ruled, 2026-08-08 (operator):** we do not store anything in git [reading
+of dictated "Target"] any more — that has been removed and should never
+have been done. Sensitive content lives in TEMPORARY messaging. Should a
+message require permanence — don't make it a message; a message is not
+permanent by default. The one permanent-natured case is the PROJECT INBOX:
+the dispatching component knows that nature and solves it by WAKING THE
+GARDENER ON RECEIPT for immediate processing into the durable homes (board,
+sidecars). Everything else is XDG and the system survives not getting
+messages. Messaging is not storage: a message is DELETED AS SOON AS IT IS
+RECEIVED — think UDP. OUT OF SCOPE: ACK, retry, and (for now) encryption or
+other suggestions we have no use for.
+
+**Supersession:** this kills the 2026-07-17 rulings carried from the
+cross-repo-inbox fold — "sensitive content is ENCRYPTED AND KEPT" and the
+`refs/sensitive/<id>` storage direction are struck; the leak measurements
+remain as history only. Content that must survive does so as BOARD content
+after gardener ingestion, never as a stored message.
 
 ## Testing
 

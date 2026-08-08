@@ -114,6 +114,11 @@ terms are removed, which also shrinks the agent file. Prior evidence: the
 on the branch), the invented-verb finding (branch commit 48d6ac5), and
 Decision-124 (agents resist change to what they use; enforce mechanically).
 
+**Ruled, 2026-08-08 (operator) — MESSAGING IS NOT STORAGE:** a message is
+deleted as soon as it is received; think UDP. Permanence is never a message
+property — what must survive becomes board content via ingestion
+(`project-inbox.md`). ACK, retry, and encryption are out of scope.
+
 **Per-scenario method (operator, same dictation):** compare the code in the
 dead branch (`archive/observability`) against the code in main, and the
 specification in both branches; extend the specification if needed; possibly
