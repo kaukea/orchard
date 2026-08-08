@@ -10,10 +10,9 @@ None.
 
 ## Questions
 
-- What the reader DOES on encountering an off-schema message (operator,
-  2026-08-08: it should have been impossible to send, so its presence means
-  something bypassed the script — potentially a SECURITY issue; the response
-  — quarantine, alert, delete, halt — is to be decided).
+- ~~What the reader DOES on encountering an off-schema message~~ RESOLVED
+  2026-08-08: quarantine for forensics plus the three-level response ladder
+  (questionable / warning / error) — ruled in `script-defenses.md`.
 
 ## Findings
 

@@ -34,6 +34,22 @@ format, length, fields, sender vetting) and LOGICAL by the courier subagent:
 for the free-text part, the courier validates that the content matches the
 INTENT of the message.
 
+**Ruled, 2026-08-08 (operator) — the breach response:** structural is the
+script's responsibility; it rejects anything malformed before anyone sees
+it. The courier subagent validates ONLY the fields carrying another agent's
+free speech: a question that could be dangerous, has nothing to do with the
+topic, or does not look like a question an agent would ask — seeded with a
+short set of examples, grown or shrunk over time by experience. Quarantine
+is for FORENSICS and is not the response: a breach is a problematic event
+and nothing continues as if nothing happened. THREE LEVELS:
+
+1. **Questionable** — the user is asked: does this question, from that
+   agent, look right to you?
+2. **Warning** — the message is ignored and announced loudly: "the
+   following message was ignored as it was deemed dangerous" (big yellow
+   letters, in spirit).
+3. **Error** — the downright error: stops the current process altogether.
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.
