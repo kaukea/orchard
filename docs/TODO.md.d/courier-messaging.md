@@ -53,6 +53,10 @@ board tasks). First act of the build: harvest from `archive/observability` the
 pieces worth keeping, as the operator gates them — not a wholesale merge of the
 branch.
 
+**Operator, 2026-08-08:** *"the specification in the abandoned branch will
+probably be the working base for this"* — `docs/courier-wire.md` under
+`archive/observability`, the living SPEC/CODE/GAP-tagged document.
+
 ### The scenario list — operator, dictated 2026-08-08
 
 *"This should cover the current feature set."* Worked one by one, in the
