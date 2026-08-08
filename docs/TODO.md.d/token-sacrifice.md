@@ -40,6 +40,13 @@ Folded from `bus-recycling.md` (gh#213), 2026-08-08:
   the thinking layer; only the wake-the-parent hand-up stays harness-side.
   Fits the operator's dumb-courier direction (translation table only, script
   returns the reply) and kills the bypass incentive.
+- **Ruled, 2026-08-08 (operator) — the courier runs under its OWN settings
+  file:** launch the courier with a dedicated settings file that allowlists
+  only the one thing it needs. No unwanted skills in its listing, no project
+  instruction files, and a permissions surface so narrow the agent cannot go
+  wild — the bypass defense expressed as configuration. The measured 18,285
+  floor was under FULL project settings; the true floor under the restricted
+  settings file is measured at build time, not estimated.
 
 ## Proposal
 
