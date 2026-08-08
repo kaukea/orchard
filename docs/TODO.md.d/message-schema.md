@@ -39,6 +39,10 @@ possible to send at all, so its existence on the transport means the script
 was bypassed. Potentially a SECURITY issue; the reader's response is an open
 question above.
 
+- Body formalization: the body is not free text only and is validated —
+  ruled under `script-defenses.md` (structural by script, logical by
+  courier); the schema definition carries the body's formal shape.
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.

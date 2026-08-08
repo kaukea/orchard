@@ -20,8 +20,19 @@ None open.
 
 ## Proposal
 
-Scenario as dictated 2026-08-08: defensive practices by the script to prevent
-any deviation from the rules. Detail specified when reached.
+**Ruled, 2026-08-08 (operator):** messaging is a HIGHLY SENSITIVE component —
+it can reach the inside from the outside. Anything that does not come from
+another script VETTED by the current script is a security danger: usable for
+data exfiltration, or to cause crashes or token burn that damage the user's
+account. The script therefore defends against ANY deviation: file location,
+file format, content length, missing fields — probably even an allowlist of
+process IDs.
+
+**The body is formalized too:** not free text only, and validated. Validation
+is DOUBLE-CHECKED at two layers — STRUCTURAL by the script (schema, location,
+format, length, fields, sender vetting) and LOGICAL by the courier subagent:
+for the free-text part, the courier validates that the content matches the
+INTENT of the message.
 
 ## Testing
 
