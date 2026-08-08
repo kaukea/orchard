@@ -10,8 +10,7 @@ None.
 
 ## Questions
 
-- Scenario 5 was dictated as "Token sacrifice" — transcription uncertain; the
-  operator's intended wording is awaited before that scenario is specified.
+None open.
 
 ## Findings
 
@@ -63,7 +62,8 @@ operator's order, as we get through it:
 2. Agent-to-parent communication
 3. Project-level broadcast
 4. Pub/sub
-5. *[dictated "Token sacrifice" — wording unresolved, see Questions]*
+5. Token sacrifice *(operator-confirmed verbatim, 2026-08-08: "I meant every
+   word of it"; its content arrives when the scenario is reached)*
 6. Documentation for other components to understand decoupling through events
 7. Pure technical messages handled directly by the monitor
 8. Fixed schema for messages, no exception
