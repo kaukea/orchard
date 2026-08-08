@@ -160,6 +160,18 @@ class CliTests(unittest.TestCase):
             code = boxes.main(["receive", "--sid", "b"], env)
             self.assertEqual(code, 0)
 
+    def test_send_body_dash_reads_stdin(self):
+        import io
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            env = env_in(tmp)
+            with mock.patch("sys.stdin", io.StringIO("piped body")):
+                code = boxes.main(["send", "--from-sid", "a", "--to", ":session:b",
+                                   "--subject", "orchard:agent:status", "--body", "-"], env)
+            self.assertEqual(code, 0)
+            path = next(boxes.outbox_dir(env).glob("a.*.json"))
+            self.assertEqual(json.loads(path.read_text())["body"], "piped body")
+
     def test_send_rejects_bad_subject_with_nonzero_exit(self):
         with tempfile.TemporaryDirectory() as tmp:
             code = boxes.main(["send", "--from-sid", "a", "--to", ":session:b",

@@ -146,15 +146,16 @@ def main(argv: list[str], env: dict) -> int:
     send.add_argument("--from-sid", required=True)
     send.add_argument("--to", required=True)
     send.add_argument("--subject", required=True)
-    send.add_argument("--body")
+    send.add_argument("--body", help="literal body; '-' reads the body from stdin")
     drain = commands.add_parser("receive")
     drain.add_argument("--sid", required=True)
     args = parser.parse_args(argv)
 
     if args.command == "send":
+        body = sys.stdin.read() if args.body == "-" else args.body
         try:
             path = put_outbox(
-                make_envelope(args.from_sid, args.to, args.subject, args.body), env,
+                make_envelope(args.from_sid, args.to, args.subject, body), env,
             )
         except EnvelopeError as error:
             print(f"boxes: rejected: {error}", file=sys.stderr)

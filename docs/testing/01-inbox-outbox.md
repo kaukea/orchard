@@ -46,6 +46,9 @@ target: 100% of `tools/boxes.py` and `tools/dispatch.py`, measured with
   subprocesses, no shared Python state. The received body equals the sent
   body exactly; exit codes are 0; the sender's CLI refuses an invalid subject
   with a nonzero exit.
+- A LARGE body (500k characters) rides stdin (`--body -`), never argv, and
+  arrives byte-identical — the transport does not care how the string is
+  made.
 
 ## How to run
 

@@ -15,10 +15,10 @@ from pathlib import Path
 TOOLS = Path(__file__).parent.parent / "tools"
 
 
-def run(script: str, *args: str, tmp: str) -> subprocess.CompletedProcess:
+def run(script: str, *args: str, tmp: str, stdin: str | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(TOOLS / script), *args],
-        capture_output=True, text=True,
+        capture_output=True, text=True, input=stdin,
         env={"XDG_RUNTIME_DIR": tmp},
     )
 
@@ -47,6 +47,18 @@ class SeamTests(unittest.TestCase):
 
             again = run("boxes.py", "receive", "--sid", "agent-b", tmp=tmp)
             self.assertEqual(json.loads(again.stdout), [])
+
+    def test_large_body_rides_stdin_not_argv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            body = "x" * 500_000 + "\nend"
+            sent = run("boxes.py", "send", "--from-sid", "a",
+                       "--to", ":session:b",
+                       "--subject", "orchard:agent:message:content",
+                       "--body", "-", tmp=tmp, stdin=body)
+            self.assertEqual(sent.returncode, 0, sent.stderr)
+            run("dispatch.py", "once", tmp=tmp)
+            received = run("boxes.py", "receive", "--sid", "b", tmp=tmp)
+            self.assertEqual(json.loads(received.stdout)[0]["body"], body)
 
     def test_sender_cli_refuses_an_invented_subject(self):
         with tempfile.TemporaryDirectory() as tmp:
