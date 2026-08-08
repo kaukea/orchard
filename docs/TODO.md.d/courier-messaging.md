@@ -83,6 +83,18 @@ machinery is built for the interim. Strengthened same day: all new messages,
 all new formats, all new enforcement — NO compatibility with previous
 attempts anywhere, under any circumstance (`message-schema.md`).
 
+**Ruled, 2026-08-08 (operator) — hand-up is BY FILE REFERENCE:** the
+courier passes content to the parent's context as a file reference, never by
+reading it, relaying it, and turning it into language — the parent is
+entirely capable of reading the file itself. This is the first and biggest
+payment saving: the body is paid for once, parent-side, only when the parent
+chooses to read it. DELIBERATE CHANGE to the working-base spec: it
+supersedes archived courier-wire.md §6's "a wake carries the parsed
+message, not a filename" (that rule optimized turns; this one optimizes
+tokens, and the 2026-08-08 measurements back it). Interplay: the courier
+still reads what it must validate (script-defenses) — it just never
+re-speaks it.
+
 **Per-scenario method (operator, same dictation):** compare the code in the
 dead branch (`archive/observability`) against the code in main, and the
 specification in both branches; extend the specification if needed; possibly
