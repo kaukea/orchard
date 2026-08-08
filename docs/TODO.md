@@ -149,7 +149,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
   - `feature · todo · · plan-ready · process ·` [Project-level broadcast: project-level pub/sub, topic bound to the project's life](TODO.md.d/project-broadcast.md) ⊘pubsub ⊘subscription-filtering
   - `feature · todo · · plan-ready · process ·` [Subscription filtering: receiver-side, subject-only, star prefixes](TODO.md.d/subscription-filtering.md) ⊘pubsub
   - `feature · todo · · plan-ready · process ·` [Pub/sub: publish and subscribe over named topics](TODO.md.d/pubsub.md) ~bus-addressing
-  - `feature · todo · · blocked-on-answers · process ·` [Token sacrifice: the capped courier and its graceful successor](TODO.md.d/token-sacrifice.md) ~bus-recycling ~bus-singleton
+  - `feature · todo · · plan-ready · process ·` [Token sacrifice: recycle at 25k, graceful successor](TODO.md.d/token-sacrifice.md) ~bus-recycling ~bus-singleton
   - `feature · todo · · plan-ready · process ·` [Decoupling documentation: tell-don't-ask for agentic code, in docs/patterns/](TODO.md.d/decoupling-documentation.md)
   - `feature · todo · · plan-ready · process ·` [System messages: answered by the script, never breaching the AI boundary](TODO.md.d/technical-messages.md)
   - `feature · todo · · plan-ready · process ·` [Fixed schema for messages: strict both ways, zero compatibility](TODO.md.d/message-schema.md)

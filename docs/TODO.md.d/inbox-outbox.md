@@ -39,6 +39,17 @@ write path; inbox as sole receiving surface; `tools/delivery_dispatch.py`
 one-to-one only, synchronous on send, structured to detach later; unit suites
 plus the real-CLI seam test.
 
+**Ruled, 2026-08-08 (operator) — boxes are LOGICAL, monitors are SHARED:**
+having an inbox and an outbox does NOT mean independent folders per agent.
+They are common places to put messages, filtered — with multiple agents
+served by the SAME monitor. Measured on this machine the same day: inotify
+allows 128 instances per user (50 already in use; watches are plentiful at
+131k), so watcher instances must never scale with agent count — five
+projects x twenty agents with per-agent watchers bursts the limit. This
+supersedes archived courier-wire.md §6's "one watcher per
+(directory, pattern) pair — extra processes cost nothing": they cost
+instances, and instances are the scarce resource.
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.
