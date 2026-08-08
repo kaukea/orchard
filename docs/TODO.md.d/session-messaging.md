@@ -35,6 +35,12 @@ This CHANGES the branch spec: its directed-delivery sections (sender writes
 straight into the recipient's mailbox, `orchard_send` §1/§3) are rewritten
 onto the boxes model in this scenario.
 
+**Ruled, 2026-08-08 (operator):** request/response is BLOCKING, by
+definition: an agent posts a request and waits for the reply before
+continuing — no action until the response comes back. Questions to the
+operator block for the same reason. Under the boxes model the wait watches
+the requester's own inbox for the matching reply.
+
 ## Testing
 
 Bound by the parent's testing doctrine (`courier-messaging.md` §Testing, operator ruling 2026-08-08): unit tested to death, including the unit-test seam for an agent communicating with its counterparty; the scenario does not close without its tests written and run green.
