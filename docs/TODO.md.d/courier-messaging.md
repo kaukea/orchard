@@ -33,6 +33,26 @@ WHAT before any landscaper is spawned (Decision-050).
 - The experiment's failure to answer against: pushing data live to another window
   from a currently executing workflow proved impossible — flawed workflow or
   flawed courier implementation, undetermined (operator, 2026-08-08).
+- **Self-wake defect, 2026-08-08.** Operator: *"the courier should never have
+  been woken up at all"* — observed: a courier woke on its own parent's status
+  telemetry. Under the RULED design this traffic cannot reach a courier at all:
+  status is a topic publication whose consumer is a UX (the sidebar), and a
+  consumer sees a topic only by SUBSCRIBING — publish and monitor
+  (Decision-130), topic membership set up by the supervisor (Decision-133). A
+  courier's watch surface is exactly mail addressed to its parent plus its
+  subscriptions; it is never a status subscriber. The defect is that main has
+  no real topic layer: `post status` writes into the shared project mailbox
+  directory (`_monitor_sources()` watches only that directory), so
+  publications land where mail is watched. The archived branch built the
+  missing layer, verified in its implementation 2026-08-08: its
+  `orchard_topic.py` posts to a dedicated `orchard/topics/` root (not the
+  mailbox directory); `subscribe` creates `orchard/topics/<name>/<sid>/` and
+  publish fans copies into currently-subscribed folders ONLY (an empty topic
+  delivers to nobody, by design); the monitor adds only subscribed topic
+  folders as extra watch sources. Core salvage: `93f44f5` "Make the topic
+  publish path real, and wire up pub/sub" plus the subscribe/fan-out and topic
+  storage around it. This is a design-level gap on main, not a monitor filter
+  to sharpen.
 
 ## Proposal
 
