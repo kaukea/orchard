@@ -21,6 +21,10 @@ None.
   …), BEFORE the flow starts, display a big visual cue: "Next step is
   the <role>" plus a summary of what it is going to do — "visual clues
   and big ones … that should be a good first start when handing over."
+- Refined same day: the summary is the WHAT — the work that will be
+  done — never the mechanics ("I don't really care that it opens its
+  own window"). It may note that additional technical questions can
+  come back as a follow-up.
 - First application: the gardener renders the cue in its own reply
   before starting any role session — in effect immediately, no build
   needed for the minimum form.
