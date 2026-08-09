@@ -24,7 +24,7 @@ ROLE_EMOJI: dict[str, str | None] = {
     "groundskeeper": "🧹",
     "courier": "📮",
     "bloomer": "🌸",
-    "arborist": "🌲",
+    "beekeeper": "🐝",
 }
 LOCATION_BADGES = {"local": "💻", "cloud": "☁️"}
 

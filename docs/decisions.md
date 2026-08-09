@@ -2727,3 +2727,73 @@ the gardener/groundskeeper/landscaper charters and the git-workflow skill,
 unchanged and keeps its `#supervisor` tag as the historical name.
 
 (Operator, 2026-08-09.)
+
+## [2026-08-10] Decision-141: Same-day reversal of Decision-140 — the role is BEEKEEPER 🐝, `arborist` goes to the technical-HOW designer instead
+#naming #roles #orchard #emoji #beekeeper #arborist #vocabulary #valve #bloomer #groomer #landscaper #tmux
+
+Operator ruling (2026-08-10), interim/fast pass — "however shit it is," full
+polish (ARCHITECTURE.md, tmux-topology.md mechanics, the actual valve-code
+merge) deferred to follow-up work:
+
+1. **Decision-140 is reversed same-day.** The per-feature pipeline warden
+   (create worktree, dispatch landscaper, watch lifecycle, fire close) is
+   named **BEEKEEPER** 🐝 — it organises who gets called when and makes sure
+   no dispatched agent ("bee") goes missing. `agents/arborist.md` renamed to
+   `agents/beekeeper.md`; references updated in `gardener.md`,
+   `groundskeeper.md`, `landscaper.md`. **`arborist` is freed** for a
+   different, separate role: the technical-HOW designer (reads the sidecar's
+   WHAT, writes the technical HOW, design-only, never builds) — discovered
+   already built on branch `f/decision-making`; not yet merged to main.
+2. **The beekeeper also verifies each agent it dispatches has its valve
+   wired in** — alongside the existing board-permission-denial and
+   sidebar-mount checks at dispatch.
+3. **The valve** is the operator's own rules, enforced continuously,
+   installed LOCALLY per repo via kauk and wired into each agent's own
+   settings (not a free-standing/global service). Its rule corpus
+   (`DIRECTIVES.md`, e.g. PD-1 "agents suggest, never decide", PD-2 "no
+   irreversible action without permission") is a SEPARATE, durable,
+   checkable file an agent can go read — never paraphrased inline. Its
+   enforcement hooks (`valve-pretool.sh` et al., built on `f/decision-making`)
+   should self-identify with the 💧 glyph, state the consequence of
+   non-compliance directly, and cite provenance as a pointer into that file
+   (`DIRECTIVES.md:<line>`), never assert authority in prose alone. Full
+   merge to main is separate follow-up work (naming collision above is
+   resolved; the merge itself — ~90 files, ~9400 lines — was not re-attempted
+   in this pass).
+4. **`groomer` is retired.** Its prep-only responsibilities (advance
+   readiness stage, flesh Questions/Proposal, project the board badge,
+   commit-only) are folded into `bloomer` as a new non-interactive PASS MODE,
+   alongside bloomer's existing interactive intake/handoff mode.
+   `agents/groomer.md` deleted; `gardener.md` and `skills/bloom-tasks/`
+   repointed to `bloomer`.
+5. **Hard gate: no feature is ever built that is not design-ready.** A
+   **design session** is the operator walking pending features with the
+   gardener, choosing live to make one, a group, all, or none of them
+   design-ready via the bloomer — never a landscaper without it.
+6. **Landscaper never builds code itself, no exception, no size threshold.**
+   The Decision-025 s-sized-inline allowance is REMOVED. Every plan is a
+   numbered step list (the architecture document); every step is one task;
+   every task is one `sower`, ALL dispatched together as a parallel fleet.
+   The landscaper waits for the whole fleet before verifying the combined
+   work against spec + the test gate itself. The plan gate now has three
+   outcomes, not two: **amend** (revise, no edits), **refuse** (back to the
+   gardener, not re-iterated by the landscaper), or **`MAKE IT SO`**. Post-test,
+   the landscaper asks "**THAT IS ALL, or amend?**" — a small amend is fixed
+   IN PLACE, not a new sower fleet; a big one returns to the plan gate.
+7. **Lifecycle vocabulary: `stopping`/`stopped` → `closing`/`closed`**
+   (`starting`/`started` unchanged). Applied in `beekeeper.md`,
+   `groundskeeper.md`, `gardener.md`, `landscaper.md`. The code
+   (`orchard_topic.py`'s `LIFECYCLE_STATES`) and `docs/orchard-bus.md` /
+   `ARCHITECTURE.md` are NOT yet renamed — that's spec for the in-flight
+   courier rewrite (inbox-outbox), not this pass.
+8. **tmux (spec only, no mechanics changed yet):** one repository = one
+   session, session name = repo name. Window 1 is always the gardener,
+   named literally "Gardener". One window per feature, named after the
+   feature/branch (simple form, e.g. `inbox-outbox`). A feature's subtasks
+   are right-hand panes of that ONE window, opening/closing with the
+   subtask — never their own window, never interactive.
+
+Follow-up, not done here: `ARCHITECTURE.md` (still says "supervisor"),
+`docs/tmux-topology.md` (still says "arborist" and the old window-naming
+form), the actual valve-code merge, and the lifecycle rename in
+`orchard_topic.py`/`orchard-bus.md`.
