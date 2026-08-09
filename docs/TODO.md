@@ -143,7 +143,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 - `feature · todo · critical · working · process · gh#276` [Courier delegating: subagents ride the parent's sidecar by reference — no courier, no identity, no direct writes (Decision-096)](TODO.md.d/courier-delegating.md) ~message-bus ~bus-singleton ~close-family-fakes ~psychometric-discovery
 - `feature · todo · · queued · process · gh#277` [Message delivering: priorities, inbox/outbox, scheduled delivery — operator want, unshaped](TODO.md.d/message-delivering.md) ~message-bus ~bus-transport-v2 ~courier-delegating
 - `feature · todo · critical · working · ·` [Courier and messaging: exclusive scope, harvesting the good from the retired observability branch](TODO.md.d/courier-messaging.md) ~bus-addressing ~message-bus ~courier-delegating ~message-delivering ~transport-test-reconciling
-  - `feature · todo · critical · plan-ready · process ·` [Inbox, outbox, delivery dispatch: the courier's two boxes](TODO.md.d/inbox-outbox.md) ~message-delivering
+  - `feature · todo · critical · working · process ·` [Inbox, outbox, delivery dispatch: the courier's two boxes](TODO.md.d/inbox-outbox.md) ~message-delivering
   - `feature · todo · · plan-ready · process ·` [Agent-to-agent: session-based directed messaging only](TODO.md.d/session-messaging.md) ⊘inbox-outbox
   - `feature · todo · · plan-ready · process ·` [Tree messaging: inherited parent identity, agent names resolved within the tree](TODO.md.d/tree-messaging.md) ~courier-delegating
   - `feature · todo · · plan-ready · process ·` [Project-level broadcast: project-level pub/sub, topic bound to the project's life](TODO.md.d/project-broadcast.md) ⊘pubsub ⊘subscription-filtering
