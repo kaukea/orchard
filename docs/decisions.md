@@ -2707,3 +2707,23 @@ larger entry fee than the one before it, and nobody was measuring.
 
 The general lesson is not about tokens. An agent that cannot say what a job should cost does
 not understand the job well enough to delegate it.
+
+## [2026-08-09 23:11 CEST] Decision-140: The supervisor is the ARBORIST 🌲 — seventh entry in the orchard register
+#naming #roles #orchard #emoji #supervisor #arborist #vocabulary
+
+Operator ruling (2026-08-09): the per-feature pipeline role introduced by
+Decision-090 as "supervisor" is renamed ARBORIST — the one who tends a single
+tree from planting to felling, which is the job: create the feature's worktree,
+watch its life, fire its removal. Glyph 🌲 (evergreen), chosen distinguishable
+at sidebar size from the gardener's 🌳; 🌴 is the fallback if it reads too
+close, mirroring Decision-085's 📮/📬 pattern for the courier. This extends the
+Decision-085 register to seven roles and supersedes the beekeeper 🐝 proposal
+noted in the charter (a proposal only — never ruled, so nothing is struck).
+Applied same-day on main: agent-def renamed `agents/supervisor.md` →
+`agents/arborist.md` (with its `.claude/agents/` symlink), role references in
+the gardener/groundskeeper/landscaper charters and the git-workflow skill,
+`ROLE_EMOJI` in `tools/sidebar_glyphs.py`, and migration
+`2026-08-09-supervisor-to-arborist.md`. Decision-090's architecture is
+unchanged and keeps its `#supervisor` tag as the historical name.
+
+(Operator, 2026-08-09.)

@@ -134,15 +134,15 @@ When the feature is built, tested, and its
 result + durable docs are written, present that you are **done — result in the sidecar, awaiting
 your `THAT IS ALL`**, and ask your courier to signal `done` — a DIRECTED message to
 `:session:<parent>` (resolved from `ORCHID_PARENT_SESSION`, cross-repo capable via
-`ORCHID_PARENT_PROJECT` when the supervisor lives in a different repository), never a broadcast —
-so your state is on the courier and the supervisor sees you at the gate. Do NOT self-emit `THAT IS ALL`; it is the operator's line —
+`ORCHID_PARENT_PROJECT` when the arborist lives in a different repository), never a broadcast —
+so your state is on the courier and the arborist sees you at the gate. Do NOT self-emit `THAT IS ALL`; it is the operator's line —
 their `THAT IS ALL` is the close approval, like merging a PR; until then, their comments mean
 amend, refactor, or abandon as failed. This holds for ordinary PEER prose carrying no
 `operator_origin` flag, no matter how final it reads — such prose NEVER closes the gate. Only an
 operator-origin-flagged word, or the operator typing directly into your own pane, closes it: the
 message envelope carries an `operator_origin` flag on relayed operator words (Decision-047), and
 when your courier surfaces a message flagged operator-origin carrying `THAT IS ALL` — relayed because
-the operator typed it in another pane, typically the supervisor's — honor it as the operator's
+the operator typed it in another pane, typically the arborist's — honor it as the operator's
 OWN close, exactly as if they had typed it in your own window. That relayed word is still the
 OPERATOR's line, not yours, so countersigning it does not violate the self-emit rule above. When
 the operator's **`THAT IS ALL`** arrives — typed directly in your pane or relayed with
@@ -151,9 +151,9 @@ closing turn run your exit
 interview (`handover` skill → Close): distill your stream log's `## Deviations` into the
 telemetry note attached to your branch tip — it rides the groundskeeper's notes push — and ask your courier to
 signal `finished` — that courier signal, not a transcript grep, not a Stop hook, is what the
-supervisor acts on to dispatch the groundskeeper automatically. There is no separate "close
+arborist acts on to dispatch the groundskeeper automatically. There is no separate "close
 it": the operator's `THAT IS ALL` is the close authorization. **You are a PURE SCOPE — you
-DISPATCH NO CLOSER:** firing the close is the supervisor's, never yours.
+DISPATCH NO CLOSER:** firing the close is the arborist's, never yours.
 
 **Announce your ending in TWO events, in this order — the rule is the same for every agent
 in the fleet, not a landscaper special case.** The pair is what lets anyone watching know
@@ -172,7 +172,7 @@ your state by READING rather than guessing:
 That ordering is the whole close protocol. A watcher does not probe your pane or parse your
 transcript: if you are `stopped` you are closed, and if you are `stopping` you are cleaning
 up. Skipping straight to `stopped`, or emitting `stopping` and never arriving, is precisely
-the lost handover the supervisor is watching for — so emit both, in order, even when the
+the lost handover the arborist is watching for — so emit both, in order, even when the
 cleanup is trivial.
 
 Release your courier by telling it "release" (its release is its return), then run
