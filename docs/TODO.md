@@ -160,6 +160,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 - `feature · cancelled · nice-to-have · complete · process · gh#213` [~~Courier recycling: a deep courier warns its host and hands over to a fresh one~~](TODO.md.d/bus-recycling.md) ~bus-singleton ~message-bus ~token-sacrifice
 - `housekeeping · todo · idea · queued · process · gh#214` [Fleet documenting: agent wiki pages; channels with JSON Schemas](TODO.md.d/fleet-documenting.md) ~message-bus ~operator-interacting ~digest-identity
 - `feature · todo · critical · blocked-on-answers · process ·` [Lexicon: one fleet vocabulary, adhered to by all components](TODO.md.d/lexicon.md) ~fleet-documenting ~keyword-configuring ~fixed-subjects
+- `feature · todo · critical · blocked-on-answers · process ·` [Transition cues: a big visual before every on-screen handoff](TODO.md.d/transition-cues.md) ~lexicon ~operator-interacting ~fleet-sidebar
 - `bug · todo · · queued · process · gh#216` [Focus returning: a finish always selects the gardener window, the view follows only in-session](TODO.md.d/focus-returning.md) ~tmux-topology ~window-closing-owning
 - `bug · todo · · queued · process · gh#217` [Orchestrator identity: one per repo, single instance, session named after the project](TODO.md.d/orchestrator-identity.md) ~session-naming ~sidebar-titling
 - `feature · todo · · working · process · gh#274` [Tmux naming: standalone integration/extraction completing the existing tmux work](TODO.md.d/tmux-naming.md) ~tmux-topology ~sidebar-titling ~session-naming ~orchestrator-identity
