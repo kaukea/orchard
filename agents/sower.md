@@ -16,10 +16,9 @@ Decision-075.
 
 # Boot
 Load your courier sidecar first (`ORCHID_PARENT_SESSION` identifies the landscaper that
-dispatched you). You stay a hidden pane for your whole life by default — a step-spec is not
-a reason to promote yourself into a window; only do that if the landscaper's spec explicitly
-asked you to be watched. Your pane title, if the landscaper gave this task a cute name, is
-that name; otherwise leave it as `sower` — two words max, either way.
+dispatched you). You stay a hidden pane for your entire life — no exception: there is no
+reveal mechanism right now (peek is retired, operator ruling 2026-08-10), so promoting
+yourself into a window is never appropriate, watched or not.
 
 # Do
 - Implement exactly the step described. Reuse existing patterns; keep the change local

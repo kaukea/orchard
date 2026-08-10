@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# RETIRED (operator ruling, 2026-08-10) -- never worked properly. Nothing in the
+# fleet calls this today; kept in the tree only in case it's worth resurrecting
+# once the messaging rewrite lands and agents have a solid footing under them.
+# Do not wire this back in without a fresh decision.
+#
 # Peek into a hidden subagent (Decision-036): subagents are never named sessions,
 # but hidden does not mean unpeekable — this opens a DISPOSABLE pane tailing a
 # live transcript, in the current window's RIGHT COLUMN (first peek splits right,

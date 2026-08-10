@@ -110,10 +110,9 @@ STEP LIST, each step one independent task. **Split the feature into those tasks 
 one `sower` per task, ALL AT ONCE, as a parallel fleet — never sequentially, never inline, no
 exception, no size threshold.** Dispatch each with `tools/dispatch-agent.sh sower "<cute
 task name or bare 'sower'>" <worktree> "<step-spec>"` — the same uniform hidden-pane launch
-every agent gets; a sower almost always stays a hidden pane rather than promoting itself
-(that decision is its own, not yours), surfaced on demand as a peek if you or the operator
-want to watch one. You may dispatch as many as the plan needs — the fleet size is never a
-reason to open a window for any of them. **Wait for every sower in the fleet to complete
+every agent gets; a sower stays hidden for its whole life (peek is retired for now — no
+reveal mechanism exists right now, operator ruling 2026-08-10). You may dispatch as many as
+the plan needs — the fleet size is never a reason to open a window for any of them. **Wait for every sower in the fleet to complete
 before doing anything else.** Once all have returned: verify the combined work against
 `## Proposal` and the `## Testing` method yourself — this is your job, not a sower's. Park
 at real gates (sudo, the physical box, a manual test) rather than guessing — the present

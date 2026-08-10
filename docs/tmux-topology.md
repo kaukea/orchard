@@ -41,7 +41,8 @@ headless, git-only close worker), and the **courier** (the message transport).
 - **PANE per live subtask, when a subtask is visible at all.** A feature's subtasks
   (sowers, discovery explorers) that choose to stay pane-level surface as RIGHT-HAND
   PANES of the feature's window when made visible — never a window of their own, and
-  never interactive. Hidden by default (Decision-036); a peek reveals one on demand.
+  never interactive. Hidden by default (Decision-036), with no reveal mechanism right
+  now — peek is retired (§5).
 
 A pinned sidebar occupies a left pane in every gardener and feature window.
 
@@ -86,33 +87,23 @@ gh#216).
 - **`--name` at launch carries identity: agent/feature name + emoji + colour together**
   (e.g. `🐝 inbox-outbox`) — the launched agent's own frontmatter `color` (see
   `agents/*.md`) is what that colour comes from.
-- **A peek pane's title is set at dispatch, TWO WORDS MAX, always**: either a cute name
-  the creator gave that specific task, or the bare agent name if it didn't bother
-  (`peek:` stays underneath as this script's own bookkeeping prefix, not part of the
-  two-word budget). It is kept live-set to what the pane's agent is currently doing —
-  for the operator's own external tooling (a second screen, a custom tmux status
-  formatter) that reads pane titles directly; nothing in this fleet needs to render or
-  consume it itself.
+- **The peek naming convention (cute name / bare agent name, two words max) is
+  RETIRED along with peek itself** — see §5.
 - **Pane titles are otherwise not load-bearing.** The `claude` process running inside a
   pane emits an OSC 2 escape that overwrites `pane_title` regardless of `allow-rename
   off` / `automatic-rename off`. Therefore every load-bearing cross-agent match —
   teardown, reaping, focus return, peek-window targeting — keys off a window
   user-option (`@landscaper_id`, `@gardener_id`), never `pane_title`.
 
-## 5. Pane stacking — subtasks (sowers, discovery explorers)
+## 5. Pane stacking — subtasks (sowers, discovery explorers): RETIRED for now
 
-- Subtasks are **hidden by default**: never named sessions, never their own window,
-  surfaced in the sidebar via the courier. This holds regardless of fleet size —
-  launching many at once is normal and never a reason to open windows for them.
-- Hidden does not mean unpeekable. A **peek** opens a disposable pane tailing a
-  subtask's live transcript, on demand, and closes when done.
-- Peeks — and any deliberately visible subtask — live in a **dedicated right column** of
-  the feature's window, stacked vertically, capped. They are never appended below the
-  landscaper, and they open/close with the subtask's own lifetime, not on a timer.
-- Mechanics (`tools/peek.sh`): the first peek opens the column with
-  `split-window -h -l 33%`; each subsequent peek stacks with `split-window -v` against
-  the first pane whose title begins `peek:`. The column cap is a build-time knob
-  (currently 4).
+**Peek — and any visible side pane for a subtask — is RETIRED (operator ruling,
+2026-08-10). It never worked properly.** Subtasks (sowers, discovery explorers) are
+HIDDEN, full stop, with no reveal mechanism right now — no peek pane, no right-hand
+column, no exception. `tools/peek.sh` stays in the tree, unused, in case it's worth
+resurrecting once the messaging rewrite lands and agents have a solid enough foundation
+under them for a visibility feature to be worth trying again — but nothing in the fleet
+calls it today, and no charter should reference it as something currently offered.
 
 ## 6. Closing and ownership — the creator closes what it created, always itself
 
@@ -160,7 +151,7 @@ responsibility (it was never the thing the operator was looking at).
 - Pane-title persistence mechanism → [[tmux-naming]].
 - Focus-return view-following nuance (gh#216) → [[focus-returning]].
 - The operator-interaction popup / question-broker surface → [[operator-interacting]].
-- The right-column peek cap value → a build-time knob.
+- Peek itself, and any reveal mechanism for a hidden subtask → retired (§5), pending the messaging rewrite.
 
 ## 9. Handle reference
 
