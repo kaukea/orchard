@@ -252,18 +252,16 @@ $XDG_RUNTIME_DIR/orchard/projects/<repo>.<project>/<sessionid>.<ts>.json
   live agent gets a stable colour from an 8-entry orchid-species palette,
   degrading gracefully on a limited terminal. Truncated text ends in an ellipsis,
   never a hard cut. Role names appear nowhere; structure carries the role.
-- **Navigates** by matching the tmux window name — the bare repository name for a
-  repository's gardener, `<repo> ▸ <human name>` for a feature (the
-  session-naming display forms, Decision-032). The human name is read from the
-  board's authored short title (`docs/TODO.md`) / sidecar H1 — never a runtime
-  grammar transform — falling back to the mechanical hyphen-to-space form only
-  pre-intake (`tools/feature_name.py`, one helper, every title call site).
-  Switching the client happens on Enter. Windows carry the human-readable
-  identity. Teardown and reaping key off a stable `@landscaper_id` tmux **window**
-  user-option, set on the landscaper window at launch — immune to the live
-  status-glyph indicator that clobbers pane titles. `land:<id>` survives only as
-  a non-load-bearing human hint on the pane title. `@landscaper_id` is the small stable
-  handle contract the sidebar mount also consumes.
+- **Navigates** by matching the tmux window name — session name = the bare repository
+  name; window 1 is always literally `Gardener`; a feature's window is named after the
+  feature itself, the same simple string as its branch name, no repo prefix and no
+  separator glyph (operator ruling, 2026-08-10, `docs/tmux-topology.md` §4 — supersedes
+  the `<repo> ▸ <human name>` form and Decision-032's session-naming display forms).
+  Switching the client happens on Enter. Teardown and reaping key off a stable
+  `@landscaper_id` tmux **window** user-option, set on the feature window at launch —
+  immune to the live status-glyph indicator that clobbers pane titles. `land:<id>`
+  survives only as a non-load-bearing human hint on the pane title. `@landscaper_id` is
+  the small stable handle contract the sidebar mount also consumes.
 - **Mounted automatically** at the gardener's own boot, in addition to the
   existing per-landscaper-spawn mount — no manual step either way
   (`tools/sidebar-mount.sh`, idempotent).
