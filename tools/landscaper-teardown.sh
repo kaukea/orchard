@@ -27,8 +27,8 @@ die(){ echo "landscaper-teardown: $*" >&2; exit 1; }
 tx(){ tmux -S "$sock" "$@"; }
 
 # LANDSCAPER window — matched on the stable @landscaper_id window user-option.
-# Fields are '|'-delimited so a session name containing spaces (the current
-# 'orchids ▸ <name>' form, pre-tmux-naming) cannot shift field positions.
+# Fields are '|'-delimited defensively; window/session names never contain '|'
+# (session = bare repo name, window = bare feature name, docs/tmux-topology.md §4).
 land_win=$(tx list-windows -a -F '#{window_id}|#{@landscaper_id}' \
   | awk -F'|' -v id="$id" '$2==id{print $1; exit}')
 
