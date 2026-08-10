@@ -89,25 +89,23 @@ the former `workflow-complete` procedure.
    close, mandatory (Decision-065). On push failure the local close still stands and is
    authoritative; report the error verbatim and roll nothing back.
 8. **Revoke the up-front sudo grant** if one is still active.
-9. **Release what the pipeline created, in REVERSE creation order.** **This is the ABSOLUTE
-   LAST act of the close — nothing runs after it** (operator ruling, 2026-07-25): every other
-   step, check, and report is finished before the tree is touched. You never kill a live agent —
-   supervision COLLECTS, never kills (Decision-081); at close you RELEASE what the pipeline built,
-   youngest-first:
-   - **Window FIRST** — TRIGGER the tmux-topology window-release primitive (it lives in the
-     tmux/window plane and EXECUTES the release; you trigger it, you write no tmux mechanics
-     yourself and invent no script name).
-   - **then the worktree** (`git worktree remove .claude/worktrees/<id>`),
+9. **Release what the pipeline's GIT STATE created, in REVERSE creation order.** **This is
+   the ABSOLUTE LAST act of the close — nothing runs after it** (operator ruling, 2026-07-25):
+   every other step, check, and report is finished before the tree is touched.
+   **You do NOT touch windows or panes — not at all, ever** (operator ruling, 2026-08-10; this
+   was a real, live source of crashes and uncoordinated teardown, not a theoretical risk). The
+   landscaper's window is not your concern on a clean close or a dead one: it self-promoted into
+   that window and it self-tears it down as its own last act, before it ever emits
+   `lifecycle:closed` — the very signal you were dispatched on. You release only:
+   - **the worktree** (`git worktree remove .claude/worktrees/<id>`),
    - **then the branch ref** `f/<id>` (`archive/<id>` tag is the tombstone; an untagged `f/*` is
      open work and is never deleted).
    **HARD PRECONDITION (Decision-068): worktree removal WAITS until the landscaper is gone — its
    own `lifecycle:closed` observed** — deleting files under a still-closing agent is exactly what
    broke self-teardowns (operator causality finding, 2026-07-22); retry-until-free was
    insufficient. You are dispatched in parallel with the close, so do every earlier step freely,
-   then WAIT for that `lifecycle:closed` before this release (poll the courier state files or the
-   window's absence; up to ~3 minutes), and report verbatim if it never comes — never force-remove
-   a worktree with live uncommitted state. RETRY the release until the window is gone rather than
-   blocking the rest of the close.
+   then WAIT for that `lifecycle:closed` before this release, and report verbatim if it never
+   comes — never force-remove a worktree with live uncommitted state.
 
 # Return (typed result to the beekeeper)
 outcome (`merged` | `abandoned`) · `archive/<id>` SHA · the squash title · what was pushed

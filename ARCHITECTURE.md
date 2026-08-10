@@ -22,24 +22,25 @@ build approval are human-only, always.
 
 | Role | Model | Dispatch | Scope & boundary |
 |---|---|---|---|
-| gardener | opus | top-level session (`claude --agent gardener`) | Knows the board, prioritises, holds MOOD, launches ONE supervisor (its own subagent) per feature on explicit operator go and hands it that feature; the supervisor owns the feature's pipeline. Never codes; never opens a sidecar in steady state. Authors only the workflow component, directly on `main`. Never kills, reaps, or removes another agent's process, pane, window, or files — lingering state is reported to the operator, who rules on it. |
+| gardener | opus | top-level session (`claude --agent gardener`) | Knows the board, prioritises, holds MOOD, launches ONE beekeeper (a real process in a hidden pane, `tools/dispatch-agent.sh`) per feature on explicit operator go and hands it that feature; the beekeeper owns the feature's pipeline. Never codes; never opens a sidecar in steady state. Authors only the workflow component, directly on `main`. Never kills, reaps, or removes another agent's process, pane, window, or files — lingering state is reported to the operator, who rules on it. |
 | bloomer | fable-5 | own pane inside the gardener's window (`tools/bloomer-launch.sh` / `bloomer-teardown.sh`) | The Decision-027 intake-measurement instrument: turns a two-to-three-sentence functional spec into a converged WHAT. Question selection and stopping are owned by the statistical engine `tools/bloom_engine.py` (EIG + IRT/Fisher-information selection, SE-threshold stop; item parameters flagged uncalibrated); phrasing and parsing by the LLM. Asks only on measured low confidence, records voluntary deferrals, and reports a graduated confidence band over the courier — the gardener executes any launch. Single-writer on its task's sidecar. Scheduled backlog-prep passes stay with the demoted predecessor definition until the repoint follow-up. |
-| supervisor | sonnet | the gardener's own subagent, one per feature (Decision-068) | Owns ONE feature's pipeline from the gardener's launch to the result: EXTRACT next-agent context → SELECT & DISPATCH (spawns the landscaper as ITS OWN child, so the landscaper's lifecycle homes here) → WATCH the orchard lifecycle → fire the groundskeeper CLOSE → REPORT the result to the gardener and RELEASE what it created. Choreographs; never authors, never judges (Valve rules yes/no), never kills (Decision-081) — supervision COLLECTS. Death/timeout verification is its own; other agents "ask the supervisor." Carries NO Decision-085 role glyph — an internal gardener subagent, not a seventh garden role. |
-| landscaper | opus | worktree session (`.claude/worktrees/<id>`, branch `f/<id>`), spawned by the supervisor as its own child | One feature; its sidecar is the whole scope — now a PURE SCOPE. Read-only discovery (parallel explorers) → plan agreed with the operator → **no file edit before MAKE IT SO** → builds/tests → on the operator's `THAT IS ALL`, countersigns and emits its terminal `lifecycle:stopped`+`outcome`. Dispatches no closer — the supervisor fires the close off that terminal signal. Never reads the board or prior conversation. |
+| beekeeper 🐝 | sonnet | a real session-bearing process, one per feature, launched by the gardener into a hidden pane | Owns ONE feature's pipeline from the gardener's launch to the result: EXTRACT next-agent context → SELECT & DISPATCH (launches the landscaper into a hidden pane via `tools/dispatch-agent.sh`, so the landscaper's lifecycle homes here) → WATCH the orchard lifecycle → fire the groundskeeper's GIT-ONLY close → release the worktree and branch it created → REPORT the result to the gardener. Choreographs; never authors, never judges (Valve rules yes/no), never kills (Decision-081) — supervision COLLECTS. Death/timeout verification is its own; other agents "ask the beekeeper." Never touches a window — that is the landscaper's own creation and its own teardown, start to finish (Decision-141, 2026-08-10). |
+| landscaper | opus | worktree session (`.claude/worktrees/<id>`, branch `f/<id>`), launched by the beekeeper into a hidden pane, self-promotes into its own window on boot (`tools/pane-promote.sh`) | One feature; its sidecar is the whole scope — now a PURE SCOPE. Read-only discovery (parallel explorers) → plan agreed with the operator → **no file edit before MAKE IT SO** → builds/tests, dispatching sowers the same uniform way (hidden pane, self-managed visibility) → on the operator's `THAT IS ALL`, countersigns and emits its terminal `lifecycle:closed`+`outcome`, self-closing its own window as its last act. Dispatches no closer — the beekeeper fires the git-only close off that terminal signal. Never reads the board or prior conversation. |
 | sower | sonnet | headless subagent from the landscaper | Exactly one step-spec; returns typed diff + self-test. |
-| groundskeeper | sonnet | headless, in the MAIN repo, fired by the SUPERVISOR on the landscaper's terminal `lifecycle:stopped`+`outcome` (or the supervisor's verified silent-death verdict) | The deterministic close: verify docs, tag, squash-merge, push, remove worktree + branch. Verifies documentation, never authors it. |
+| groundskeeper | sonnet | headless, in the MAIN repo, fired by the BEEKEEPER on the landscaper's terminal `lifecycle:closed`+`outcome` (or the beekeeper's verified silent-death verdict) | The deterministic close: verify docs, tag, squash-merge, push. Never touches windows or panes at all (Decision-141, 2026-08-10) — the beekeeper removes the worktree + branch itself once this lands. Verifies documentation, never authors it. |
 | courier | haiku | one per agent, no session id of its own (shares its parent's) | Not on the pipeline — the sidecar that connects an agent to the message transport. Watches its parent's session mailbox, relays arriving messages up, sends on request. Owns the mechanism so no other role learns it. Closes only via a self-message wake, never an external kill (Decisions 041/046/081). Does nothing else. |
 
 Isolation is per-dispatch (native worktrees), not a per-repo mode. One writer
 per task, always.
 
-Pipeline ownership is the **supervisor's**: the feature-close no longer
+Pipeline ownership is the **beekeeper's**: the feature-close no longer
 originates in the landscaper (self-dispatch) nor in the gardener
-(dispatch-at-relay) — the supervisor fires it, on the landscaper's terminal
-`lifecycle:stopped`+`outcome` or on its own verified silent-death verdict, then
-reports the result to the gardener. Supervision COLLECTS, never kills
-(Decision-081); death and timeout verification live with the supervisor, and
-other roles ask it rather than checking themselves.
+(dispatch-at-relay) — the beekeeper fires the GIT-ONLY close, on the landscaper's
+terminal `lifecycle:closed`+`outcome` or on its own verified silent-death verdict,
+then releases the worktree and branch it created and reports the result to the
+gardener. Supervision COLLECTS, never kills (Decision-081); death and timeout
+verification live with the beekeeper, and other roles ask it rather than
+checking themselves.
 
 ## The cloud path
 
@@ -167,7 +168,7 @@ session ──spawns──> courier sidecar (shares parent's session id)
 
 ## The fleet sidebar
 
-A pinned left pane in every gardener and landscaper window, mounted at launch
+A pinned left pane in every gardener and feature window, mounted at launch
 (`tools/sidebar-mount.sh`, idempotent and strictly best-effort). One renderer per
 mount, all showing the same global picture.
 
@@ -339,7 +340,7 @@ symlink, everyone), `template` (install-time copy, then project-owned),
 ## Repo layout
 
 ```
-agents/            five pipeline roles + supervisor subagent + courier sidecar (→ .claude/agents/)
+agents/            five pipeline roles + beekeeper + courier sidecar (→ .claude/agents/)
 skills/<name>/     SKILL.md packages (→ .claude/skills/, per role)
 hooks/             courier-init.sh · courier-end.sh (→ .claude/hooks/)
 tools/             board_lint.py · board_stale.py · courier.py · orchard_topic.py · orchard_compact.py · orchard-question-broker.py · landscaper-teardown.sh · sidebar.py · sidebar_nav.py · sidebar-mount.sh (→ .claude/tools/)

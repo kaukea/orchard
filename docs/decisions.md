@@ -2797,3 +2797,47 @@ Follow-up, not done here: `ARCHITECTURE.md` (still says "supervisor"),
 `docs/tmux-topology.md` (still says "arborist" and the old window-naming
 form), the actual valve-code merge, and the lifecycle rename in
 `orchard_topic.py`/`orchard-bus.md`.
+
+## [2026-08-10, later same day] Decision-142: Uniform hidden-pane launch; every agent self-promotes and self-closes its own window; groundskeeper stops touching tmux entirely
+#tmux #beekeeper #landscaper #sower #groundskeeper #lifecycle #decision-141
+
+Operator ruling (2026-08-10), continuing directly from Decision-141's tmux work the same
+day. Corrects a confused piece of my own earlier reasoning along the way: agent lifecycle
+(`closing`→`closed`, self-exit) is fully self-managed and decoupled from tmux already —
+killing a window after an agent has already emitted `closed` is housekeeping on an
+already-dead shell, never a way of ending the agent, so there was never a
+self-termination race to design around. What `groundskeeper.md`'s "never inside the
+worktree" language actually protects is a `git worktree remove` cwd constraint, unrelated
+to panes.
+
+1. **Every dispatch is now identical, whatever the child becomes**: `tools/dispatch-agent.sh
+   <agent-type> <name> <cwd> <prompt>` opens a HIDDEN pane (`tmux split-window -d`) and
+   launches a REAL `claude` process into it — never a Task-tool subagent, which has no pty
+   of its own and so cannot promote or close itself. The dispatcher never creates a window
+   and never decides the child's visibility.
+2. **Each agent decides its own visibility, on its own boot.** `tools/pane-promote.sh
+   "<name>"` runs `tmux break-pane` on the agent's OWN current pane — same process, same
+   pty, relocated into a new window, nothing restarted. An agent that stays a pane never
+   calls it. The promoted agent then sets its own `@landscaper_id`-style handle and mounts
+   its own sidebar — nobody does either for it.
+3. **The creator of a window closes that same window itself, as its own last act** — since
+   it is now genuinely its own creation (self-`break-pane`), this is a clean "destroy what
+   you create," not a third party reaching into something else's container.
+4. **`groundskeeper` never touches windows or panes, at all, ever.** Its close is GIT-ONLY:
+   docs, tag, squash, push. The beekeeper — which created the worktree and branch — releases
+   those two itself once the git-close lands, gated on the landscaper's own `lifecycle:closed`
+   (already guaranteed by the time the beekeeper ever fires the close).
+5. **A sower is now a real process too**, launched the same uniform way, reporting its typed
+   result to its parent over its own courier (not a Task-tool return value), closing its own
+   pane (`tmux kill-pane`) as its last act. It almost always stays a hidden pane rather than
+   promoting.
+
+Applied same-day: `tools/dispatch-agent.sh` and `tools/pane-promote.sh` (new),
+`docs/tmux-topology.md` rewritten around this model, `agents/beekeeper.md`,
+`agents/landscaper.md`, `agents/sower.md`, `agents/groundskeeper.md`, and `ARCHITECTURE.md`'s
+role table updated to match. `skills/git-workflow/SKILL.md`'s role list corrected to
+`beekeeper` (a stray `arborist` reference missed in Decision-141).
+
+Not done here: the actual sower/Explore dispatch call sites elsewhere in already-running
+tooling are not swept; `tools/courier.py`/`docs/orchard-bus.md`'s `stopping`/`stopped` code
+vocabulary stays as-is (scoped to the in-flight courier rewrite, per Decision-141).
