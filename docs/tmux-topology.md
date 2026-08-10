@@ -106,14 +106,13 @@ gh#216).
   `split-window -h -l 33%`; each subsequent peek stacks with `split-window -v` against
   the first pane whose title begins `peek:`. The column cap is a build-time knob
   (currently 4).
-- **Any non-main pane's title is kept live-set to what its subagent is currently doing**
-  (operator, 2026-08-10) — not a static `peek:<name>` label left stale for its whole
-  life. This is for the operator's OWN external tooling (a second screen, a custom tmux
-  status formatter) that reads pane titles directly; nothing in this fleet needs to
-  render or consume it itself. Whatever already carries a subagent's current doing-word
-  (its own status post) is what updates the pane title too, whenever that pane exists —
-  a peek opening after the fact picks up the current word immediately rather than
-  starting blank.
+- **A peek pane's title is set at dispatch, TWO WORDS MAX, always** (operator,
+  2026-08-10): either a short cute name the CREATOR (the dispatching agent) gives that
+  specific task ("audit boxes"), or — if it didn't bother naming it — the bare agent
+  name itself ("Explorer", "sower"). Never a static `peek:<name>` bookkeeping label left
+  in place of either. This is for the operator's OWN external tooling (a second screen,
+  a custom tmux status formatter) that reads pane titles directly; nothing in this fleet
+  needs to render or consume it itself.
 
 ## 6. Closing and ownership
 
