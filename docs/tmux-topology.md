@@ -23,12 +23,15 @@ worker), and the **courier** (the message transport).
   (worktree + branch + window, in that order) when the gardener hands it a feature, and
   the LANDSCAPER runs in it — the landscaper is what the operator interacts with
   directly, never a side-by-side or split of the gardener.
-- **The beekeeper does not get its own window.** It is session-bearing (its own
-  session, its own courier, its own state) but headless from the operator's chair —
-  routing and lifecycle-watching are not something the operator sits and watches happen
-  pane-by-pane; ASK it (through the gate surfaces below) rather than looking for its
-  window. *(Explicit assumption, not separately re-confirmed with the operator — flag if
-  wrong.)*
+- **The beekeeper IS the first occupant of the feature's window** (operator,
+  2026-08-10, correcting the draft of this spec) — it is literally what creates the
+  window and runs in it first: extract context, create the worktree, dispatch. Once it
+  dispatches the landscaper into that same window, the window becomes the landscaper's
+  for the rest of the feature's life — the operator interacts with the landscaper there,
+  never a split/side-by-side of the beekeeper. The beekeeper's own session keeps running
+  after that handoff (session-bearing, watching lifecycle, holding the attempt count) but
+  no longer occupies a visible pane; ASK it (through the gate surfaces below) rather than
+  looking for a window once the landscaper has taken over.
 - **PANE per live subtask.** A feature's subtasks (sowers, discovery explorers) are
   RIGHT-HAND PANES of the feature's one window — never their own window, and never
   interactive. A pane opens when its subtask starts and closes when it finishes; the
@@ -103,6 +106,14 @@ gh#216).
   `split-window -h -l 33%`; each subsequent peek stacks with `split-window -v` against
   the first pane whose title begins `peek:`. The column cap is a build-time knob
   (currently 4).
+- **Any non-main pane's title is kept live-set to what its subagent is currently doing**
+  (operator, 2026-08-10) — not a static `peek:<name>` label left stale for its whole
+  life. This is for the operator's OWN external tooling (a second screen, a custom tmux
+  status formatter) that reads pane titles directly; nothing in this fleet needs to
+  render or consume it itself. Whatever already carries a subagent's current doing-word
+  (its own status post) is what updates the pane title too, whenever that pane exists —
+  a peek opening after the fact picks up the current word immediately rather than
+  starting blank.
 
 ## 6. Closing and ownership
 
