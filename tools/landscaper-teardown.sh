@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # window-kill + focus-return primitive; resolves by @landscaper_id/@gardener_id
-# window user-options; callable by the groundskeeper (pass socket as $2) or
-# self-called from within the landscaper's tmux; no .return-window.
+# window user-options. SELF-called only (Decision-142, 2026-08-10): the agent that
+# self-promoted into this window (tools/pane-promote.sh) tears it down itself, as its
+# own last act, from inside its own tmux. groundskeeper never calls this -- it does not
+# touch windows or panes at all. No .return-window.
 #
 # Pane titles are clobbered live by claude (Decision-048), so every load-bearing
 # handle keys off a window user-option. The primitive returns the operator's tmux
