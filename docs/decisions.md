@@ -2841,3 +2841,112 @@ role table updated to match. `skills/git-workflow/SKILL.md`'s role list correcte
 Not done here: the actual sower/Explore dispatch call sites elsewhere in already-running
 tooling are not swept; `tools/courier.py`/`docs/orchard-bus.md`'s `stopping`/`stopped` code
 vocabulary stays as-is (scoped to the in-flight courier rewrite, per Decision-141).
+
+---
+
+## [2026-08-11] Decision-143: The migration watermark is one file per package, keyed by owner and repo
+
+Operator ruling (2026-08-11), arising from a survey of every kauk-managed repository on
+the machine. Eleven of twelve were frozen at the same orchids commit, 230 behind, still
+linking names that had since been renamed away (`git-commit`, `groomer.md`, `gardener`).
+None of them had ever been told a migration was pending.
+
+The cause was in the watermark, not in migrations themselves:
+
+1. **The pending-notice hook only read the consuming repo's OWN `migrations/`**
+   (`for d in "$root/migrations"`). A pure consumer — forensics, seb.tv, packages,
+   fastcut, seb.house — has no such directory, so the notice never fired for any of
+   them, for any package, ever.
+2. **One watermark file held one basename for the whole clone.** With more than one
+   package installed, whichever package advanced it last hides every other package's
+   pending work. kauk's already held an *orchids* basename while kauk's own migration
+   went unreported.
+
+The watermark is therefore per package, keyed exactly as packages are keyed everywhere
+else — `the-works/migrated/<owner>/<repo>` — a file per package rather than one keyed
+file, so the reader needs no parsing and mirrors `.ai/repositories/<owner>/<repo>`.
+Absent file = everything pending for that package. Packages are independent: a package's
+pending set is applied in full before the next package's is started; nothing spans
+packages.
+
+A package's identity comes from the last two components of its vendoring path, and for a
+repository's own `migrations/` from its `origin` remote — which resolves both the GitHub
+and the local-path remotes in use on this machine.
+
+Discarding a watermark that matches no installed package is safe and is what the
+conversion does: every migration step is guarded by observable state, so re-applying one
+already applied is a no-op. That same property is what makes the seven repositories with
+no watermark at all recoverable.
+
+Applied here: `hooks/migrations-pending.sh` (new, replacing the inline `settings.json`
+one-liner), `settings.json` repointed, `AGENTS.files.md` §Migrations rewritten in place
+(no net growth — agents read less the more it grows), `migrations/2026-08-11-per-package-watermark.md`,
+and `tests/test_migrations_pending.py` (11 cases, the conversion script extracted from
+the migration document so the shipped text is what is covered).
+
+Not done here: the estate itself is not yet migrated. The operator's acceptance test is
+to move kauk to the `kaukea` organisation and bring every consuming repository forward
+using this mechanism.
+
+---
+
+## [2026-08-11] Decision-144: There is no `urgent`; `ARCHITECTURE.md` is optional
+
+Operator rulings (2026-08-11), from a lint sweep of every board on the machine — not one
+of nine lints clean, and four could not be linted at all.
+
+**1. `urgent` is not a category.** Everything is always urgent, so the word says nothing.
+`critical` means something will stop working, or a bug is burning tokens through repeated
+failure. Everything else leaves urgency empty. `urgent`, `low` and `med` — invented
+independently in four repositories — are not translated mechanically to `critical`: each
+task is re-judged against that definition, and most become empty.
+
+**2. Not every repository has an architecture.** A repo that only analyses crashes has no
+architecture to describe. `ARCHITECTURE.md` is therefore optional, and `area` is empty
+where there is no Taxonomy to draw from. `board_lint.py` raised `FileNotFoundError` on its
+absence rather than reporting it — which is why four boards had never been linted at all,
+and had drifted furthest.
+
+**3. Boards transition to task-based everywhere except `seb.crash` and `orphan`.** Every
+repository commits its outstanding work, and personal data is scrubbed before it does —
+that scrub, not the board format, is the gate. `seb.house` is legacy and is handled
+separately.
+
+Applied here: `board_lint.py` returns `None` for a missing Taxonomy and reports it instead
+of crashing (with the summary line no longer assuming a glossary); `AGENTS.files.md` §TODO
+records what `critical` means and that `area` is empty without a Taxonomy;
+`tests/test_board_lint_no_architecture.py` (5 cases).
+
+Open, not ruled: `cyber.recovery` documents its taxonomy as a three-column table
+(functionality repeated per row, plus a Scope column) that the two-column parser cannot
+read — its 64 errors are a format mismatch, not bad data. Either the canonical shape
+absorbs it or that repository converts. `fastcut` has no `## Taxonomy` section at all.
+
+---
+
+## [2026-08-11] Decision-145: Metronome is dead; the decisions split is the gardener's, on deviation; one template carries the AGENTS references
+
+Three operator rulings (2026-08-11), taken while surveying the estate.
+
+**1. Metronome is dead.** The runtime supervisor sketched in the uncommitted 2026-07-24
+blueprint is not boarded and is not to be. This resolves the open question in
+`decisions-restructuring`: Valve (gh#273) is not metronome under another name and stands
+alone, so its design round is unblocked. The judgement boundary is between two roles, not
+three — the beekeeper routes and never judges, Valve judges and never routes.
+
+**2. The decisions split is the gardener's role, and fires only on deviation.** Splitting
+the register by kind is not a batch migration of the existing entries: the gardener
+classifies a decision when a deviation actually surfaces one. That removes the dependency
+on `decisions-reviewing` auditing 117 entries first — nothing is sorted until something
+deviates against it.
+
+**3. The AGENTS references are injected into `CLAUDE.md` by a template**, so exactly one
+template is maintained per package. Already the shipped shape: `templates/CLAUDE.md` is a
+delimited prefix block (`orchids:begin` … `orchids:end`) carrying `@AGENTS.shared.md` and
+`@AGENTS.md`, with `AGENTS.files.md` deliberately excluded from session start for token
+economy. Consuming repositories carry it verbatim. Under the package format the marker
+takes the package's own name rather than `orchids`.
+
+Also recorded, 2026-08-11: the agent is not to touch anything forensic — `forensics` and
+`cyber.recovery` are outside its competence and outside its remit, and are excluded from
+the board transition, the lint sweep, and any migration.

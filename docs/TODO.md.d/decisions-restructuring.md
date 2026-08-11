@@ -20,23 +20,15 @@
    `## The application semantics` below. They are the fixed part of this task;
    everything else is designed to serve them.
 
-2. **`metronome` has no board row — nor does any of the blueprint it belongs to.**
-   The operator states these semantics *"will be an acceptance criteria for
-   metronome"*. Metronome is the runtime supervisor agent specified in the
-   2026-07-24 blueprint (`.git/the-works/orchestrator/20260724-blueprint.md`,
-   §3–§4, stages 1–2 of eight); that blueprint is uncommitted and unboarded in
-   its entirety, so these acceptance criteria point at something with no board
-   presence. *Recommendation: board it — a named acceptance criterion pointing at
-   a task that does not exist gets quietly dropped by whoever builds either side.*
+2. ~~**`metronome` has no board row — nor does any of the blueprint it belongs to.**~~
+   **ANSWERED, 2026-08-11** (operator): *"Metronome is more or less dead."* It is not
+   boarded and is not to be. Any acceptance criterion phrased against metronome is
+   re-pointed at Valve or dropped; the 2026-07-24 blueprint stays uncommitted.
 
-3. **Is `valve` the same agent as metronome?** `valve` (gh#273, plan-ready)
-   describes real-time decision enforcement, yes/no phase gates and forced rework.
-   Metronome's tier-2 action space runs silence → bus comment → operator flag →
-   cancel-to-gate. Those overlap closely enough that the operator should rule
-   whether they are one agent or two before either is built. Note also that
-   `agents/supervisor.md` already exists and explicitly disclaims judgement —
-   *"it never checks it (that is Valve)"* — so the boundary is drawn between three
-   things today, not two.
+3. ~~**Is `valve` the same agent as metronome?**~~ **ANSWERED, 2026-08-11** (operator):
+   moot — metronome is dead, so Valve stands alone and its design round is unblocked on
+   this point. The boundary is between two things, not three: the beekeeper routes and
+   never judges, Valve judges and never routes.
 
 4. **What is the vocabulary, and what is the split?** He is explicitly *"not set on
    the exact split"*. The kinds named so far are a partial list: `rule`, `contextual

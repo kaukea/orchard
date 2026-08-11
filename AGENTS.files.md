@@ -35,10 +35,15 @@ parsed `badge.split('·').map(s => s.trim())`.
 |---|---|
 | `type` | bug · feature · refactor · housekeeping · completion |
 | `status` | *(outcome lifecycle)* todo · functional · done · cancelled |
-| `urgency` | *(empty = normal)* critical · nice-to-have · idea |
+| `urgency` | *(empty = normal — nearly everything)* critical · nice-to-have · idea |
 | `readiness` | `<stage>` or `<stage>/<origin>` (see below) |
-| `area` | an area from the ARCHITECTURE.md Taxonomy (leaf tasks only) |
+| `area` | an area from the ARCHITECTURE.md Taxonomy (leaf tasks only); empty when the repo has no Taxonomy |
 | `gh#<n>` | GitHub-mirror issue number; empty until the mirror binds it |
+
+There is no `urgent` — everything is always urgent, so it says nothing. `critical` means
+something will stop working, or a bug is burning tokens; anything else leaves urgency empty.
+Not every repository has an architecture to describe, so `ARCHITECTURE.md` is optional and
+`area` is empty where there is no Taxonomy to draw from.
 
 **The title link** — `[Short title](TODO.md.d/<id>.md)` does triple duty: the text is the
 human-readable **short title** (refactored short + explanatory), and the URL carries both the
@@ -258,15 +263,16 @@ change they describe), so filenames sort chronologically and **the package versi
 the highest filename** — that is how "older vs newer" is answered from any consuming
 repo.
 
-**Watermark** — `$(git rev-parse --git-common-dir)/the-works/migrated` holds the
-basename of the last applied migration, per clone (the state being migrated is
-per-clone). No watermark = everything pending. The shared `settings.json` hook
-compares the highest available basename in the repo-root `migrations/` directory
-against it and injects a pending notice.
+**Watermark** — one per package, per clone (the state being migrated is per-clone):
+`$(git rev-parse --git-common-dir)/the-works/migrated/<owner>/<repo>` holds the basename
+of that package's last applied migration. No file = everything pending. The
+`migrations-pending.sh` hook walks the repo's own `migrations/` plus every
+`.ai/repositories/<owner>/<repo>/migrations/` and reports each package's pending set.
 
-**Execution** — the agent reads ALL pending migrations at once, merges them, and
-applies the net effect in one pass (chained moves collapse; steps a later migration
-undoes are never performed), then writes the latest basename to the watermark.
+**Execution** — packages are independent: finish one before starting the next. Per
+package, the agent reads ALL its pending migrations at once, merges them, and applies
+the net effect in one pass (chained moves collapse; steps a later migration undoes are
+never performed), then writes the latest basename to that package's watermark.
 
 **Authoring rules:**
 - Every action is guarded by observable state ("if X exists, move it") — NEVER by

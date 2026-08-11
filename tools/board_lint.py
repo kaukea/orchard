@@ -33,7 +33,13 @@ URGENCIES = {'', 'critical', 'nice-to-have', 'idea'}
 
 
 def load_glossary():
-    """functionality -> set(components), from the ARCHITECTURE.md Taxonomy table."""
+    """functionality -> set(components), from the ARCHITECTURE.md Taxonomy table.
+
+    None when the repository has no ARCHITECTURE.md: not every project has an
+    architecture to describe (a repo that only analyses crashes has none), and
+    the board must still lint. Areas are then required to be empty."""
+    if not os.path.exists(ARCH):
+        return None
     gloss, in_tax, in_table = {}, False, False
     for line in open(ARCH):
         if line.startswith('## '):
@@ -105,7 +111,10 @@ def main():
         if origin and origin not in ORIGINS: errors.append(f"{tid}: bad origin {origin!r}")
         if gh and not re.match(r'gh#\d+$', gh): errors.append(f"{tid}: bad gh# {gh!r}")
         is_leaf = tid not in has_child
-        if is_leaf:
+        if gloss is None:
+            if comp:
+                errors.append(f"{tid}: area {comp!r} but this repo has no ARCHITECTURE.md Taxonomy")
+        elif is_leaf:
             if t['fn'] not in gloss or comp not in gloss.get(t['fn'], set()):
                 errors.append(f"{tid}: area {comp!r} not in {t['fn']} taxonomy")
         elif comp:
@@ -120,7 +129,8 @@ def main():
     if '--json' in sys.argv:
         print(json.dumps([{k: t[k] for k in ('id', 'fn', 'depth', 'fields',
               'blocked_by', 'related')} for t in tasks], indent=1))
-    print(f"board: {len(tasks)} tasks, {len(gloss)} functionalities, {len(errors)} errors",
+    taxonomy = "no ARCHITECTURE.md" if gloss is None else f"{len(gloss)} functionalities"
+    print(f"board: {len(tasks)} tasks, {taxonomy}, {len(errors)} errors",
           file=sys.stderr)
     for e in errors:
         print(f"  ! {e}", file=sys.stderr)
