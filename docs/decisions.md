@@ -2950,3 +2950,34 @@ takes the package's own name rather than `orchids`.
 Also recorded, 2026-08-11: the agent is not to touch anything forensic — `forensics` and
 `cyber.recovery` are outside its competence and outside its remit, and are excluded from
 the board transition, the lint sweep, and any migration.
+
+---
+
+## [2026-08-11] Decision-146: A migration that uninstalls must be guarded by observable state, not by its prose
+
+Found while preparing the estate migration, before running it. `migrations/2026-07-27-unvendor-self.md`
+removes orchids from `.ai.toml` and `rm -rf`s the vendored clone. Its opening line —
+*"This repository is the SOURCE of the orchids package"* — states the precondition in
+prose, and the shell block never checks it. Step 1 is guarded (it only repoints tracked
+symlinks that resolve into the self-clone); steps 2 and 3 are unconditional.
+
+That migration is pending in every consuming repository on this machine. Applying the
+estate's pending set would therefore have UNINSTALLED the package from ten repositories —
+deleting each one's source line and its clone — while reporting success.
+
+The guard is now observable: the vendored clone's `origin` resolves to this very
+repository, either as the same remote URL or as a local path whose toplevel is this root.
+A consumer never satisfies it and its clone is left alone. Covered by
+`tests/test_unvendor_self_guard.py` (5 cases, the shell block extracted from the migration
+document), including the consumer case that was the defect.
+
+The authoring rule already required this ("every action is guarded by observable state —
+NEVER by assumed position in the sequence"). It was written for ordering, and read as being
+about ordering; it applies equally to WHICH REPOSITORY a step is running in. A migration
+ships to every consumer of the package, so any step whose correctness depends on the
+identity of the repository must test that identity, and the prose above the block is not a
+guard.
+
+A sweep of the other twelve migrations found no second instance: only this one and the
+per-package watermark contain destructive operations, and the watermark's are behind a
+regular-file check. Of the thirteen, one is judgement-only and twelve are scripted.
