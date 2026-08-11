@@ -35,10 +35,15 @@ parsed `badge.split('·').map(s => s.trim())`.
 |---|---|
 | `type` | bug · feature · refactor · housekeeping · completion |
 | `status` | *(outcome lifecycle)* todo · functional · done · cancelled |
-| `urgency` | *(empty = normal)* critical · nice-to-have · idea |
+| `urgency` | *(empty = normal — nearly everything)* critical · nice-to-have · idea |
 | `readiness` | `<stage>` or `<stage>/<origin>` (see below) |
-| `area` | an area from the ARCHITECTURE.md Taxonomy (leaf tasks only) |
+| `area` | an area from the ARCHITECTURE.md Taxonomy (leaf tasks only); empty when the repo has no Taxonomy |
 | `gh#<n>` | GitHub-mirror issue number; empty until the mirror binds it |
+
+There is no `urgent` — everything is always urgent, so it says nothing. `critical` means
+something will stop working, or a bug is burning tokens; anything else leaves urgency empty.
+Not every repository has an architecture to describe, so `ARCHITECTURE.md` is optional and
+`area` is empty where there is no Taxonomy to draw from.
 
 **The title link** — `[Short title](TODO.md.d/<id>.md)` does triple duty: the text is the
 human-readable **short title** (refactored short + explanatory), and the URL carries both the

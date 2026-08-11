@@ -2887,3 +2887,37 @@ the migration document so the shipped text is what is covered).
 Not done here: the estate itself is not yet migrated. The operator's acceptance test is
 to move kauk to the `kaukea` organisation and bring every consuming repository forward
 using this mechanism.
+
+---
+
+## [2026-08-11] Decision-144: There is no `urgent`; `ARCHITECTURE.md` is optional
+
+Operator rulings (2026-08-11), from a lint sweep of every board on the machine — not one
+of nine lints clean, and four could not be linted at all.
+
+**1. `urgent` is not a category.** Everything is always urgent, so the word says nothing.
+`critical` means something will stop working, or a bug is burning tokens through repeated
+failure. Everything else leaves urgency empty. `urgent`, `low` and `med` — invented
+independently in four repositories — are not translated mechanically to `critical`: each
+task is re-judged against that definition, and most become empty.
+
+**2. Not every repository has an architecture.** A repo that only analyses crashes has no
+architecture to describe. `ARCHITECTURE.md` is therefore optional, and `area` is empty
+where there is no Taxonomy to draw from. `board_lint.py` raised `FileNotFoundError` on its
+absence rather than reporting it — which is why four boards had never been linted at all,
+and had drifted furthest.
+
+**3. Boards transition to task-based everywhere except `seb.crash` and `orphan`.** Every
+repository commits its outstanding work, and personal data is scrubbed before it does —
+that scrub, not the board format, is the gate. `seb.house` is legacy and is handled
+separately.
+
+Applied here: `board_lint.py` returns `None` for a missing Taxonomy and reports it instead
+of crashing (with the summary line no longer assuming a glossary); `AGENTS.files.md` §TODO
+records what `critical` means and that `area` is empty without a Taxonomy;
+`tests/test_board_lint_no_architecture.py` (5 cases).
+
+Open, not ruled: `cyber.recovery` documents its taxonomy as a three-column table
+(functionality repeated per row, plus a Scope column) that the two-column parser cannot
+read — its 64 errors are a format mismatch, not bad data. Either the canonical shape
+absorbs it or that repository converts. `fastcut` has no `## Taxonomy` section at all.
