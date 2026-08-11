@@ -18,7 +18,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 
 ## Process machinery
 
-- `bug · todo · critical · working · sync ·` [Per-package migration watermark: consumers were never told anything](TODO.md.d/per-package-watermark.md)
+- `bug · todo · critical · working · process ·` [Per-package migration watermark: consumers were never told anything](TODO.md.d/per-package-watermark.md)
 - `feature · todo · critical · queued · ·` [Features first-class: land Decision-105 everywhere, not just the sidebar](TODO.md.d/features-first-class.md) ~epic-grouping ~github-board-sync ~sidebar-teamwork ~todo-to-task-list
   - `feature · todo · critical · blocked-on-answers · process ·` [Board grammar: two levels, two badges, One-offs — Decisions 117+118 built](TODO.md.d/board-grammar.md) ~features-first-class
   - `feature · todo · critical · blocked-on-answers · process ·` [Branch and close naming: f/feature/task, archive tags to match — Decisions 116+120 built](TODO.md.d/branch-and-close.md) ~features-first-class ~close-permission-blocking

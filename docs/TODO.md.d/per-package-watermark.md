@@ -1,6 +1,6 @@
 # Per-package migration watermark
 
-`bug · todo · critical · working · sync`
+`bug · todo · critical · working · process`
 
 ## Problem
 
