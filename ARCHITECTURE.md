@@ -342,11 +342,12 @@ symlink, everyone), `template` (install-time copy, then project-owned),
 ```
 agents/            five pipeline roles + beekeeper + courier sidecar (→ .claude/agents/)
 skills/<name>/     SKILL.md packages (→ .claude/skills/, per role)
-hooks/             courier-init.sh · courier-end.sh (→ .claude/hooks/)
+hooks/             courier-init.sh · courier-end.sh · migrations-pending.sh (→ .claude/hooks/)
 tools/             board_lint.py · board_stale.py · courier.py · orchard_topic.py · orchard_compact.py · orchard-question-broker.py · landscaper-teardown.sh · sidebar.py · sidebar_nav.py · sidebar-mount.sh (→ .claude/tools/)
 templates/         AGENTS.md (template) · CLAUDE.md (prefix block)
 migrations/        dated structural-upgrade instructions (YYYY-MM-DD-<slug>.md); applied
-                   per clone against the .git/the-works/migrated watermark
+                   per clone against .git/the-works/migrated/<owner>/<repo>, one
+                   watermark per installed package
 AGENTS.shared.md   fleet-wide non-negotiable rules (linked)
 AGENTS.files.md    file-format contracts: board, sidecars (linked)
 settings.json      shared Claude Code settings (linked)

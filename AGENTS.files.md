@@ -258,15 +258,16 @@ change they describe), so filenames sort chronologically and **the package versi
 the highest filename** — that is how "older vs newer" is answered from any consuming
 repo.
 
-**Watermark** — `$(git rev-parse --git-common-dir)/the-works/migrated` holds the
-basename of the last applied migration, per clone (the state being migrated is
-per-clone). No watermark = everything pending. The shared `settings.json` hook
-compares the highest available basename in the repo-root `migrations/` directory
-against it and injects a pending notice.
+**Watermark** — one per package, per clone (the state being migrated is per-clone):
+`$(git rev-parse --git-common-dir)/the-works/migrated/<owner>/<repo>` holds the basename
+of that package's last applied migration. No file = everything pending. The
+`migrations-pending.sh` hook walks the repo's own `migrations/` plus every
+`.ai/repositories/<owner>/<repo>/migrations/` and reports each package's pending set.
 
-**Execution** — the agent reads ALL pending migrations at once, merges them, and
-applies the net effect in one pass (chained moves collapse; steps a later migration
-undoes are never performed), then writes the latest basename to the watermark.
+**Execution** — packages are independent: finish one before starting the next. Per
+package, the agent reads ALL its pending migrations at once, merges them, and applies
+the net effect in one pass (chained moves collapse; steps a later migration undoes are
+never performed), then writes the latest basename to that package's watermark.
 
 **Authoring rules:**
 - Every action is guarded by observable state ("if X exists, move it") — NEVER by

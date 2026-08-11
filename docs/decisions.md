@@ -2841,3 +2841,49 @@ role table updated to match. `skills/git-workflow/SKILL.md`'s role list correcte
 Not done here: the actual sower/Explore dispatch call sites elsewhere in already-running
 tooling are not swept; `tools/courier.py`/`docs/orchard-bus.md`'s `stopping`/`stopped` code
 vocabulary stays as-is (scoped to the in-flight courier rewrite, per Decision-141).
+
+---
+
+## [2026-08-11] Decision-143: The migration watermark is one file per package, keyed by owner and repo
+
+Operator ruling (2026-08-11), arising from a survey of every kauk-managed repository on
+the machine. Eleven of twelve were frozen at the same orchids commit, 230 behind, still
+linking names that had since been renamed away (`git-commit`, `groomer.md`, `gardener`).
+None of them had ever been told a migration was pending.
+
+The cause was in the watermark, not in migrations themselves:
+
+1. **The pending-notice hook only read the consuming repo's OWN `migrations/`**
+   (`for d in "$root/migrations"`). A pure consumer — forensics, seb.tv, packages,
+   fastcut, seb.house — has no such directory, so the notice never fired for any of
+   them, for any package, ever.
+2. **One watermark file held one basename for the whole clone.** With more than one
+   package installed, whichever package advanced it last hides every other package's
+   pending work. kauk's already held an *orchids* basename while kauk's own migration
+   went unreported.
+
+The watermark is therefore per package, keyed exactly as packages are keyed everywhere
+else — `the-works/migrated/<owner>/<repo>` — a file per package rather than one keyed
+file, so the reader needs no parsing and mirrors `.ai/repositories/<owner>/<repo>`.
+Absent file = everything pending for that package. Packages are independent: a package's
+pending set is applied in full before the next package's is started; nothing spans
+packages.
+
+A package's identity comes from the last two components of its vendoring path, and for a
+repository's own `migrations/` from its `origin` remote — which resolves both the GitHub
+and the local-path remotes in use on this machine.
+
+Discarding a watermark that matches no installed package is safe and is what the
+conversion does: every migration step is guarded by observable state, so re-applying one
+already applied is a no-op. That same property is what makes the seven repositories with
+no watermark at all recoverable.
+
+Applied here: `hooks/migrations-pending.sh` (new, replacing the inline `settings.json`
+one-liner), `settings.json` repointed, `AGENTS.files.md` §Migrations rewritten in place
+(no net growth — agents read less the more it grows), `migrations/2026-08-11-per-package-watermark.md`,
+and `tests/test_migrations_pending.py` (11 cases, the conversion script extracted from
+the migration document so the shipped text is what is covered).
+
+Not done here: the estate itself is not yet migrated. The operator's acceptance test is
+to move kauk to the `kaukea` organisation and bring every consuming repository forward
+using this mechanism.
