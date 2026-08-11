@@ -45,17 +45,39 @@ git ls-files | while IFS= read -r f; do
   rm "$f" && ln -s "$newlink" "$f"
 done
 
-# 2. Drop the self-source from the kauk manifest so a later sync cannot re-vendor it.
-if [ -f .ai.toml ] && grep -q '^\[sources\."serialseb/orchids"\]' .ai.toml; then
-  awk '
-    /^\[sources\."serialseb\/orchids"\]$/ { skip=1; next }
-    skip && /^\[/ { skip=0 }
-    !skip { print }
-  ' .ai.toml > .ai.toml.tmp && mv .ai.toml.tmp .ai.toml
+# Steps 2 and 3 UNINSTALL the package, and must run ONLY in the repository that IS
+# the orchids source. Observable guard: the vendored clone's origin resolves to this
+# very repository — either the same remote URL, or a local path that IS this root.
+# A consumer never satisfies it, and there its clone and source line stay untouched.
+clone=".ai/repositories/serialseb/orchids"
+self_vendoring=0
+if [ -d "$clone/.git" ]; then
+  mine="$(git -C "$root" remote get-url origin 2>/dev/null || true)"
+  theirs="$(git -C "$clone" remote get-url origin 2>/dev/null || true)"
+  if [ -n "$theirs" ] && [ -n "$mine" ] && [ "$theirs" = "$mine" ]; then
+    self_vendoring=1
+  elif [ -n "$theirs" ] && [ -d "$theirs" ] && \
+       [ "$(cd "$theirs" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null)" = "$root" ]; then
+    self_vendoring=1
+  fi
 fi
 
-# 3. The clone itself is gitignored and may simply be deleted; nothing reads it now.
-rm -rf .ai/repositories/serialseb/orchids
+if [ "$self_vendoring" = 1 ]; then
+  # 2. Drop the self-source from the kauk manifest so a later sync cannot re-vendor it.
+  if [ -f .ai.toml ] && grep -q '^\[sources\."serialseb/orchids"\]' .ai.toml; then
+    awk '
+      /^\[sources\."serialseb\/orchids"\]$/ { skip=1; next }
+      skip && /^\[/ { skip=0 }
+      !skip { print }
+    ' .ai.toml > .ai.toml.tmp && mv .ai.toml.tmp .ai.toml
+  fi
+
+  # 3. The clone itself is gitignored and may simply be deleted; nothing reads it now.
+  rm -rf "$clone"
+  echo "unvendored self"
+else
+  echo "not the orchids source — clone and source line left alone"
+fi
 true
 ```
 
