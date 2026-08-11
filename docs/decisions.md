@@ -2921,3 +2921,32 @@ Open, not ruled: `cyber.recovery` documents its taxonomy as a three-column table
 (functionality repeated per row, plus a Scope column) that the two-column parser cannot
 read — its 64 errors are a format mismatch, not bad data. Either the canonical shape
 absorbs it or that repository converts. `fastcut` has no `## Taxonomy` section at all.
+
+---
+
+## [2026-08-11] Decision-145: Metronome is dead; the decisions split is the gardener's, on deviation; one template carries the AGENTS references
+
+Three operator rulings (2026-08-11), taken while surveying the estate.
+
+**1. Metronome is dead.** The runtime supervisor sketched in the uncommitted 2026-07-24
+blueprint is not boarded and is not to be. This resolves the open question in
+`decisions-restructuring`: Valve (gh#273) is not metronome under another name and stands
+alone, so its design round is unblocked. The judgement boundary is between two roles, not
+three — the beekeeper routes and never judges, Valve judges and never routes.
+
+**2. The decisions split is the gardener's role, and fires only on deviation.** Splitting
+the register by kind is not a batch migration of the existing entries: the gardener
+classifies a decision when a deviation actually surfaces one. That removes the dependency
+on `decisions-reviewing` auditing 117 entries first — nothing is sorted until something
+deviates against it.
+
+**3. The AGENTS references are injected into `CLAUDE.md` by a template**, so exactly one
+template is maintained per package. Already the shipped shape: `templates/CLAUDE.md` is a
+delimited prefix block (`orchids:begin` … `orchids:end`) carrying `@AGENTS.shared.md` and
+`@AGENTS.md`, with `AGENTS.files.md` deliberately excluded from session start for token
+economy. Consuming repositories carry it verbatim. Under the package format the marker
+takes the package's own name rather than `orchids`.
+
+Also recorded, 2026-08-11: the agent is not to touch anything forensic — `forensics` and
+`cyber.recovery` are outside its competence and outside its remit, and are excluded from
+the board transition, the lint sweep, and any migration.
