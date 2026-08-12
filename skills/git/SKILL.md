@@ -60,3 +60,20 @@ Agent: <model>
 - Body lines wrap at 72 characters.
 - A process that runs branch-based workflows adds a `Branch:` trailer on top of this
   format — see the `git-workflow` skill for that rule; it is not part of generic hygiene.
+
+## Repo ownership = push rights (parked 2026-08-12, until broadcast)
+
+Whether a repo counts as the operator's own is a question about *rights*, not
+about the account named in the origin URL: he maintains repos under foreign
+orgs, and a clone under a familiar-looking owner proves nothing.
+
+- Authoritative check (authenticated `gh`):
+  `gh repo view OWNER/REPO --json viewerPermission --jq .viewerPermission`
+- `ADMIN` / `MAINTAIN` / `WRITE` → can push → his.
+- `READ` / `TRIAGE` → someone else's, however hard it is worked in.
+- No remote at all → local work → his.
+- Non-github.com remotes: gh cannot answer — fall back to an explicit owner
+  list, never to name-guessing.
+- Never on a hot path: it is a network call. Cache the verdicts and refresh
+  off-thread; `seb.tmux/sebdeck/rights.py` is the reference implementation
+  (day-long cache, background refresh, ranking reads only the cache).
