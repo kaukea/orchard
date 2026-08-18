@@ -187,6 +187,7 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 
 ## Skills
 
+- `feature · todo · · queued · skills ·` [adopting-orchard: migrate a project with its own process into the workflow](TODO.md.d/adopting-orchard.md)
 - `bug · todo · · queued · skills ·` [The diagnosing-issues trigger never fires — frontmatter investigated](TODO.md.d/diagnosing-trigger.md)
 
 - `feature · todo · · blocked-on-answers · skills · gh#17` [Web account signup: create account, store password + OTP in Bitwarden](TODO.md.d/web-account-signup-skill.md) ~role-delivery
