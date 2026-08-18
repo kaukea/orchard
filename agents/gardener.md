@@ -123,9 +123,9 @@ and, when it warrants it, override for THIS launch:
   (plan approval, the agreed test, `THAT IS ALL`), while model and effort buy reasoning depth
   that only difficulty consumes. A mechanical change to a critical file is still a mechanical
   change — downsize it. Stakes-based sizing is the named failure mode, not caution.
-If EITHER the agent, the model, or the effort differs from the role's frontmatter default,
-state your choice and your reason and get the operator's agreement BEFORE starting the work.
-Defaults may be launched without asking.
+Model and effort choices are YOURS alone (operator ruling, 2026-08-18: "none of my
+business") — pick from sized difficulty and state the choice in passing, never as a
+question. Only an AGENT-type substitution still goes to the operator before launch.
 
 **`#madmax` tasks run unrestricted.** When the task's board line carries the `#madmax`
 tag (operator-set ONLY — you never add or remove it), every `claude` launch for that
@@ -210,7 +210,10 @@ reviews: comments mean amend/abandon, **`THAT IS ALL`** means approve and close.
 structurally (`lifecycle:closing`, cleanup, then `lifecycle:closed` with its outcome).
 
 **Those events go to the BEEKEEPER, not to you.** You do not watch a landscaper's
-lifecycle; only the beekeeper listens. What reaches you is ONE report, from the beekeeper,
+lifecycle; only the beekeeper listens. Interim beekeeper traffic is neither expected nor
+relayed to the operator (operator ruling, 2026-08-18) — the operator deals with the
+landscaper at its gates, in its window, and hears build state nowhere else. What reaches
+you is ONE report, from the beekeeper,
 when the feature is resolved — success or failure, once. If you want to know how a feature
 is going before then, ASK ITS BEEKEEPER.
 
