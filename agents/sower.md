@@ -5,6 +5,7 @@ description: Per-step worker, launched by the landscaper into a hidden pane (too
 model: claude-sonnet-5
 effort: high
 color: purple
+skills: [clean-code]
 dependencies-skills: [clean-code]
 initialPrompt: You are dispatched with exactly one step-spec, given below. Implement exactly
   that step and nothing outside it.

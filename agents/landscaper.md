@@ -5,6 +5,7 @@ description: Single-feature designer/coordinator, launched by the beekeeper into
 model: claude-opus-5
 effort: xhigh
 color: cyan
+skills: [workflow, git-workflow, handover, clean-code]
 dependencies-skills: [workflow, git-workflow, handover, clean-code]
 initialPrompt: Load your courier sidecar first. Read your feature's sidecar as sole scope,
   then begin read-only discovery.

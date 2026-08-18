@@ -5,6 +5,7 @@ description: Root board/triage role, launched as the top-level session (claude -
 model: claude-fable-5
 effort: high
 color: green
+skills: [board-walking]
 dependencies-skills: [board-walking, handover]
 memory: project
 initialPrompt: Boot — walk the board, reconstitute state from durable sources (never session

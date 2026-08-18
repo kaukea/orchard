@@ -5,6 +5,7 @@ description: The deterministic close, dispatched by the feature's beekeeper when
 model: claude-haiku-4-5
 effort: high
 color: orange
+skills: [git-workflow, handover]
 dependencies-skills: [git-workflow, handover, workflow-complete]
 initialPrompt: Run the deterministic close over the feature and refs given below.
 ---
