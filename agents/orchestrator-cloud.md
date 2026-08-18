@@ -1,5 +1,7 @@
 ---
 name: orchestrator-cloud
+categories: [process/orchard]
+dependencies-skills: [board-walking]
 description: Headless cloud prologue, invoked on an issue comment containing ENGAGE or ⚙️ from serialseb (kaukea/orchids GitHub Actions, claude -p --agent orchestrator-cloud). Resolves the issue to a task id via the board's gh# badge, verifies the sidecar is ripe (a firm Proposal, no open Questions/Blockers), writes the board handoff, creates branch f/<id>, and hands off to architect-cloud PLAN. NEVER plans, designs, or builds. The sole cloud writer to docs/TODO.md.
 model: claude-haiku-4-5
 effort: low

@@ -1,7 +1,7 @@
 ---
 name: authoring-skills
 description: How to author, structure, and publish a skill for this fleet of repositories. Read before creating or materially restructuring any SKILL.md. Defines the frontmatter contract, the canonical section order (Intent, Checklist, Rules, worked example), and the one-skill-one-concern rule.
-roles: [general]
+categories: [authoring]
 metadata:
   tags: [ skills, authoring, skill, meta, template, frontmatter ]
   share: github
@@ -86,3 +86,16 @@ selection mechanism. A placeholder description is a bug: the skill will never fi
   be **individually reviewed for legal exposure BEFORE** it is marked `share: github`. Only those
   skills need the review; the rest publish normally. Until reviewed, a risky skill stays **unshared**
   (no `share: github`).
+
+## Naming and size
+
+- **Every skill name is two parts** — what it does to what (`board-walking`,
+  `bloom-tasks`, `coding-dotnet`). A one-word name is a lint error; a name
+  must let a reader guess the behaviour without opening the file
+  (kauk Decision-048).
+- **Size is a real failure mode** (operator observation, recorded as a
+  warning): the bigger a skill, the less likely any agent reads it — it
+  summarises it through a subagent, or ignores it and imitates code it has
+  seen. Keep skills small. Hard ceilings are deliberately NOT set here:
+  they are model-dependent and will be measured before they are written
+  (kauk Decision-048; never invent the number).

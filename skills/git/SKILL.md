@@ -1,7 +1,7 @@
 ---
 name: git
 description: Use when committing files to git. Generic hygiene — format, gitmoji, scope discipline — that applies to every commit, in every repo or process.
-roles: [general]
+categories: [development]
 share: github
 compatibility: Requires git
 metadata:
@@ -39,7 +39,7 @@ Commit one logical change at a time. The user may override any rule.
 - `<subject>` describes the change in imperative form, e.g. "Encapsulate class X". Avoid generic opener verbs like "add".
 - `<subject>` starts with a capital letter and never ends with punctuation.
 - Both `<subject>` and the body explain the **WHY**, not the HOW. Keep technical detail short and only when necessary. No `HOW:` or other prefixes — the body is explanation only.
-- The body is prose for a stranger: full sentences, no session shorthand — the `writing` skill applies to it, and to PR descriptions and issue comments alike.
+- The body is prose for a stranger: full sentences, no session shorthand — the `writing-prose` skill applies to it, and to PR descriptions and issue comments alike.
 
 ## Format
 

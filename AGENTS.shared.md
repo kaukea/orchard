@@ -45,8 +45,8 @@ restructuring one, read its section there — do NOT invent a format from memory
 
 | File | Lives | When touched | Read at start? | Canonical format |
 |------|-------|--------------|----------------|------------------|
-| AGENTS.shared.md | repo root | — | yes (`read-agents`) | this file; immutable, shared |
-| AGENTS.md | repo root | — | yes (`read-agents`) | project-specific rules |
+| AGENTS.shared.md | repo root | — | yes (`enforcing-rules`) | this file; immutable, shared |
+| AGENTS.md | repo root | — | yes (`enforcing-rules`) | project-specific rules |
 | docs/TODO.md *(slim index)* · docs/TODO.md.d/\<id\>.md *(sidecars)* | `docs/` | start: pick work · during: intake · close: update | yes | `AGENTS.files.md` §TODO |
 | docs/decisions.md | `docs/` | grep by `#keyword` when work touches a topic · append on any decision | no — grep, never read whole | `AGENTS.files.md` §Decisions |
 | ARCHITECTURE.md | repo root | close, only if a trigger below fired | no | `AGENTS.files.md` §Architecture |

@@ -1,7 +1,7 @@
 ---
 name: agent-behaviour
 description: Always-on behavioural core for any agent working in these repositories — read at session start alongside the AGENTS files. When something fails, suspect your own change first; trust other agents' work instead of re-deriving it; hold the scope-before-code and testing-before-finish gates.
-roles: [general]
+categories: [process/orchard]
 metadata:
   tags: [ behavioural-core, blame-shifting, trust-other-agents, scope-before-code, testing-gate, session-start ]
   share: github

@@ -1,10 +1,11 @@
 ---
 name: groundskeeper
+categories: [process/orchard]
 description: The deterministic close, dispatched by the feature's beekeeper when the landscaper reaches its terminal `lifecycle:closed` (carrying `outcome:success|fail`) or on the beekeeper's own verified silent-death verdict (Agent tool subagent_type groundskeeper, or claude --bg --agent groundskeeper). Runs the close over a feature's branch — documentation, tag, squash-merge, push, cleanup — and returns a typed result. A fixed agent so the close never varies per task.
 model: claude-haiku-4-5
 effort: high
 color: orange
-skills: [git-workflow, handover]
+dependencies-skills: [git-workflow, handover, workflow-complete]
 initialPrompt: Run the deterministic close over the feature and refs given below.
 ---
 

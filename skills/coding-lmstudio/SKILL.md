@@ -1,7 +1,7 @@
 ---
 name: coding-lmstudio
 description: "Use for any module that talks to a local LLM hosted in LM Studio. Encodes the rules: native /api/v1/* surface only, discovery prefers Staff Picks → catalog → Hugging Face with MLX over GGUF, load your own model instance with a unique identifier, session caching for conversations only, user-approved side-by-side benchmarks, and the two narrow lms CLI exceptions (server start, deletion)."
-roles: [development/lmstudio]
+categories: [development/lmstudio]
 metadata:
   tags: [lmstudio, lm-studio, local-llm, native-api, model-loading, benchmarking, mlx, gguf]
   share: github

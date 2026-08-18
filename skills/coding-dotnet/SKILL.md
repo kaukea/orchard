@@ -1,7 +1,7 @@
 ---
 name: coding-dotnet
 description: "Use for any .NET or C# code change: implement, edit, modify, refactor, fix, add, remove, rename, or update code, tests, or project files."
-roles: [development/dotnet]
+categories: [development/dotnet]
 metadata:
   tags: [dotnet, csharp, native-aot, dotnet-refactor, dotnet-tests, project-files]
   share: github
