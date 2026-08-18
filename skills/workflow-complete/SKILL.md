@@ -2,7 +2,7 @@
 name: workflow-complete
 description: Read and follow the moment a workflow closes — user approval with MAKE IT SO, or abandonment. Defines the entire close procedure — doc updates, clean tree, marker tag, squash-merge, integrity verify, mandatory push to origin (commits + tag + notes), worktree/branch removal, the mandatory handover write, and cancellation via an empty squash. The workflow skill covers everything up to the approval gate; this skill covers everything after it.
 categories: [process/orchard]
-dependencies-skills: [git-workflow, handover, readme-sync]
+dependencies-skills: [git-workflow, continuing-work, readme-sync]
 metadata:
   tags: [ workflow-close, squash-merge, archive-tag, marker-tag, integrity-verify, push-origin, worktree-removal, branch-deletion, abandoned-close, no-content-close ]
   share: github
@@ -12,11 +12,11 @@ metadata:
 
 The close procedure for a workflow. Load and follow this skill the moment a
 workflow finishes — the user has approved it with `MAKE IT SO` — or is being
-abandoned. The `workflow` skill defines everything up to and including the
+abandoned. The `organising-work` skill defines everything up to and including the
 testing and approval gates; this skill defines everything after them.
 
 A workflow can only close once every item on the Workflow Completion checklist
-(in the `workflow` skill) is satisfied. The Testing and User-approval gates that
+(in the `organising-work` skill) is satisfied. The Testing and User-approval gates that
 precede this skill are non-negotiable and the model may not self-approve either —
 do not load this skill to skip them.
 
@@ -153,7 +153,7 @@ decide when to retry; never silently swallow it.
 ## Workstream log close
 
 Record the outcome as the closing act, before removing the worktree — split by
-sensitivity (this is a **mandatory** close step; full protocol in the `handover` skill):
+sensitivity (this is a **mandatory** close step; full protocol in the `continuing-work` skill):
 
 - **Durable, sanitized task state** → the task's sidecar (`docs/TODO.md.d/<id>.md` →
   `## Findings` + a `Result:` line, per `AGENTS.files.md` §Sidecar): outcome, merged

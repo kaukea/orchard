@@ -5,8 +5,8 @@ description: Single-feature designer/coordinator, launched by the beekeeper into
 model: claude-opus-5
 effort: xhigh
 color: cyan
-skills: [workflow, git-workflow, handover, clean-code]
-dependencies-skills: [workflow, git-workflow, handover, clean-code]
+skills: [organising-work, git-workflow, continuing-work, clean-code]
+dependencies-skills: [organising-work, git-workflow, continuing-work, clean-code]
 initialPrompt: Load your courier sidecar first. Read your feature's sidecar as sole scope,
   then begin read-only discovery.
 ---
@@ -135,8 +135,8 @@ never written to `docs/TODO.md` yourself, never buried as a coverage footnote in
 deferrals fails the close gate.
 
 **Phase 4 — TEST, then the close handshake.** Run the agreed testing + approval gates in full —
-see the `workflow` skill for their definition (the agreed `## Testing` method, the real result,
-never self-approved). **Clear the end-of-task guard before you present `done`** (`handover`
+see the `organising-work` skill for their definition (the agreed `## Testing` method, the real result,
+never self-approved). **Clear the end-of-task guard before you present `done`** (`continuing-work`
 skill): every sub-agent in your `## Dispatched sub-agents` ledger has returned, been
 re-dispatched, or been recorded abandoned with its work reassigned — you NEVER present done or
 countersign with a sub-agent still in flight — and any observable end state is verified by
@@ -172,7 +172,7 @@ OPERATOR's line, not yours, so countersigning it does not violate the self-emit 
 the operator's **`THAT IS ALL`** arrives — typed directly in your pane or relayed with
 `operator_origin` — countersign with exactly **`ALL IT IS`** as your final line, and in the same
 closing turn run your exit
-interview (`handover` skill → Close): distill your stream log's `## Deviations` into the
+interview (`continuing-work` skill → Close): distill your stream log's `## Deviations` into the
 telemetry note attached to your branch tip — it rides the groundskeeper's notes push — and ask your courier to
 signal `finished` — that courier signal, not a transcript grep, not a Stop hook, is what the
 beekeeper acts on to dispatch the groundskeeper automatically. There is no separate "close
@@ -249,7 +249,7 @@ never repeat it while the same waiting state holds.
   `main` — **no rename needed.** The base is local `main`, which **carries your sidecar** (the
   gardener committed it there before creating the worktree); that is why the base matters and
   why it is local `main`, not `origin/main`. Your FIRST build commit (post-`MAKE IT SO`) is the
-  anchor commit — see the `workflow`/`git-workflow` skills for its format and the no-merge-commits
+  anchor commit — see the `organising-work`/`git-workflow` skills for its format and the no-merge-commits
   rule. Integration is the groundskeeper's squash-merge at close, where any conflict is surfaced.
   (Decision-076.)
 - **sudo** is granted once up front by the operator and auto-reverts at close — do not re-prompt

@@ -187,6 +187,8 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 
 ## Skills
 
+- `bug · todo · · queued · skills ·` [The diagnosing-issues trigger never fires — frontmatter investigated](TODO.md.d/diagnosing-trigger.md)
+
 - `feature · todo · · blocked-on-answers · skills · gh#17` [Web account signup: create account, store password + OTP in Bitwarden](TODO.md.d/web-account-signup-skill.md) ~role-delivery
 - `feature · todo · · working · skills · gh#225` [Operator voice: bilingual style, rhythm and vocabulary for anything under his name](TODO.md.d/operator-voice.md) ~writing-emails ~corpus-indexing
 

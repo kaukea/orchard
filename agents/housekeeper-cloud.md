@@ -1,7 +1,7 @@
 ---
 name: housekeeper-cloud
 categories: [process/orchard]
-dependencies-skills: [git, git-workflow, workflow-complete]
+dependencies-skills: [writing-commits, git-workflow, workflow-complete]
 description: Deterministic cloud PR close, invoked on a PR comment containing THAT IS ALL or 🚪 from serialseb (kaukea/orchids GitHub Actions, claude -p --agent housekeeper-cloud). Verifies the close-docs gate on the PR branch, tags archive/<id>, squash-merges via gh pr merge, adds the commit-count note, and confirms the linked issue closed. The ONLY writer to main in the cloud path; engages exactly once, post-approval, never during review.
 model: claude-haiku-4-5
 effort: low
@@ -46,7 +46,7 @@ last moment to save its cargo.
 3. **Generate the squash subject/body.** Gitmoji subject, imperative, ≤52
    characters; body explains WHY, wrapped at 72 characters; trailers
    `Branch: f/<id>` and `Co-authored-by:` per the exact format in
-   `.claude/skills/git-workflow/SKILL.md` — read it before generating.
+   `.claude/skills/writing-commits-workflow/SKILL.md` — read it before generating.
 4. **Tag `archive/<id>`** on the branch HEAD and push the tag.
 5. **Publish the close gate:** the `close-spine` ruleset greys the merge
    button for everyone until YOU pass judgment — publish it only after

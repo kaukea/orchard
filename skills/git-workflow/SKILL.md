@@ -1,8 +1,8 @@
 ---
 name: git-workflow
-description: Use when opening or closing a branch-based workflow — the Branch trailer, main's immutability, and where the MAKE IT SO / squash-merge gates live. Loaded by roles that open or close workflows (landscaper, beekeeper, groundskeeper, and the cloud equivalents architect-cloud, housekeeper-cloud, orchestrator-cloud); roles that only commit along the way load the `git` skill instead.
+description: Use when opening or closing a branch-based workflow — the Branch trailer, main's immutability, and where the MAKE IT SO / squash-merge gates live. Loaded by roles that open or close workflows (landscaper, beekeeper, groundskeeper, and the cloud equivalents architect-cloud, housekeeper-cloud, orchestrator-cloud); roles that only commit along the way load the `writing-commits` skill instead.
 categories: [process/orchard]
-dependencies-skills: [git]
+dependencies-skills: [writing-commits]
 share: github
 compatibility: Requires git
 metadata:
@@ -11,15 +11,15 @@ metadata:
 
 # git workflow mechanics (MUST)
 
-Companion to the `git` skill (commit format and hygiene, generic to every repo) — read
+Companion to the `writing-commits` skill (commit format and hygiene, generic to every repo) — read
 both when you open or close a branch-based workflow.
 
 ## Branch trailer (MUST)
 
 - `Branch:` is required on every commit and is the current feature branch — never
-  `main`, with one exception: an operator-accepted micro-task commit (`workflow` skill
+  `main`, with one exception: an operator-accepted micro-task commit (`organising-work` skill
   → Micro-task path) carries `Branch: main`.
-- Add it beneath the `git` skill's format template, after `Agent:`.
+- Add it beneath the `writing-commits` skill's format template, after `Agent:`.
 
 ## `main` is immutable (MUST)
 
@@ -33,6 +33,6 @@ both when you open or close a branch-based workflow.
 ## Gating and close
 
 - **MAKE IT SO** is the build-start gate that turns an agreed plan into edits — see the
-  `workflow` skill.
+  `organising-work` skill.
 - **Squash-merge mechanics** — the close commit format, trailers, and tagging — see the
   `workflow-complete` skill.

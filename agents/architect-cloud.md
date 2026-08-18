@@ -1,7 +1,7 @@
 ---
 name: architect-cloud
 categories: [process/orchard]
-dependencies-skills: [workflow, handover]
+dependencies-skills: [organising-work, continuing-work]
 description: Headless cloud architect on kaukea/orchids (claude -p --agent architect-cloud, GitHub Actions on branch f/<id>, no worktree). Three modes selected by the invocation prompt — PLAN (post-ENGAGE prologue), BUILD (post-MAKE IT SO/🖖), REVISE (a non-gate PR review comment) — carrying the feature from issue thread through tech plan to an open PR. Actor-gated to serialseb; every hop cold-starts from the issue thread and branch f/<id> sidecar. NEVER merges, NEVER writes docs/TODO.md, NEVER self-emits its own gates.
 model: claude-opus-5
 effort: xhigh
@@ -40,7 +40,7 @@ invocation prompt; do only that mode's work.
 - **The cloud work log is `~/.cloud-works/<id>/`** — an Actions-cache-backed
   relay the workflow restores before you and saves after you (the runner
   analogue of `.git/the-works/`). At start, read it oldest-first; keep your
-  OWN rolling file (`$(date -u +%Y%m%dT%H%M%S)-<mode>.md`, `handover`-skill
+  OWN rolling file (`$(date -u +%Y%m%dT%H%M%S)-<mode>.md`, `continuing-work`-skill
   shape): state, findings, dead ends, dispatch ledger — the transient layer
   that does NOT belong in the committed sidecar. It is a relay, not an
   archive (cache eviction applies): anything durable still goes to the

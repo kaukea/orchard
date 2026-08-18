@@ -131,7 +131,7 @@ A **sidecar** is the durable contract and working record for ONE task, at
 `docs/TODO.md.d/<task-id>.md` (one file per bloomed/active task; `<task-id>` matches the
 TODO `{#id}`). It is the single hand-off medium between roles (gardener → landscaper →
 sower → groundskeeper); transient chatter travels separately via the uncommittable
-`.git/` handover (`handover` skill), never here. The TODO
+`.git/` handover (`continuing-work` skill), never here. The TODO
 entry carries only the projected stage; the sidecar is the source of truth.
 
 **Sidecars are committed — keep them sanitized:** technical state only; no
@@ -214,7 +214,7 @@ context, mark it as context, not as the ruling.
     ## [YYYY-MM-DD HH:MM TZ] Decision-NNN: <Title>
 
 Date is ISO. Time is the local wall-clock and is REQUIRED — it disambiguates same-day
-decisions and feeds the staleness rule (`workflow` skill): an old decision is
+decisions and feeds the staleness rule (`organising-work` skill): an old decision is
 PROVISIONAL, re-confirmed with the operator rather than assumed current. `TZ` is the
 zone abbreviation that matches the recording commit's own UTC offset (e.g. `CEST`,
 `BST`) — never a hardcoded label, or agents read the clock wrong. Number is 3-digit,

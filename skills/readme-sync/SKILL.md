@@ -83,7 +83,7 @@ If keeping a section honest would require disclosing too much, remove the sectio
 
 ## Workflow integration
 
-The `workflow` skill's Documentation Update step lists this skill. When a workflow's user-approval-gate summary mentions any trigger category above:
+The `organising-work` skill's Documentation Update step lists this skill. When a workflow's user-approval-gate summary mentions any trigger category above:
 
 1. Run this skill's checklist as the final pre-squash step.
 2. Commit README updates on the feature branch so the squash carries them to `main`.
@@ -113,7 +113,7 @@ dotai init
 Edit a skill — they're just plain markdown:
 
 ```sh
-$EDITOR .ai/skills/workflow/SKILL.md
+$EDITOR .ai/skills/organising-work/SKILL.md
 ```
 
 Sync your changes everywhere:

@@ -23,7 +23,7 @@ by the user.
   - **Scope expansion** — anything outside the agreed workflow scope.
   - **Destructive or hard-to-reverse operations** — file deletes, overwrites of
     uncommitted work, force push, `reset --hard`. Git-specific destructive operations
-    are governed by the `git` skill; branch deletion is handled by the
+    are governed by the `writing-commits` skill; branch deletion is handled by the
     workflow close (the branch ref is deleted as the final close step; the
     `archive/` tag preserves its history).
   - **Technology, library, tool, or approach choice** when more than one option is
@@ -52,7 +52,7 @@ restructuring one, read its section there — do NOT invent a format from memory
 | ARCHITECTURE.md | repo root | close, only if a trigger below fired | no | `AGENTS.files.md` §Architecture |
 | CHANGELOG.md | repo root | close: append one entry | no (append-only) | `AGENTS.files.md` §Changelog |
 | README.md | repo root | close, only if user-facing/tooling change | no | `readme-sync` skill |
-| the-works/\<stream\>/\<session\>.md *(workstream logs)* | `.git/the-works/` (git-common-dir) — uncommittable | one per session, ROLLING — created at session start, updated as work progresses · stream marked `_closed` at finish · promoted then ARCHIVED to `_ingested/` by the ingester | no — hook announces closed streams | `handover` skill |
+| the-works/\<stream\>/\<session\>.md *(workstream logs)* | `.git/the-works/` (git-common-dir) — uncommittable | one per session, ROLLING — created at session start, updated as work progresses · stream marked `_closed` at finish · promoted then ARCHIVED to `_ingested/` by the ingester | no — hook announces closed streams | `continuing-work` skill |
 | migrations/\<YYYY-MM-DD\>-\<slug\>.md | package root | authored in the same branch as any move/rename/reformat of a managed artifact · applied when the hook reports pending | no — hook-triggered | `AGENTS.files.md` §Migrations |
 
 The functionality/area taxonomy lives in the project's `ARCHITECTURE.md`; agents do
@@ -78,9 +78,9 @@ operator), update each file whose condition is met:
 - [ ] **MIGRATION** — only if the work moved, renamed, or reformatted a managed
   artifact: a dated entry ships in the same branch → `AGENTS.files.md` §Migrations
 - [ ] **WORKSTREAM LOG** — final `## State` (outcome) appended, durable findings
-  flushed to the sidecar, stream marked `_closed` → `handover` skill
+  flushed to the sidecar, stream marked `_closed` → `continuing-work` skill
 - [ ] **EXIT INTERVIEW** — the log's `## Deviations` distilled into a telemetry
-  note on the session's final commit (`git notes --ref=telemetry`) → `handover`
+  note on the session's final commit (`git notes --ref=telemetry`) → `continuing-work`
   skill
 
 A workflow is never closed before its Testing gate (below) has been met.
@@ -117,7 +117,7 @@ These hold even when no skill is loaded:
   progresses: state, findings, dead ends, decisions pending promotion, pointers.
   Enough for a successor to continue cold; a reset or agent change never destroys
   a workstream. One file per session — never edit another session's log; read a
-  stream oldest→newest. Full protocol in the `handover` skill.
+  stream oldest→newest. Full protocol in the `continuing-work` skill.
 - **Durable facts go to their homes via promotion, not scatter.** The log is a
   staging area: sanitized findings are flushed to the stream's committed sidecar;
   decisions and remaining work reach `docs/decisions.md` / the `TODO` when the
