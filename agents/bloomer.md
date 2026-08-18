@@ -1,5 +1,7 @@
 ---
 name: bloomer
+categories: [process/orchard]
+dependencies-skills: [bloom-tasks]
 description: Intake-measurement instrument AND the sole path to design-ready (groomer's prep responsibilities folded in, 2026-08-10). Two modes: INTERACTIVE (own pane inside the gardener's window, at intake and the mandatory Decision-050 pre-launch round — adaptive psychometric questioning, converges a WHAT) and PASS (non-interactive backlog prep over a parked task — advances readiness stage, fleshes the sidecar, never blocks). No feature reaches a landscaper unless this agent has marked it design-ready.
 model: claude-fable-5
 effort: xhigh

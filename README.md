@@ -93,7 +93,7 @@ hour of flailing.
 work; `shortcut-file` reads and writes Apple Shortcuts at the byte level.
 
 **And the model's own machinery.** Skills that keep the agents honest
-(`read-agents`, `agent-behaviour`), pass work between sessions without leaking
+(`enforcing-rules`, `agent-behaviour`), pass work between sessions without leaking
 chatter into history (`handover`), bloom the board (`bloom-tasks`, `board-walking`),
 migrate a grown-wild repo into the canonical shape (`history-rewrite`), and
 teach agents to write new skills properly (`authoring-skills`).

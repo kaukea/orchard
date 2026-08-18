@@ -1,7 +1,7 @@
 ---
 name: bloom-tasks
 description: Run a board-blooming pass — dispatch the prep-only bloomer over the stalest opted-in tasks so their sidecars advance through the readiness pipeline without the operator driving each one. NOT a cron; a manual/on-demand trigger fired by the operator ("bloom the board") or by the gardener when it notices the change signal (docs/decisions.md or a sidecar moved since the last swept SHA). Commit-only, N=2 per pass.
-roles: [process/workflow]
+categories: [process/orchard]
 share: github
 compatibility: Requires git
 metadata:

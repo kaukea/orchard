@@ -1,7 +1,7 @@
 ---
-name: writing
+name: writing-prose
 description: Use whenever authoring prose a human will read outside the session — commit bodies, PR descriptions, issue and review comments, sidecar and CHANGELOG text. Enforces plain English over session shorthand — full sentences, jargon expanded, written for a reader with zero session context.
-roles: [general]
+categories: [authoring]
 metadata:
   tags: [writing, prose, english, commit, pull-request, comment, jargon]
   share: github

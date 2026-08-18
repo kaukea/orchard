@@ -1,7 +1,7 @@
 ---
 name: diagnostics
 description: Use whenever something is broken, failing, erroring, or not behaving as expected — for any troubleshooting, debugging, or investigation task. Defines how the model produces diagnostic scripts (one script in `diagnostics/`, paths relative to repo root, streamed output + log file the model reads directly), handles secrets through macOS Keychain, runs code on remote hosts over SSH, keeps system changes reversible, and stops after 5 unsuccessful attempts.
-roles: [development]
+categories: [development]
 metadata:
   tags: [diagnostics, troubleshooting, debugging, diagnostic-script, ssh-debug, keychain-secrets, reversible-changes]
   share: github

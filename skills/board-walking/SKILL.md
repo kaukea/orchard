@@ -1,7 +1,8 @@
 ---
 name: board-walking
 description: Board-walk, triage, and hand-off doctrine for the root role of any workflow — reconstitute state from durable sources, never session memory; render the board adaptively; triage into a closing multiple-choice; hand exactly one task to a spawned sub-job on explicit go. Defines boot, agent-mode, MOOD.md, and sub-job return. In orchids the `gardener` agent loads it; the doctrine is agent-agnostic.
-roles: [process/workflow]
+categories: [process/orchard]
+dependencies-skills: [handover]
 metadata:
   tags: [ board-render, triage, closing-choice, hand-off, sub-job, mood, reconstitution, boot-sequence, agent-mode, github-projection, worktree, mainline ]
   share: github

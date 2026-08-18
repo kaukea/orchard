@@ -1,7 +1,7 @@
 ---
 name: install-shortcut
 description: Use whenever a built .shortcut must reach the operator's phone — delivering a component or experiment, triggering the on-device installer, or (re)sending the install email. Defines the delivery folders, the email trigger contract, the ONE working send path (local SMTP script), and the send paths that are forbidden because they failed.
-roles: [ development/file-formats ]
+categories: [development/file-formats]
 metadata:
   tags: [ shortcut, install, installer, deliver, phone, email, trigger, smtp ]
 ---

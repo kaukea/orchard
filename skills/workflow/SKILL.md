@@ -1,7 +1,8 @@
 ---
 name: workflow
 description: MUST be read before starting any task, plan, or coding job — no work begins without it. Defines the dirty-tree check, worktree/branch setup, the micro-task override, and the testing + approval (MAKE IT SO) gates; the close itself runs via the workflow-complete skill.
-roles: [process/workflow]
+categories: [process/orchard]
+dependencies-skills: [git-workflow, handover]
 metadata:
   tags: [ workflow-start, worktree-setup, feature-branch, dirty-tree, micro-task, testing-gate, approval-gate, make-it-so, todo-intake, decision-staleness ]
   share: github

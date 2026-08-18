@@ -1,7 +1,8 @@
 ---
 name: git-workflow
 description: Use when opening or closing a branch-based workflow — the Branch trailer, main's immutability, and where the MAKE IT SO / squash-merge gates live. Loaded by roles that open or close workflows (landscaper, beekeeper, groundskeeper, and the cloud equivalents architect-cloud, housekeeper-cloud, orchestrator-cloud); roles that only commit along the way load the `git` skill instead.
-roles: [process/workflow]
+categories: [process/orchard]
+dependencies-skills: [git]
 share: github
 compatibility: Requires git
 metadata:

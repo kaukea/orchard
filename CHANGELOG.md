@@ -6,6 +6,17 @@ _base: `f65ad36`_
 
 ### ✨ New features
 
+- 🗂️ **Every artifact says where it files and what it needs.** `roles:` becomes
+  `categories:` on the ruled tree — `process/orchard` (the renamed workflow node),
+  `authoring` (new, holding `authoring-skills` and `writing-prose`), `development`,
+  `general` as the catch-all — and `agent-behaviour` files under the process whose
+  conduct it is. `read-agents` renames to `enforcing-rules`, `writing` to
+  `writing-prose` (guarded migration for consumers' links). Agents declare
+  `categories:` and `dependencies-skills:` beside their runtime keys; the strong
+  skill-to-skill edges are written flat. The authoring contract gains the two-part
+  naming rule and the size warning. Verified end to end with kauk's reader:
+  selecting `process/orchard` lays exactly the workflow corpus and its closure.
+
 - ✂️ **Every skill cut to what it actually says, and tags became a real index.**
   A first quality pass over all 19 skills: `description` fields tightened to their
   genuine trigger, and `metadata.tags` — which until now were consumed by nothing —

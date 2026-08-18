@@ -2981,3 +2981,22 @@ guard.
 A sweep of the other twelve migrations found no second instance: only this one and the
 per-package watermark contain destructive operations, and the watermark's are behind a
 regular-file check. Of the thirteen, one is judgement-only and twelve are scripted.
+
+---
+
+## [2026-08-18] Decision-147: orchids slims to the workflow — generic corpora split out, later, whole
+#packages #workflow #split #categories #cross-package #future
+
+Operator ruling (2026-08-18, given during the skill tour; recorded as
+designed-for, not built): orchids IS the workflow. Its end state carries only
+the agents and the process/task management; every generic corpus — the coding
+skills, diagnostics, the file-format skills — splits out into its own package
+the way forensics already did, reached over cross-package dependencies. Not
+now. In that end state the conduct question dissolves: a repository adds
+orchard only to use the workflow, so there is exactly one agentic behaviour
+and it comes with the process.
+
+Context, not ruling (operator, same round): processes may be EXCLUSIVE — a
+repository selecting more than one `process/*` node would carry conflicting
+rulebooks. A consideration for the cross-repository linking work; not settled,
+not to be assumed either way.
