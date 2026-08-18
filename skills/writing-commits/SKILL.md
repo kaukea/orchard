@@ -1,5 +1,5 @@
 ---
-name: git
+name: writing-commits
 description: Use when committing files to git. Generic hygiene — format, gitmoji, scope discipline — that applies to every commit, in every repo or process.
 categories: [development]
 share: github

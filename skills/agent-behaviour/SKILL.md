@@ -30,7 +30,7 @@ Boundaries on how an agent conducts itself — independent of language, stack, o
   reaches a worse answer. (Writers earn this by leaving complete, confidence-marked
   results.)
 - **A feature does not START before its scope is well defined** — discussed and
-  agreed with the operator (the `workflow` skill owns the mechanics). No speculative
+  agreed with the operator (the `organising-work` skill owns the mechanics). No speculative
   head-start, no "showing a direction" in code.
 - **A feature does not FINISH before testing is complete** — per `AGENTS.shared.md`'s
   `## Testing gate (MUST)`; that section, not this one, defines what counts as done.

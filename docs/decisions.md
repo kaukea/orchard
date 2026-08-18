@@ -3000,3 +3000,16 @@ Context, not ruling (operator, same round): processes may be EXCLUSIVE — a
 repository selecting more than one `process/*` node would carry conflicting
 rulebooks. A consideration for the cross-repository linking work; not settled,
 not to be assumed either way.
+
+---
+
+## [2026-08-18] Decision-148: The four names — writing-commits, diagnosing-issues, organising-work, continuing-work
+#naming #skills #renames #two-part
+
+Operator picks (2026-08-18) closing the naming round the two-part rule
+opened: `git` → `writing-commits` (the authoring half of the old git-commit
+split), `diagnostics` → `diagnosing-issues`, `workflow` → `organising-work`,
+`handover` → `continuing-work` ("the simplest" — what a successor does with
+the log). `git-workflow` and `workflow-complete` keep their names. Rejected
+for handover: preserving-knowledge, transferring-knowledge,
+ensuring-continuity.

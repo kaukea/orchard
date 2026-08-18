@@ -1,5 +1,5 @@
 ---
-name: handover
+name: continuing-work
 description: The workstream-log protocol — how sessions pass work to successors and parents. Every session keeps its OWN small, rolling, parseable log in .git/the-works/<stream>/ (state, findings, dead ends, pending decisions, pointers), written as the work progresses, never at the end. A reset or agent change cannot destroy a workstream; the successor reads the stream's logs oldest-first. At close the stream is marked closed; the ingesting parent (or the top-level session itself) promotes pending decisions and remaining work into docs/decisions.md and the TODO, then archives the stream under .git/the-works/_ingested/ (provisional retention). Replaces the monolithic HANDOVER.md.
 categories: [process/orchard]
 share: github

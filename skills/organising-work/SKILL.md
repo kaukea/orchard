@@ -1,8 +1,8 @@
 ---
-name: workflow
+name: organising-work
 description: MUST be read before starting any task, plan, or coding job — no work begins without it. Defines the dirty-tree check, worktree/branch setup, the micro-task override, and the testing + approval (MAKE IT SO) gates; the close itself runs via the workflow-complete skill.
 categories: [process/orchard]
-dependencies-skills: [git-workflow, handover]
+dependencies-skills: [git-workflow, continuing-work]
 metadata:
   tags: [ workflow-start, worktree-setup, feature-branch, dirty-tree, micro-task, testing-gate, approval-gate, make-it-so, todo-intake, decision-staleness ]
   share: github
@@ -19,8 +19,8 @@ The whole workflow must be followed, you must complete all these steps.
 
 Workflow Start:
 
-- [ ] Closed workstreams ingested if announced (`_closed` under `.git/the-works/*/`): promote → archive — see the `handover` skill
-- [ ] Own session log created in `.git/the-works/<feature-id>/` (`handover` skill), rolled as work progresses
+- [ ] Closed workstreams ingested if announced (`_closed` under `.git/the-works/*/`): promote → archive — see the `continuing-work` skill
+- [ ] Own session log created in `.git/the-works/<feature-id>/` (`continuing-work` skill), rolled as work progresses
 - [ ] Working tree resolved with user
 - [ ] Skills synchronized
 - [ ] Git commit format understood

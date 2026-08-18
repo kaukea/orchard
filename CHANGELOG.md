@@ -6,6 +6,12 @@ _base: `f65ad36`_
 
 ### ✨ New features
 
+- ✍️ **Four names say what they do** — `git` → `writing-commits`, `diagnostics` →
+  `diagnosing-issues`, `workflow` → `organising-work`, `handover` →
+  `continuing-work`; every dependency list, self-link and reference follows, with
+  a guarded migration for consumers. The diagnostics trigger-never-fires report
+  is boarded as its own bug. Migration: `2026-08-18-four-names.md`.
+
 - 🗂️ **Every artifact says where it files and what it needs.** `roles:` becomes
   `categories:` on the ruled tree — `process/orchard` (the renamed workflow node),
   `authoring` (new, holding `authoring-skills` and `writing-prose`), `development`,

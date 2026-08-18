@@ -2,7 +2,7 @@
 name: board-walking
 description: Board-walk, triage, and hand-off doctrine for the root role of any workflow — reconstitute state from durable sources, never session memory; render the board adaptively; triage into a closing multiple-choice; hand exactly one task to a spawned sub-job on explicit go. Defines boot, agent-mode, MOOD.md, and sub-job return. In orchids the `gardener` agent loads it; the doctrine is agent-agnostic.
 categories: [process/orchard]
-dependencies-skills: [handover]
+dependencies-skills: [continuing-work]
 metadata:
   tags: [ board-render, triage, closing-choice, hand-off, sub-job, mood, reconstitution, boot-sequence, agent-mode, github-projection, worktree, mainline ]
   share: github
@@ -17,7 +17,7 @@ metadata:
 
 The gardener is the root of all work and the only role that decides *what* gets
 done next. It **cannot code** — every implementation happens in a spawned sub-job
-(`/branch` + the `workflow` skill). It is a **role, not a session**: any fresh session
+(`/branch` + the `organising-work` skill). It is a **role, not a session**: any fresh session
 becomes the gardener by reading durable state, so it never "disappears" (open a new
 one) and never bloats (it reads a bounded set, it does not accumulate). Design rationale
 lives in Decision-045..048 — grep `docs/decisions.md` for `#gardener`.
@@ -38,7 +38,7 @@ state. Do NOT re-derive from a prior conversation; read:
 - **git, for the in-flight tree:** `git worktree list` = sub-jobs running now;
   `git branch --list 'f/*'` minus `archive/*` tags = open or abandoned branches.
 - `_closed` streams under `$(git rev-parse --git-common-dir)/the-works/` — ingest per
-  the `handover` skill (read logs oldest→newest → promote decisions/TODO → ARCHIVE the
+  the `continuing-work` skill (read logs oldest→newest → promote decisions/TODO → ARCHIVE the
   stream to `_ingested/`), then continue.
 - `.git/the-works/MOOD.md` (git-common-dir) if present — read with decay (see below) to recover the operator's vibe.
 - **GitHub projection pull** — if the repo has an origin and
@@ -88,8 +88,8 @@ A `SessionStart` role hook injects identity. Trust it, with one override:
 Worktrees are conditional (Decision-046). If the mode is not yet known for this repo, ask
 once: **"Are multiple agents working on this repository?"**
 
-- **Yes → multi-agent:** sub-jobs run in worktrees (`workflow` skill default).
-- **No → mainline:** commits go straight on the working branch; the `workflow`
+- **Yes → multi-agent:** sub-jobs run in worktrees (`organising-work` skill default).
+- **No → mainline:** commits go straight on the working branch; the `organising-work`
   always-worktree rule is overridden. Worktrees cause havoc on single-agent monoline work.
 
 Persist the answer in the gitignored, per-checkout file `.claude/gardener-mode.local`
@@ -141,7 +141,7 @@ for "I can't code, so I'll dispatch someone who can" — that is the same bounda
 violation wearing a disguise. Wait for an explicit "start this / make it so / go".
 
 When — and only when — the operator explicitly says to start a board item, transition to
-the `workflow` skill, which owns scope discussion, the worktree (multi-agent) or mainline
+the `organising-work` skill, which owns scope discussion, the worktree (multi-agent) or mainline
 setup, and the testing + `MAKE IT SO` gates. In **multi-agent mode** the sub-job is a
 fresh worktree session (identity by location). In **mainline mode** spawn via `/branch`
 and **state the sub-job's role and task in the handoff message** so the fork knows it is a
@@ -206,7 +206,7 @@ A returning sub-job marks its stream `_closed` under `.git/the-works/<stream>/`.
 ingest hook nudges you on your next prompt: read the stream's session logs
 oldest→newest, promote `## Decisions (pending promotion)` into `docs/decisions.md` and
 remaining work into the TODO (promotion is YOURS — children never write those files),
-then archive the stream to `.git/the-works/_ingested/` (per the `handover` skill). Then re-triage and offer
+then archive the stream to `.git/the-works/_ingested/` (per the `continuing-work` skill). Then re-triage and offer
 the next choice. Trust the branch — do not re-derive its work.
 
 ## Renewal & summon (session lifecycle)
@@ -260,7 +260,7 @@ not the session (Decision-049, renewal mechanism updated by Decision-071).
   artifact the task asks for* is not. If you are grepping code to assemble the substance
   of an answer rather than to triage, STOP — that substance is the deliverable. Create
   the issue, describe it for the sub-job, and hand off.
-- **The ONE exception: the `workflow` component is the gardener's own domain.** Its
+- **The ONE exception: the `organising-work` component is the gardener's own domain.** Its
   own role + this skill, the `AGENTS*.md` rule files, the workflow/branch/close
   machinery, the hooks, and the task-list tooling — the gardener authors these
   *directly on `main`*, no sub-job (Decision-065, procedural-on-main). This is the only
@@ -270,7 +270,7 @@ not the session (Decision-049, renewal mechanism updated by Decision-071).
 - **Keep the working tree clean.** Gardener board edits (TODO, decisions, MOOD's
   durable spillover, skill/rule housekeeping) are committed to `main` as they are made —
   the gardener MUST NOT leave uncommitted changes when it hands off. A dirty tree
-  blocks the next sub-job (the fork inherits the mess and the `workflow` close trips on
+  blocks the next sub-job (the fork inherits the mess and the `organising-work` close trips on
   it). No exceptions — the transient files (workstream logs, `MOOD.md`) live under `.git/the-works/`
   and never touch the tree. Commit board work before every handoff; if a dirty tree is found at boot,
   clean it (single board-update commit on `main`) before starting anything.
