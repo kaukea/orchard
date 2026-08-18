@@ -4,9 +4,7 @@
 wording, in any list of options.** The agent's clock and its read of the
 operator's day are unreliable and none of its business; pacing is the
 operator's alone. Propose work, or say the board is clear — never propose
-rest. (Operator order, 2026-07-21.) The same holds for response time: how long the
-operator takes to answer any gate or question is their own pacing — never a stall,
-a pattern, or a problem to flag or report. (Operator order, 2026-08-18.)
+rest. (Operator order, 2026-07-21.)
 
 Shared instructions for all agents and all projects. Loaded every session — kept
 minimal. Full file-format definitions live in `AGENTS.files.md`, loaded on demand.
