@@ -11,7 +11,11 @@
 set -euo pipefail
 [ "$#" -ge 4 ] || { echo "usage: dispatch-agent.sh <agent-type> <name> <cwd> <prompt...>" >&2; exit 2; }
 agent="$1"; name="$2"; cwd="$3"; shift 3
-win=$(tmux display-message -p '#{window_id}')
+if [ -n "${TMUX_PANE:-}" ]; then
+  win=$(tmux display-message -p -t "$TMUX_PANE" '#{window_id}')
+else
+  win=$(tmux display-message -p '#{window_id}')
+fi
 cmd=$(printf 'env ORCHID_PARENT_SESSION=%q claude --agent %q --name %q %q' \
   "${CLAUDE_CODE_SESSION_ID:-}" "$agent" "$name" "$*")
 pane=$(tmux split-window -d -c "$cwd" -t "$win" -P -F '#{pane_id}' "$cmd")
