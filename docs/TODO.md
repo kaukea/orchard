@@ -209,3 +209,4 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 - `feature · todo · · queued · · gh#300` [The supervision contract tightens: one report per feature, pacing untouchable, sizing stated not asked](TODO.md.d/the-supervision-contract-tightens-one-report-per.md)
 - `feature · todo · · queued · · gh#301` [A gardener session's end loses the live state its successor needs](TODO.md.d/a-gardener-session-s-end-loses-the-live-state-it.md)
 - `feature · todo · · queued · · gh#302` [Readiness phases are inadequate — the pipeline and the agents that serve it need rewriting](TODO.md.d/readiness-phases-are-inadequate-the-pipeline-and.md)
+- `feature · todo · · queued · · gh#303` [Run report: the 2026-08-18/19 kauk fleet run — everything orchard-side, for the board](TODO.md.d/run-report-the-2026-08-18-19-kauk-fleet-run-ever.md)
