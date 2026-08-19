@@ -208,3 +208,4 @@ on this board runs kauk against orchids, and no task's Testing may require it.
 - `feature · todo · · queued · · gh#299` [DEFCON-1: restore consumer delivery — manifest.conf back on the conventional path, integration-tested](TODO.md.d/defcon-1-restore-consumer-delivery-manifest-conf.md)
 - `feature · todo · · queued · · gh#300` [The supervision contract tightens: one report per feature, pacing untouchable, sizing stated not asked](TODO.md.d/the-supervision-contract-tightens-one-report-per.md)
 - `feature · todo · · queued · · gh#301` [A gardener session's end loses the live state its successor needs](TODO.md.d/a-gardener-session-s-end-loses-the-live-state-it.md)
+- `feature · todo · · queued · · gh#302` [Readiness phases are inadequate — the pipeline and the agents that serve it need rewriting](TODO.md.d/readiness-phases-are-inadequate-the-pipeline-and.md)
